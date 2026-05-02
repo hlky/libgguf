@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import importlib.util
 import platform
 from pathlib import Path
 
 from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
 
-from scripts.native_sources import NATIVE_SOURCES
+ROOT = Path(__file__).resolve().parent
+NATIVE_SOURCES_SPEC = importlib.util.spec_from_file_location(
+    "libgguf_native_sources",
+    ROOT / "scripts" / "native_sources.py",
+)
+if NATIVE_SOURCES_SPEC is None or NATIVE_SOURCES_SPEC.loader is None:
+    raise RuntimeError("failed to load native source list")
+NATIVE_SOURCES_MODULE = importlib.util.module_from_spec(NATIVE_SOURCES_SPEC)
+NATIVE_SOURCES_SPEC.loader.exec_module(NATIVE_SOURCES_MODULE)
+NATIVE_SOURCES = NATIVE_SOURCES_MODULE.NATIVE_SOURCES
 
 
 def _is_x86_build() -> bool:

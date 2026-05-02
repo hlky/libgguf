@@ -42,19 +42,6 @@ static libgguf_dequant_q4_0_selection libgguf_dequant_q4_0_select_kernel()
     }
   }
 
-  if (features.avx2)
-  {
-    return {"avx2", dequantize_row_q4_0_avx2};
-  }
-  if (features.sse4_1)
-  {
-    return {"sse4_1", dequantize_row_q4_0_sse4_1};
-  }
-  if (features.sse2)
-  {
-    return {"sse2", dequantize_row_q4_0_sse2};
-  }
-
   return {"ref", dequantize_row_q4_0_ref};
 }
 

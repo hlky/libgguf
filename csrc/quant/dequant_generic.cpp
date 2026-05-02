@@ -13,28 +13,28 @@ struct libgguf_dequant_selection
 };
 
 #define LIBGGUF_DEQUANT_TYPES(X) \
-  X(Q1_0, q1_0, block_q1_0)      \
-  X(Q4_1, q4_1, block_q4_1)      \
-  X(Q5_0, q5_0, block_q5_0)      \
-  X(Q5_1, q5_1, block_q5_1)      \
-  X(Q2_K, q2_K, block_q2_K)      \
-  X(Q3_K, q3_K, block_q3_K)      \
-  X(Q4_K, q4_K, block_q4_K)      \
-  X(Q5_K, q5_K, block_q5_K)      \
-  X(Q6_K, q6_K, block_q6_K)      \
-  X(IQ2_XXS, iq2_xxs, block_iq2_xxs) \
-  X(IQ2_XS, iq2_xs, block_iq2_xs)    \
-  X(IQ2_S, iq2_s, block_iq2_s)       \
-  X(IQ3_XXS, iq3_xxs, block_iq3_xxs) \
-  X(IQ3_S, iq3_s, block_iq3_s)       \
-  X(IQ1_S, iq1_s, block_iq1_s)       \
-  X(IQ1_M, iq1_m, block_iq1_m)       \
-  X(IQ4_NL, iq4_nl, block_iq4_nl)    \
-  X(IQ4_XS, iq4_xs, block_iq4_xs)    \
-  X(TQ1_0, tq1_0, block_tq1_0)       \
-  X(TQ2_0, tq2_0, block_tq2_0)       \
-  X(MXFP4, mxfp4, block_mxfp4)       \
-  X(NVFP4, nvfp4, block_nvfp4)
+  X(Q1_0, q1_0, block_q1_0, sse4_1)      \
+  X(Q4_1, q4_1, block_q4_1, sse2)        \
+  X(Q5_0, q5_0, block_q5_0, sse4_1)      \
+  X(Q5_1, q5_1, block_q5_1, ref)         \
+  X(Q2_K, q2_K, block_q2_K, sse2)        \
+  X(Q3_K, q3_K, block_q3_K, sse2)        \
+  X(Q4_K, q4_K, block_q4_K, ref)         \
+  X(Q5_K, q5_K, block_q5_K, ref)         \
+  X(Q6_K, q6_K, block_q6_K, sse2)        \
+  X(IQ2_XXS, iq2_xxs, block_iq2_xxs, avx2) \
+  X(IQ2_XS, iq2_xs, block_iq2_xs, sse4_1)  \
+  X(IQ2_S, iq2_s, block_iq2_s, sse2)       \
+  X(IQ3_XXS, iq3_xxs, block_iq3_xxs, avx2) \
+  X(IQ3_S, iq3_s, block_iq3_s, avx2)       \
+  X(IQ1_S, iq1_s, block_iq1_s, ref)        \
+  X(IQ1_M, iq1_m, block_iq1_m, ref)        \
+  X(IQ4_NL, iq4_nl, block_iq4_nl, ref)     \
+  X(IQ4_XS, iq4_xs, block_iq4_xs, ref)     \
+  X(TQ1_0, tq1_0, block_tq1_0, ref)        \
+  X(TQ2_0, tq2_0, block_tq2_0, ref)        \
+  X(MXFP4, mxfp4, block_mxfp4, ref)        \
+  X(NVFP4, nvfp4, block_nvfp4, ref)
 
 extern "C" void dequantize_row_q4_0_ref(const block_q4_0 *RESTRICT x, float *RESTRICT y, int64_t k);
 extern "C" void dequantize_row_q4_0_sse2(const block_q4_0 *RESTRICT x, float *RESTRICT y, int64_t k);
@@ -48,7 +48,7 @@ extern "C" void dequantize_row_q8_0_sse4_1(const block_q8_0 *RESTRICT x, float *
 extern "C" void dequantize_row_q8_0_avx2(const block_q8_0 *RESTRICT x, float *RESTRICT y, int64_t k);
 extern "C" const char *libgguf_dequant_q8_0_backend(void);
 
-#define DECLARE_KERNELS(upper, name, block_type)                                                     \
+#define DECLARE_KERNELS(upper, name, block_type, default_backend)                                    \
   extern "C" void dequantize_row_##name##_ref(const block_type *RESTRICT x, float *RESTRICT y, int64_t k);    \
   extern "C" void dequantize_row_##name##_sse2(const block_type *RESTRICT x, float *RESTRICT y, int64_t k);   \
   extern "C" void dequantize_row_##name##_sse4_1(const block_type *RESTRICT x, float *RESTRICT y, int64_t k); \
@@ -90,7 +90,7 @@ static bool libgguf_dequant_backend_supported(const char *backend)
     dequantize_row_##name##_##backend((const block_type *)x, y, k);                                   \
   }
 
-#define DEFINE_WRAPPERS(upper, name, block_type) \
+#define DEFINE_WRAPPERS(upper, name, block_type, default_backend) \
   WRAP_KERNEL(name, ref, block_type)             \
   WRAP_KERNEL(name, sse2, block_type)            \
   WRAP_KERNEL(name, sse4_1, block_type)          \
@@ -118,7 +118,14 @@ WRAP_KERNEL(q8_0, avx2, block_q8_0)
     return {#backend_name, libgguf_dequant_##name##_##backend_name##_wrap}; \
   }
 
-#define DEFINE_SELECTION(upper, name, block_type)                                       \
+#define SELECT_DEFAULT(name, backend_name)                         \
+  if (std::strcmp(preferred, #backend_name) == 0 &&                \
+      libgguf_dequant_backend_supported(#backend_name))            \
+  {                                                               \
+    return {#backend_name, libgguf_dequant_##name##_##backend_name##_wrap}; \
+  }
+
+#define DEFINE_SELECTION(upper, name, block_type, default_backend)                      \
   static libgguf_dequant_selection libgguf_dequant_##name##_select_kernel()             \
   {                                                                                     \
     const char *forced = std::getenv("LIBGGUF_DEQUANT_" #upper "_BACKEND");            \
@@ -130,6 +137,11 @@ WRAP_KERNEL(q8_0, avx2, block_q8_0)
       SELECT_FORCED(name, sse4_1)                                                       \
       SELECT_FORCED(name, avx2)                                                         \
     }                                                                                   \
+    const char *preferred = #default_backend;                                           \
+    SELECT_DEFAULT(name, ref)                                                           \
+    SELECT_DEFAULT(name, sse2)                                                          \
+    SELECT_DEFAULT(name, sse4_1)                                                        \
+    SELECT_DEFAULT(name, avx2)                                                          \
     if (features.avx2)                                                                  \
     {                                                                                   \
       return {"avx2", libgguf_dequant_##name##_avx2_wrap};                             \
@@ -159,6 +171,7 @@ WRAP_KERNEL(q8_0, avx2, block_q8_0)
 LIBGGUF_DEQUANT_TYPES(DEFINE_SELECTION)
 
 #undef DEFINE_SELECTION
+#undef SELECT_DEFAULT
 #undef SELECT_FORCED
 
 static const char *libgguf_dequant_selected_backend(enum ggml_type type)
@@ -169,7 +182,7 @@ static const char *libgguf_dequant_selected_backend(enum ggml_type type)
     return libgguf_dequant_q4_0_backend();
   case GGML_TYPE_Q8_0:
     return libgguf_dequant_q8_0_backend();
-#define BACKEND_CASE(upper, name, block_type) \
+#define BACKEND_CASE(upper, name, block_type, default_backend) \
   case GGML_TYPE_##upper:                     \
     return libgguf_dequant_##name##_selected().backend;
     LIBGGUF_DEQUANT_TYPES(BACKEND_CASE)
@@ -192,7 +205,7 @@ static libgguf_dequant_kernel_fn libgguf_dequant_kernel_for_backend(enum ggml_ty
     return libgguf_dequant_##name##_##backend_name##_wrap; \
   }
 
-#define KERNEL_CASE(upper, name, block_type) \
+#define KERNEL_CASE(upper, name, block_type, default_backend) \
   case GGML_TYPE_##upper:                    \
     BACKEND_TO_KERNEL(name, ref)             \
     BACKEND_TO_KERNEL(name, sse2)            \
