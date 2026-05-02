@@ -6,8 +6,9 @@
 
 ## Repository Layout
 
-- `__init__.py`, `imatrix.py`, `quantize.py`, and `quantize_gguf.py` are the Python package and CLI entry points.
-- `_libgguf_module.cpp`, `libgguf.cpp`, and `libgguf.h` build the native quantizer extension.
+- `src/libgguf/` contains the Python package and CLI entry points.
+- `include/libgguf.h` is the public C ABI header.
+- `csrc/` contains the CPython extension shim and native quantizer implementation.
 - `scripts/build_libgguf.py` builds the standalone shared library used by C ABI callers and tests.
 - `tests/` contains pytest coverage and local GGML type metadata used by the reference checks.
 - `pyproject.toml`, `setup.py`, and `MANIFEST.in` define packaging and build behavior.
@@ -75,7 +76,7 @@ python -m pytest tests/test_quantize_gguf.py
 ## Development Notes
 
 - Keep native changes compatible with C++17 and the existing setuptools build flow.
-- Preserve the Python package layout where the repository root is mapped to the `libgguf` package.
+- Preserve the `src/libgguf` package layout and keep native implementation code under `csrc/`.
 - Prefer NumPy arrays that are contiguous and explicitly typed when crossing the Python/native boundary.
 - Keep quantization policy changes covered by focused pytest cases in `tests/test_quantize_gguf.py`.
 - Keep extension or ABI changes covered by `tests/test_libgguf_reference.py`.

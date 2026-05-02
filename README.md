@@ -44,7 +44,8 @@ python -m libgguf.quantize_gguf --src model.safetensors --dst model.gguf --qtype
 
 ## Layout
 
-- `__init__.py`, `imatrix.py`, `quantize.py`, and `quantize_gguf.py` expose the Python package and CLI.
-- `_libgguf_module.cpp`, `libgguf.cpp`, and `libgguf.h` build the native quantizer extension.
+- `src/libgguf/` exposes the Python package and CLI.
+- `include/libgguf.h` is the public C ABI header.
+- `csrc/` contains the CPython extension shim and native quantizer implementation.
 - `scripts/build_libgguf.py` builds the standalone shared library for callers that use the C ABI directly.
 - `tests/` contains standalone package, C ABI, imatrix, and conversion tests.

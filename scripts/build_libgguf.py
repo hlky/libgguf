@@ -9,9 +9,15 @@ import sys
 from setuptools._distutils.ccompiler import new_compiler
 from setuptools._distutils.sysconfig import customize_compiler
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.native_sources import NATIVE_SOURCES
+
 
 def build_shared_lib(output: Path, build_dir: Path) -> Path:
-    root = Path(__file__).resolve().parents[1]
+    root = ROOT
 
     compiler = new_compiler()
     customize_compiler(compiler)
@@ -32,9 +38,9 @@ def build_shared_lib(output: Path, build_dir: Path) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     objects = compiler.compile(
-        sources=[str(root / "libgguf.cpp")],
+        sources=[str(root / source) for source in NATIVE_SOURCES],
         output_dir=str(build_dir),
-        include_dirs=[str(root)],
+        include_dirs=[str(root / "include"), str(root / "csrc"), str(root / "csrc" / "common")],
         macros=[("NDEBUG", "1")],
         extra_postargs=compile_args,
     )
@@ -47,7 +53,7 @@ def build_shared_lib(output: Path, build_dir: Path) -> Path:
 
 
 def default_output_path() -> Path:
-    root = Path(__file__).resolve().parents[1]
+    root = ROOT
     if sys.platform == "win32":
         lib_name = "libgguf.dll"
     elif sys.platform == "darwin":
@@ -64,7 +70,7 @@ def main() -> None:
     parser.add_argument("--clean", action="store_true", help="Delete the build directory before compiling")
     args = parser.parse_args()
 
-    root = Path(__file__).resolve().parents[1]
+    root = ROOT
     build_dir = args.build_dir if args.build_dir.is_absolute() else root / args.build_dir
     output = args.output if args.output.is_absolute() else root / args.output
 

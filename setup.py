@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 
-from setuptools import Extension, setup
+from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
+
+from scripts.native_sources import NATIVE_SOURCES
 
 
 class BuildExt(build_ext):
@@ -22,13 +24,13 @@ class BuildExt(build_ext):
 
 
 setup(
-    packages=["libgguf"],
-    package_dir={"libgguf": "."},
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     ext_modules=[
         Extension(
             "libgguf._libgguf",
-            sources=["_libgguf_module.cpp", "libgguf.cpp"],
-            include_dirs=["."],
+            sources=["csrc/_libgguf_module.cpp", *NATIVE_SOURCES],
+            include_dirs=["include", "csrc", "csrc/common"],
             language="c++",
         )
     ],
