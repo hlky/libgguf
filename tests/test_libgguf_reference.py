@@ -188,6 +188,74 @@ def test_libgguf_quantize_rows_accepts_explicit_imatrix() -> None:
     assert np.array_equal(quantized.reshape(-1), np.frombuffer(raw, dtype=np.uint8))
 
 
+def test_libgguf_q4_0_matches_scalar_reference() -> None:
+    qtype = GGMLQuantizationType.Q4_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 5 * info.block_size, dtype=np.float32).reshape(5, info.block_size)
+
+    expected = bytearray()
+    for row in rows:
+        amax = np.float32(0.0)
+        max_value = np.float32(0.0)
+        for value in row:
+            if amax < np.abs(value):
+                amax = np.abs(value)
+                max_value = value
+        d = np.float32(max_value / np.float32(-8.0))
+        inv = np.float32(1.0 / d) if d != 0 else np.float32(0.0)
+        lo = np.minimum(15, (row[:16] * inv + np.float32(8.5)).astype(np.int8)).astype(np.uint8)
+        hi = np.minimum(15, (row[16:] * inv + np.float32(8.5)).astype(np.int8)).astype(np.uint8)
+        expected += np.float16(d).tobytes()
+        expected += (lo | (hi << 4)).tobytes()
+
+    raw = libgguf.quantize_rows_raw(qtype, rows, rows.shape[0], rows.shape[1], None)
+
+    assert raw == bytes(expected)
+
+
+def test_libgguf_q4_0_runtime_backend_is_supported() -> None:
+    backend = _libgguf._q4_0_backend()
+
+    assert backend in {"ref", "sse2", "avx2"}
+    assert _libgguf._q4_0_cpu_supports_backend(backend)
+
+
+def test_libgguf_q4_0_supported_backends_match_reference() -> None:
+    qtype = GGMLQuantizationType.Q4_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 7 * info.block_size, dtype=np.float32).reshape(7, info.block_size)
+    rows[0] = 0.0
+    rows[0, 1] = 3.0
+    rows[0, 4] = -3.0
+    expected = _libgguf._quantize_q4_0_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+    for backend in ("sse2", "avx2"):
+        if _libgguf._q4_0_cpu_supports_backend(backend):
+            actual = _libgguf._quantize_q4_0_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+            assert actual == expected
+
+
+def test_libgguf_q4_0_forced_ref_backend_via_environment() -> None:
+    env = os.environ.copy()
+    src_dir = Path(__file__).resolve().parents[1] / "src"
+    env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
+    env["LIBGGUF_Q4_0_BACKEND"] = "ref"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from libgguf import _libgguf; print(_libgguf._q4_0_backend())",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.stdout.strip() == "ref"
+
+
 def test_libgguf_q8_0_matches_scalar_reference() -> None:
     qtype = GGMLQuantizationType.Q8_0
     info = GGML_FORMAT_INFO[qtype]
@@ -256,8 +324,10 @@ def test_libgguf_builds_do_not_use_global_avx2_flags() -> None:
 
     assert "LIBGGUF_AVX2" not in setup_py
     assert "LIBGGUF_AVX2" not in shared_build
-    assert 'name == "quant_q8_0_avx2.cpp"' in setup_py
-    assert 'Path(source).name == "quant_q8_0_avx2.cpp"' in shared_build
+    assert '"quant_q4_0_avx2.cpp", "quant_q8_0_avx2.cpp"' in setup_py
+    assert '"quant_q4_0_avx2.cpp", "quant_q8_0_avx2.cpp"' in shared_build
+    assert '"quant_q4_0_sse2.cpp", "quant_q8_0_sse2.cpp"' in setup_py
+    assert '"quant_q4_0_sse2.cpp", "quant_q8_0_sse2.cpp"' in shared_build
 
 
 def test_libgguf_loads_legacy_imatrix(tmp_path: Path) -> None:

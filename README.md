@@ -2,7 +2,7 @@
 
 Standalone CPython bindings and command-line helpers for minimized GGUF reference quantizers derived from llama.cpp.
 
-The native extension builds as one portable artifact. On x86/x64 it includes runtime-dispatched Q8_0 scalar, SSE2, and AVX2 paths where the compiler and CPU support them; AVX2 is compiled only for the isolated AVX2 translation unit, not as a global build mode.
+The native extension builds as one portable artifact. On x86/x64 it includes runtime-dispatched Q4_0 and Q8_0 scalar, SSE2, and AVX2 paths where the compiler and CPU support them; AVX2 is compiled only for isolated AVX2 translation units, not as a global build mode.
 
 ## Install
 
@@ -37,6 +37,8 @@ Run tests:
 ```bash
 python -m pytest
 ```
+
+See `docs/performance.md` for Q4_0 SIMD benchmark findings and the local benchmark method.
 
 Run the conversion CLI:
 

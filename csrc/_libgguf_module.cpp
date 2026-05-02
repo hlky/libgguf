@@ -6,6 +6,14 @@
 
 #include "libgguf.h"
 
+extern "C" const char *libgguf_q4_0_backend(void);
+extern "C" int libgguf_q4_0_cpu_supports_backend(const char *backend);
+extern "C" size_t libgguf_quantize_q4_0_for_backend(
+    const char *backend,
+    const float *src,
+    void *dst,
+    int64_t nrows,
+    int64_t n_per_row);
 extern "C" const char *libgguf_q8_0_backend(void);
 extern "C" int libgguf_q8_0_cpu_supports_backend(const char *backend);
 extern "C" size_t libgguf_quantize_q8_0_for_backend(
@@ -14,6 +22,87 @@ extern "C" size_t libgguf_quantize_q8_0_for_backend(
     void *dst,
     int64_t nrows,
     int64_t n_per_row);
+
+static bool parse_int64(PyObject *value, int64_t *out);
+
+static PyObject *py_quantize_for_backend(
+    PyObject *args,
+    ggml_type type,
+    const char *error_message,
+    size_t (*quantize_for_backend)(const char *, const float *, void *, int64_t, int64_t))
+{
+  const char *backend = nullptr;
+  PyObject *src_obj;
+  PyObject *n_rows_obj;
+  PyObject *n_per_row_obj;
+
+  if (!PyArg_ParseTuple(args, "sOOO", &backend, &src_obj, &n_rows_obj, &n_per_row_obj))
+  {
+    return nullptr;
+  }
+
+  int64_t n_rows = 0;
+  int64_t n_per_row = 0;
+  if (!parse_int64(n_rows_obj, &n_rows) || !parse_int64(n_per_row_obj, &n_per_row))
+  {
+    return nullptr;
+  }
+  if (n_rows < 0 || n_per_row <= 0)
+  {
+    PyErr_SetString(PyExc_ValueError, "n_rows must be non-negative and n_per_row must be positive");
+    return nullptr;
+  }
+
+  Py_buffer src_view;
+  if (PyObject_GetBuffer(src_obj, &src_view, PyBUF_CONTIG_RO) < 0)
+  {
+    return nullptr;
+  }
+
+  const size_t row_size = libgguf_row_size(type, n_per_row);
+  const uint64_t src_required = (uint64_t)n_rows * (uint64_t)n_per_row * sizeof(float);
+  if ((uint64_t)src_view.len < src_required)
+  {
+    PyBuffer_Release(&src_view);
+    PyErr_SetString(PyExc_ValueError, "src buffer is smaller than n_rows * n_per_row float32 values");
+    return nullptr;
+  }
+
+  const uint64_t out_size_u64 = (uint64_t)n_rows * (uint64_t)row_size;
+  if (out_size_u64 > (uint64_t)std::numeric_limits<Py_ssize_t>::max())
+  {
+    PyBuffer_Release(&src_view);
+    PyErr_SetString(PyExc_OverflowError, "quantized output is too large");
+    return nullptr;
+  }
+
+  PyObject *out = PyBytes_FromStringAndSize(nullptr, (Py_ssize_t)out_size_u64);
+  if (!out)
+  {
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  size_t written = 0;
+  Py_BEGIN_ALLOW_THREADS
+  written = quantize_for_backend(
+      backend,
+      (const float *)src_view.buf,
+      PyBytes_AS_STRING(out),
+      n_rows,
+      n_per_row);
+  Py_END_ALLOW_THREADS
+  PyBuffer_Release(&src_view);
+
+  if (written != (size_t)out_size_u64)
+  {
+    Py_DECREF(out);
+    PyErr_SetString(PyExc_ValueError, error_message);
+    return nullptr;
+  }
+
+  return out;
+}
 
 static bool parse_int64(PyObject *value, int64_t *out)
 {
@@ -395,6 +484,30 @@ static PyObject *py_quantize_rows_into_raw(PyObject *, PyObject *args, PyObject 
   return PyLong_FromSize_t(written);
 }
 
+static PyObject *py_q4_0_backend(PyObject *, PyObject *)
+{
+  return PyUnicode_FromString(libgguf_q4_0_backend());
+}
+
+static PyObject *py_q4_0_cpu_supports_backend(PyObject *, PyObject *args)
+{
+  const char *backend = nullptr;
+  if (!PyArg_ParseTuple(args, "s", &backend))
+  {
+    return nullptr;
+  }
+  if (libgguf_q4_0_cpu_supports_backend(backend))
+  {
+    Py_RETURN_TRUE;
+  }
+  Py_RETURN_FALSE;
+}
+
+static PyObject *py_quantize_q4_0_for_backend(PyObject *, PyObject *args)
+{
+  return py_quantize_for_backend(args, GGML_TYPE_Q4_0, "unsupported Q4_0 backend for this CPU", libgguf_quantize_q4_0_for_backend);
+}
+
 static PyObject *py_q8_0_backend(PyObject *, PyObject *)
 {
   return PyUnicode_FromString(libgguf_q8_0_backend());
@@ -416,77 +529,7 @@ static PyObject *py_q8_0_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q8_0_for_backend(PyObject *, PyObject *args)
 {
-  const char *backend = nullptr;
-  PyObject *src_obj;
-  PyObject *n_rows_obj;
-  PyObject *n_per_row_obj;
-
-  if (!PyArg_ParseTuple(args, "sOOO", &backend, &src_obj, &n_rows_obj, &n_per_row_obj))
-  {
-    return nullptr;
-  }
-
-  int64_t n_rows = 0;
-  int64_t n_per_row = 0;
-  if (!parse_int64(n_rows_obj, &n_rows) || !parse_int64(n_per_row_obj, &n_per_row))
-  {
-    return nullptr;
-  }
-  if (n_rows < 0 || n_per_row <= 0)
-  {
-    PyErr_SetString(PyExc_ValueError, "n_rows must be non-negative and n_per_row must be positive");
-    return nullptr;
-  }
-
-  Py_buffer src_view;
-  if (PyObject_GetBuffer(src_obj, &src_view, PyBUF_CONTIG_RO) < 0)
-  {
-    return nullptr;
-  }
-
-  const size_t row_size = libgguf_row_size(GGML_TYPE_Q8_0, n_per_row);
-  const uint64_t src_required = (uint64_t)n_rows * (uint64_t)n_per_row * sizeof(float);
-  if ((uint64_t)src_view.len < src_required)
-  {
-    PyBuffer_Release(&src_view);
-    PyErr_SetString(PyExc_ValueError, "src buffer is smaller than n_rows * n_per_row float32 values");
-    return nullptr;
-  }
-
-  const uint64_t out_size_u64 = (uint64_t)n_rows * (uint64_t)row_size;
-  if (out_size_u64 > (uint64_t)std::numeric_limits<Py_ssize_t>::max())
-  {
-    PyBuffer_Release(&src_view);
-    PyErr_SetString(PyExc_OverflowError, "quantized output is too large");
-    return nullptr;
-  }
-
-  PyObject *out = PyBytes_FromStringAndSize(nullptr, (Py_ssize_t)out_size_u64);
-  if (!out)
-  {
-    PyBuffer_Release(&src_view);
-    return nullptr;
-  }
-
-  size_t written = 0;
-  Py_BEGIN_ALLOW_THREADS
-  written = libgguf_quantize_q8_0_for_backend(
-      backend,
-      (const float *)src_view.buf,
-      PyBytes_AS_STRING(out),
-      n_rows,
-      n_per_row);
-  Py_END_ALLOW_THREADS
-  PyBuffer_Release(&src_view);
-
-  if (written != (size_t)out_size_u64)
-  {
-    Py_DECREF(out);
-    PyErr_SetString(PyExc_ValueError, "unsupported Q8_0 backend for this CPU");
-    return nullptr;
-  }
-
-  return out;
+  return py_quantize_for_backend(args, GGML_TYPE_Q8_0, "unsupported Q8_0 backend for this CPU", libgguf_quantize_q8_0_for_backend);
 }
 
 static PyMethodDef module_methods[] = {
@@ -497,6 +540,9 @@ static PyMethodDef module_methods[] = {
     {"quantize_free", py_quantize_free, METH_NOARGS, "Free lazily initialized quantization tables."},
     {"quantize_rows_raw", (PyCFunction)py_quantize_rows_raw, METH_VARARGS | METH_KEYWORDS, "Quantize float32 rows from a contiguous buffer and return bytes."},
     {"quantize_rows_into_raw", (PyCFunction)py_quantize_rows_into_raw, METH_VARARGS | METH_KEYWORDS, "Quantize float32 rows into an existing writable buffer."},
+    {"_q4_0_backend", py_q4_0_backend, METH_NOARGS, "Return selected Q4_0 backend."},
+    {"_q4_0_cpu_supports_backend", py_q4_0_cpu_supports_backend, METH_VARARGS, "Return whether the CPU supports a Q4_0 backend."},
+    {"_quantize_q4_0_for_backend", py_quantize_q4_0_for_backend, METH_VARARGS, "Quantize Q4_0 with a selected backend for tests."},
     {"_q8_0_backend", py_q8_0_backend, METH_NOARGS, "Return selected Q8_0 backend."},
     {"_q8_0_cpu_supports_backend", py_q8_0_cpu_supports_backend, METH_VARARGS, "Return whether the CPU supports a Q8_0 backend."},
     {"_quantize_q8_0_for_backend", py_quantize_q8_0_for_backend, METH_VARARGS, "Quantize Q8_0 with a selected backend for tests."},

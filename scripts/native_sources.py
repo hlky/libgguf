@@ -9,6 +9,8 @@ NATIVE_SOURCES = [
     "csrc/common/libgguf_validate.cpp",
     "csrc/quant/quant_q1_0.cpp",
     "csrc/quant/quant_q4_0.cpp",
+    "csrc/quant/quant_q4_0_sse2.cpp",
+    "csrc/quant/quant_q4_0_avx2.cpp",
     "csrc/quant/quant_q4_1.cpp",
     "csrc/quant/quant_q5_0.cpp",
     "csrc/quant/quant_q5_1.cpp",

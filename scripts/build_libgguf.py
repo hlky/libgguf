@@ -42,9 +42,13 @@ def build_shared_lib(output: Path, build_dir: Path) -> Path:
     objects = []
     for source in NATIVE_SOURCES:
         source_args = list(compile_args)
-        if x86_build and Path(source).name == "quant_q8_0_avx2.cpp":
+        if x86_build and Path(source).name in {"quant_q4_0_avx2.cpp", "quant_q8_0_avx2.cpp"}:
             source_args.append("/arch:AVX2" if compiler.compiler_type == "msvc" else "-mavx2")
-        elif x86_build and Path(source).name == "quant_q8_0_sse2.cpp" and compiler.compiler_type != "msvc":
+        elif (
+            x86_build
+            and Path(source).name in {"quant_q4_0_sse2.cpp", "quant_q8_0_sse2.cpp"}
+            and compiler.compiler_type != "msvc"
+        ):
             source_args.append("-msse2")
         objects.extend(
             compiler.compile(
