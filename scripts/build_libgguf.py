@@ -53,13 +53,15 @@ def build_shared_lib(output: Path, build_dir: Path) -> Path:
             x86_build
             and Path(source).name in {
                 "dequant_q4_0_sse2.cpp",
+                "dequant_q4_0_sse4_1.cpp",
                 "dequant_q8_0_sse2.cpp",
+                "dequant_q8_0_sse4_1.cpp",
                 "quant_q4_0_sse2.cpp",
                 "quant_q8_0_sse2.cpp",
             }
             and compiler.compiler_type != "msvc"
         ):
-            source_args.append("-msse2")
+            source_args.append("-msse4.1" if Path(source).name in {"dequant_q4_0_sse4_1.cpp", "dequant_q8_0_sse4_1.cpp"} else "-msse2")
         objects.extend(
             compiler.compile(
                 sources=[str(root / source)],

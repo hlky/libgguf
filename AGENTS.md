@@ -51,7 +51,7 @@ python scripts/build_libgguf.py
 
 On Windows this creates `libgguf.dll`; on Linux `libgguf.so`; on macOS `libgguf.dylib`.
 
-Native builds produce one portable artifact. On x86/x64, Q8_0 baseline, SSE2, and AVX2 implementations are compiled as separate translation units where supported, with AVX2 flags applied only to the AVX2 source file. Do not add global AVX2 flags to the extension or shared-library builds.
+Native builds produce one portable artifact. On x86/x64, Q4_0 and Q8_0 baseline, SSE2, SSE4.1, and AVX2 implementations are compiled as separate translation units where supported, with SSE4.1 and AVX2 flags applied only to their source files. Do not add global SSE/AVX2 flags to the extension or shared-library builds.
 
 ## Test Commands
 

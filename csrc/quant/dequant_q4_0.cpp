@@ -14,6 +14,7 @@ struct libgguf_dequant_q4_0_selection
 
 extern "C" void dequantize_row_q4_0_sse2(const block_q4_0 *RESTRICT x, float *RESTRICT y, int64_t k);
 extern "C" void dequantize_row_q4_0_avx2(const block_q4_0 *RESTRICT x, float *RESTRICT y, int64_t k);
+extern "C" void dequantize_row_q4_0_sse4_1(const block_q4_0 *RESTRICT x, float *RESTRICT y, int64_t k);
 extern "C" void dequantize_row_q4_0_ref(const block_q4_0 *RESTRICT x, float *RESTRICT y, int64_t k);
 
 static libgguf_dequant_q4_0_selection libgguf_dequant_q4_0_select_kernel()
@@ -27,6 +28,10 @@ static libgguf_dequant_q4_0_selection libgguf_dequant_q4_0_select_kernel()
     {
       return {"ref", dequantize_row_q4_0_ref};
     }
+    if (std::strcmp(forced, "sse4_1") == 0 && features.sse4_1)
+    {
+      return {"sse4_1", dequantize_row_q4_0_sse4_1};
+    }
     if (std::strcmp(forced, "sse2") == 0 && features.sse2)
     {
       return {"sse2", dequantize_row_q4_0_sse2};
@@ -37,13 +42,17 @@ static libgguf_dequant_q4_0_selection libgguf_dequant_q4_0_select_kernel()
     }
   }
 
-  if (features.sse2)
-  {
-    return {"sse2", dequantize_row_q4_0_sse2};
-  }
   if (features.avx2)
   {
     return {"avx2", dequantize_row_q4_0_avx2};
+  }
+  if (features.sse4_1)
+  {
+    return {"sse4_1", dequantize_row_q4_0_sse4_1};
+  }
+  if (features.sse2)
+  {
+    return {"sse2", dequantize_row_q4_0_sse2};
   }
 
   return {"ref", dequantize_row_q4_0_ref};

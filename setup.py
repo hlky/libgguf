@@ -41,6 +41,15 @@ class BuildExt(build_ext):
                 and self.compiler.compiler_type != "msvc"
             ):
                 return ["-msse2"]
+            if (
+                is_x86_build
+                and name in {
+                    "dequant_q4_0_sse4_1.cpp",
+                    "dequant_q8_0_sse4_1.cpp",
+                }
+                and self.compiler.compiler_type != "msvc"
+            ):
+                return ["-msse4.1"]
             return []
 
         def compile_with_source_flags(

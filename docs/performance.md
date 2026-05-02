@@ -4,7 +4,7 @@ This document records local benchmark findings for native quantization backends.
 
 ## Q4_0 SSE2 and AVX2
 
-Q4_0 now has scalar, SSE2, and AVX2 row kernels behind runtime dispatch. AVX2 is compiled only for `quant_q4_0_avx2.cpp`; it is not enabled as a global build flag.
+Q4_0 quantization now has scalar, SSE2, and AVX2 row kernels behind runtime dispatch. AVX2 is compiled only for `quant_q4_0_avx2.cpp`; it is not enabled as a global build flag.
 
 The first SIMD implementation only vectorized nibble quantization. The dominant cost remained a scalar, branchy signed-absmax scan over each 32-float block:
 
@@ -90,7 +90,19 @@ Benchmark input:
 - build: Windows x64, MSVC, extension built with `python setup.py build_ext --inplace`
 - backend: default threaded dequantization through `libgguf_dequantize_chunk`
 
-Q4_0 and Q8_0 dequantization have scalar, SSE2, and AVX2 row kernels behind runtime dispatch. On this machine, the initial SSE2 dequant kernels benchmarked slightly ahead of the AVX2 variants for Q4_0 and Q8_0, so the default runtime preference is SSE2, then AVX2, then scalar. Use `LIBGGUF_DEQUANT_Q4_0_BACKEND=ref|sse2|avx2` or `LIBGGUF_DEQUANT_Q8_0_BACKEND=ref|sse2|avx2` to force a backend for local comparisons.
+Q4_0 and Q8_0 dequantization have scalar, SSE2, SSE4.1, and AVX2 row kernels behind runtime dispatch. On this machine, AVX2 was fastest for Q4_0 and SSE4.1 was slightly ahead of AVX2 for Q8_0, so the default runtime preference is AVX2, then SSE4.1, then SSE2, then scalar when the CPU supports those backends. Use `LIBGGUF_DEQUANT_Q4_0_BACKEND=ref|sse2|sse4_1|avx2` or `LIBGGUF_DEQUANT_Q8_0_BACKEND=ref|sse2|sse4_1|avx2` to force a backend for local comparisons.
+
+Focused dequant kernel timing on this same machine used:
+
+- `python scripts/bench_dequant_q4_0_avx2.py --rows 2048 --n-per-row 2048 --iterations 200 --repetitions 5 --backends sse2,sse4_1,avx2`
+- `python scripts/bench_dequant_q8_0_avx2.py --rows 2048 --n-per-row 2048 --iterations 200 --repetitions 5 --backends sse2,sse4_1,avx2`
+
+Observed means:
+
+```text
+Q4_0: avx2 1.1039 ms, sse4_1 1.2081 ms, sse2 1.1803 ms
+Q8_0: avx2 1.1720 ms, sse4_1 1.1601 ms, sse2 1.2165 ms
+```
 
 Results:
 
@@ -164,7 +176,7 @@ import os
 import subprocess
 import sys
 
-backends = ["ref", "sse2", "avx2"]
+backends = ["ref", "sse2", "sse4_1", "avx2"]
 rows = int(os.environ.get("BENCH_Q4_ROWS", "4096"))
 cols = int(os.environ.get("BENCH_Q4_COLS", "4096"))
 
@@ -231,7 +243,7 @@ for backend in backends:
 
 When adding or changing SIMD quantizers:
 
-- Keep AVX2 code in isolated translation units with per-source compiler flags.
+- Keep AVX2 and SSE4.1 code in isolated translation units with per-source compiler flags.
 - Keep runtime feature detection in `csrc/common/libgguf_cpu.*`.
 - Preserve byte-for-byte parity with the scalar reference, including tie behavior.
 - Benchmark preallocated and allocating APIs separately.
