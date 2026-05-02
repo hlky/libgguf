@@ -17,6 +17,8 @@ from scripts.build_libgguf import build_shared_lib, default_output_path
 
 
 REQUIRED_EXTENSION_FUNCTIONS = (
+    "dequantize_rows_raw",
+    "dequantize_rows_into_raw",
     "load_imatrix",
     "quantize_requires_imatrix",
     "quantize_rows_raw",
@@ -27,6 +29,7 @@ REQUIRED_EXTENSION_FUNCTIONS = (
 )
 
 REQUIRED_C_ABI_SYMBOLS = (
+    "libgguf_dequantize_chunk",
     "libgguf_row_size",
     "libgguf_type_size",
     "libgguf_type_name",
@@ -116,6 +119,80 @@ def test_shared_libgguf_parallel_quantization_matches_serial(
     np.testing.assert_array_equal(parallel, serial)
 
 
+def test_shared_libgguf_dequantize_chunk_round_trips_q8_0(built_shared_libgguf: Path) -> None:
+    lib = ctypes.CDLL(str(built_shared_libgguf))
+    lib.libgguf_dequantize_chunk.argtypes = [
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_longlong,
+        ctypes.c_longlong,
+        ctypes.c_longlong,
+    ]
+    lib.libgguf_dequantize_chunk.restype = ctypes.c_size_t
+
+    qtype = GGMLQuantizationType.Q8_0
+    rows = np.linspace(-1.0, 1.0, 2 * 32, dtype=np.float32).reshape(2, 32)
+    quantized = libgguf.quantize_rows(rows, qtype)
+    dequantized = np.empty_like(rows)
+
+    written = lib.libgguf_dequantize_chunk(
+        qtype,
+        quantized.ctypes.data,
+        dequantized.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+        0,
+        rows.shape[0],
+        rows.shape[1],
+    )
+
+    assert written == dequantized.nbytes
+    np.testing.assert_allclose(dequantized, rows, atol=0.01)
+
+
+def test_shared_libgguf_parallel_dequantization_matches_serial(
+    built_shared_libgguf: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lib = ctypes.CDLL(str(built_shared_libgguf))
+    lib.libgguf_dequantize_chunk.argtypes = [
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_longlong,
+        ctypes.c_longlong,
+        ctypes.c_longlong,
+    ]
+    lib.libgguf_dequantize_chunk.restype = ctypes.c_size_t
+
+    qtype = GGMLQuantizationType.Q4_K
+    rows = np.linspace(-1.5, 1.5, 128 * 256, dtype=np.float32).reshape(128, 256)
+    quantized = libgguf.quantize_rows(rows, qtype)
+    serial = np.empty_like(rows)
+    parallel = np.empty_like(rows)
+
+    monkeypatch.setenv("LIBGGUF_NUM_THREADS", "1")
+    serial_written = lib.libgguf_dequantize_chunk(
+        qtype,
+        quantized.ctypes.data,
+        serial.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+        0,
+        rows.shape[0],
+        rows.shape[1],
+    )
+
+    monkeypatch.setenv("LIBGGUF_NUM_THREADS", "4")
+    parallel_written = lib.libgguf_dequantize_chunk(
+        qtype,
+        quantized.ctypes.data,
+        parallel.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+        0,
+        rows.shape[0],
+        rows.shape[1],
+    )
+
+    assert serial_written == parallel_written == rows.nbytes
+    np.testing.assert_array_equal(parallel, serial)
+
+
 @pytest.mark.parametrize("qtype", SUPPORTED_LIBGGUF_QTYPES)
 def test_libgguf_row_size_matches_format_metadata(qtype: GGMLQuantizationType) -> None:
     info = GGML_FORMAT_INFO[qtype]
@@ -174,6 +251,85 @@ def test_libgguf_quantization_smoke(qtype: GGMLQuantizationType) -> None:
     assert quantized.shape == quant_shape_to_byte_shape(rows.shape, qtype)
     assert quantized.dtype == np.uint8
     assert np.any(quantized)
+
+
+@pytest.mark.parametrize("qtype", SUPPORTED_LIBGGUF_QTYPES)
+def test_libgguf_dequantization_smoke(qtype: GGMLQuantizationType) -> None:
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-1.5, 1.5, 3 * info.block_size, dtype=np.float32).reshape(3, info.block_size)
+
+    quantized = libgguf.quantize_rows(rows, qtype)
+    dequantized = libgguf.dequantize_rows(quantized, qtype)
+
+    assert dequantized.shape == rows.shape
+    assert dequantized.dtype == np.float32
+    assert np.all(np.isfinite(dequantized))
+
+
+def test_libgguf_dequantize_rows_raw_matches_array_wrapper() -> None:
+    qtype = GGMLQuantizationType.Q4_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 4 * info.block_size, dtype=np.float32).reshape(4, info.block_size)
+    quantized = libgguf.quantize_rows(rows, qtype)
+
+    raw = libgguf.dequantize_rows_raw(qtype, quantized, rows.shape[0], rows.shape[1])
+    dequantized = libgguf.dequantize_rows(quantized, qtype)
+
+    np.testing.assert_array_equal(np.frombuffer(raw, dtype=np.float32).reshape(rows.shape), dequantized)
+
+
+def test_libgguf_dequantize_rows_into_raw_rejects_small_destination() -> None:
+    qtype = GGMLQuantizationType.Q8_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-1.5, 1.5, 3 * info.block_size, dtype=np.float32).reshape(3, info.block_size)
+    quantized = libgguf.quantize_rows(rows, qtype)
+    dst = bytearray(rows.nbytes - 1)
+
+    with pytest.raises(ValueError, match="dst buffer is smaller"):
+        libgguf.dequantize_rows_into_raw(qtype, quantized, dst, rows.shape[0], rows.shape[1])
+
+
+@pytest.mark.parametrize(
+    ("qtype", "env_name"),
+    [
+        (GGMLQuantizationType.Q4_0, "LIBGGUF_DEQUANT_Q4_0_BACKEND"),
+        (GGMLQuantizationType.Q8_0, "LIBGGUF_DEQUANT_Q8_0_BACKEND"),
+    ],
+)
+def test_libgguf_dequant_simd_backends_match_reference(qtype: GGMLQuantizationType, env_name: str) -> None:
+    child = f"""
+import hashlib
+import numpy as np
+import libgguf
+
+qtype = {int(qtype)}
+rows = np.linspace(-2.0, 2.0, 257 * 32, dtype=np.float32).reshape(257, 32)
+quantized = libgguf.quantize_rows(rows, qtype)
+dequantized = libgguf.dequantize_rows(quantized, qtype)
+print(hashlib.sha256(dequantized.tobytes()).hexdigest())
+"""
+    env = os.environ.copy()
+    src_dir = Path(__file__).resolve().parents[1] / "src"
+    env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
+    env[env_name] = "ref"
+    expected = subprocess.run(
+        [sys.executable, "-c", child],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+
+    for backend in ("sse2", "avx2"):
+        env[env_name] = backend
+        actual = subprocess.run(
+            [sys.executable, "-c", child],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        ).stdout.strip()
+        assert actual == expected
 
 
 def test_libgguf_quantize_rows_accepts_explicit_imatrix() -> None:
@@ -324,10 +480,18 @@ def test_libgguf_builds_do_not_use_global_avx2_flags() -> None:
 
     assert "LIBGGUF_AVX2" not in setup_py
     assert "LIBGGUF_AVX2" not in shared_build
-    assert '"quant_q4_0_avx2.cpp", "quant_q8_0_avx2.cpp"' in setup_py
-    assert '"quant_q4_0_avx2.cpp", "quant_q8_0_avx2.cpp"' in shared_build
-    assert '"quant_q4_0_sse2.cpp", "quant_q8_0_sse2.cpp"' in setup_py
-    assert '"quant_q4_0_sse2.cpp", "quant_q8_0_sse2.cpp"' in shared_build
+    for source in (
+        "dequant_q4_0_avx2.cpp",
+        "dequant_q8_0_avx2.cpp",
+        "quant_q4_0_avx2.cpp",
+        "quant_q8_0_avx2.cpp",
+        "dequant_q4_0_sse2.cpp",
+        "dequant_q8_0_sse2.cpp",
+        "quant_q4_0_sse2.cpp",
+        "quant_q8_0_sse2.cpp",
+    ):
+        assert source in setup_py
+        assert source in shared_build
 
 
 def test_libgguf_loads_legacy_imatrix(tmp_path: Path) -> None:

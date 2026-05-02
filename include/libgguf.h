@@ -114,4 +114,11 @@ extern "C"
       int64_t nrows,
       int64_t n_per_row,
       const float *imatrix);
+  LIBGGUF_API size_t libgguf_dequantize_chunk(
+      enum ggml_type type,
+      const void *src,
+      float *dst,
+      int64_t start,
+      int64_t nrows,
+      int64_t n_per_row);
 }

@@ -67,6 +67,87 @@ The threaded preallocated path is close between SSE2 and AVX2 on this machine (`
 
 Use `LIBGGUF_Q4_0_BACKEND=ref|sse2|avx2` to force a backend for local comparisons.
 
+## Dequantization
+
+The dequantization benchmark times the public Python APIs after one untimed quantization setup pass. It measures:
+
+- `preallocated`: `libgguf.dequantize_rows_into_raw(...)`
+- `allocating`: `libgguf.dequantize_rows(...)`
+
+Current local command:
+
+```powershell
+$env:PYTHONPATH='src'
+$py = if (Test-Path .venv\Scripts\python.exe) { (Resolve-Path .venv\Scripts\python.exe).Path } else { 'python' }
+& $py tools\bench_dequant.py --rows 4096 --cols 4096 --repeats 11 --warmup 3 --qtypes all
+```
+
+Benchmark input:
+
+- shape: `4096 x 4096`
+- decoded size: `64.0 MiB` float32
+- data: deterministic standard-normal random values, seed `12345`
+- build: Windows x64, MSVC, extension built with `python setup.py build_ext --inplace`
+- backend: default threaded dequantization through `libgguf_dequantize_chunk`
+
+Q4_0 and Q8_0 dequantization have scalar, SSE2, and AVX2 row kernels behind runtime dispatch. On this machine, the initial SSE2 dequant kernels benchmarked slightly ahead of the AVX2 variants for Q4_0 and Q8_0, so the default runtime preference is SSE2, then AVX2, then scalar. Use `LIBGGUF_DEQUANT_Q4_0_BACKEND=ref|sse2|avx2` or `LIBGGUF_DEQUANT_Q8_0_BACKEND=ref|sse2|avx2` to force a backend for local comparisons.
+
+Results:
+
+```text
+qtype,mode,median_ms,best_ms,encoded_gib_s,decoded_gib_s
+Q1_0,preallocated,8.759,8.486,0.251,7.135
+Q1_0,allocating,16.983,16.439,0.129,3.680
+Q4_0,preallocated,4.393,3.915,2.000,14.226
+Q4_0,allocating,13.856,13.663,0.634,4.511
+Q4_1,preallocated,4.398,4.142,2.220,14.211
+Q4_1,allocating,14.279,13.823,0.684,4.377
+Q5_0,preallocated,4.457,4.326,2.410,14.021
+Q5_0,allocating,14.167,13.761,0.758,4.412
+Q5_1,preallocated,4.920,4.609,2.382,12.704
+Q5_1,allocating,14.243,14.005,0.823,4.388
+Q8_0,preallocated,4.336,4.098,3.829,14.415
+Q8_0,allocating,14.071,13.705,1.180,4.442
+Q2_K,preallocated,4.322,4.097,1.186,14.461
+Q2_K,allocating,13.855,13.521,0.370,4.511
+Q3_K,preallocated,4.425,4.134,1.517,14.124
+Q3_K,allocating,13.724,13.476,0.489,4.554
+Q4_K,preallocated,4.194,4.123,2.096,14.903
+Q4_K,allocating,13.730,13.602,0.640,4.552
+Q5_K,preallocated,4.443,4.125,2.418,14.068
+Q5_K,allocating,15.918,13.684,0.675,3.926
+Q6_K,preallocated,4.560,4.212,2.811,13.707
+Q6_K,allocating,14.044,13.677,0.913,4.450
+IQ2_XXS,preallocated,6.356,5.960,0.634,9.833
+IQ2_XXS,allocating,14.675,14.373,0.274,4.259
+IQ2_XS,preallocated,6.674,5.894,0.677,9.364
+IQ2_XS,allocating,14.751,14.507,0.306,4.237
+IQ2_S,preallocated,6.524,6.138,0.767,9.580
+IQ2_S,allocating,15.218,14.599,0.329,4.107
+IQ3_XXS,preallocated,6.363,6.079,0.940,9.822
+IQ3_XXS,allocating,14.820,14.316,0.404,4.217
+IQ3_S,preallocated,7.073,6.405,0.949,8.836
+IQ3_S,allocating,15.008,14.447,0.447,4.165
+IQ1_S,preallocated,4.154,3.923,0.735,15.045
+IQ1_S,allocating,13.800,13.360,0.221,4.529
+IQ1_M,preallocated,4.272,3.961,0.800,14.631
+IQ1_M,allocating,13.852,13.484,0.247,4.512
+IQ4_NL,preallocated,4.242,3.954,2.072,14.735
+IQ4_NL,allocating,15.629,13.520,0.562,3.999
+IQ4_XS,preallocated,4.324,4.119,1.920,14.454
+IQ4_XS,allocating,13.761,13.412,0.603,4.542
+TQ1_0,preallocated,4.296,4.201,0.767,14.549
+TQ1_0,allocating,13.966,13.528,0.236,4.475
+TQ2_0,preallocated,4.339,3.942,0.929,14.406
+TQ2_0,allocating,13.642,13.218,0.295,4.582
+MXFP4,preallocated,4.100,3.853,2.025,15.245
+MXFP4,allocating,13.522,13.280,0.614,4.622
+NVFP4,preallocated,5.123,4.785,1.715,12.199
+NVFP4,allocating,14.259,13.697,0.616,4.383
+```
+
+The allocating API is dominated by output allocation and initialization at this size. Use the preallocated API for throughput-sensitive paths.
+
 ## Benchmark Method
 
 The benchmark should measure preallocated and allocating APIs separately, and it should separate one-thread from default threaded behavior. The private backend test hooks are useful for direct backend parity checks, but timing the public raw APIs with `LIBGGUF_Q4_0_BACKEND` exercises the normal dispatch path.

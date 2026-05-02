@@ -484,6 +484,198 @@ static PyObject *py_quantize_rows_into_raw(PyObject *, PyObject *args, PyObject 
   return PyLong_FromSize_t(written);
 }
 
+static PyObject *py_dequantize_rows_raw(PyObject *, PyObject *args, PyObject *kwargs)
+{
+  static const char *kwlist[] = {"qtype", "src", "n_rows", "n_per_row", nullptr};
+
+  int type;
+  PyObject *src_obj;
+  PyObject *n_rows_obj;
+  PyObject *n_per_row_obj;
+
+  if (!PyArg_ParseTupleAndKeywords(
+          args,
+          kwargs,
+          "iOOO",
+          (char **)kwlist,
+          &type,
+          &src_obj,
+          &n_rows_obj,
+          &n_per_row_obj))
+  {
+    return nullptr;
+  }
+
+  int64_t n_rows = 0;
+  int64_t n_per_row = 0;
+  if (!parse_int64(n_rows_obj, &n_rows) || !parse_int64(n_per_row_obj, &n_per_row))
+  {
+    return nullptr;
+  }
+  if (n_rows < 0 || n_per_row <= 0)
+  {
+    PyErr_SetString(PyExc_ValueError, "n_rows must be non-negative and n_per_row must be positive");
+    return nullptr;
+  }
+
+  Py_buffer src_view;
+  if (PyObject_GetBuffer(src_obj, &src_view, PyBUF_CONTIG_RO) < 0)
+  {
+    return nullptr;
+  }
+
+  const size_t row_size = libgguf_row_size((ggml_type)type, n_per_row);
+  if (row_size == 0)
+  {
+    PyErr_SetString(PyExc_ValueError, "unsupported quantization type or row width");
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  const uint64_t src_required = (uint64_t)n_rows * (uint64_t)row_size;
+  if ((uint64_t)src_view.len < src_required)
+  {
+    PyErr_SetString(PyExc_ValueError, "src buffer is smaller than n_rows * row_size bytes");
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  const uint64_t out_size_u64 = (uint64_t)n_rows * (uint64_t)n_per_row * sizeof(float);
+  if (out_size_u64 > (uint64_t)std::numeric_limits<Py_ssize_t>::max())
+  {
+    PyErr_SetString(PyExc_OverflowError, "dequantized output is too large");
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  PyObject *out = PyBytes_FromStringAndSize(nullptr, (Py_ssize_t)out_size_u64);
+  if (!out)
+  {
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  size_t written = 0;
+  Py_BEGIN_ALLOW_THREADS
+  written = libgguf_dequantize_chunk(
+      (ggml_type)type,
+      src_view.buf,
+      (float *)PyBytes_AS_STRING(out),
+      0,
+      n_rows,
+      n_per_row);
+  Py_END_ALLOW_THREADS
+  PyBuffer_Release(&src_view);
+
+  if (written != (size_t)out_size_u64)
+  {
+    Py_DECREF(out);
+    PyErr_SetString(PyExc_RuntimeError, "libgguf_dequantize_chunk returned an unexpected byte count");
+    return nullptr;
+  }
+
+  return out;
+}
+
+static PyObject *py_dequantize_rows_into_raw(PyObject *, PyObject *args, PyObject *kwargs)
+{
+  static const char *kwlist[] = {"qtype", "src", "dst", "n_rows", "n_per_row", nullptr};
+
+  int type;
+  PyObject *src_obj;
+  PyObject *dst_obj;
+  PyObject *n_rows_obj;
+  PyObject *n_per_row_obj;
+
+  if (!PyArg_ParseTupleAndKeywords(
+          args,
+          kwargs,
+          "iOOOO",
+          (char **)kwlist,
+          &type,
+          &src_obj,
+          &dst_obj,
+          &n_rows_obj,
+          &n_per_row_obj))
+  {
+    return nullptr;
+  }
+
+  int64_t n_rows = 0;
+  int64_t n_per_row = 0;
+  if (!parse_int64(n_rows_obj, &n_rows) || !parse_int64(n_per_row_obj, &n_per_row))
+  {
+    return nullptr;
+  }
+  if (n_rows < 0 || n_per_row <= 0)
+  {
+    PyErr_SetString(PyExc_ValueError, "n_rows must be non-negative and n_per_row must be positive");
+    return nullptr;
+  }
+
+  Py_buffer src_view;
+  if (PyObject_GetBuffer(src_obj, &src_view, PyBUF_CONTIG_RO) < 0)
+  {
+    return nullptr;
+  }
+
+  Py_buffer dst_view;
+  if (PyObject_GetBuffer(dst_obj, &dst_view, PyBUF_WRITABLE) < 0)
+  {
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  const size_t row_size = libgguf_row_size((ggml_type)type, n_per_row);
+  if (row_size == 0)
+  {
+    PyErr_SetString(PyExc_ValueError, "unsupported quantization type or row width");
+    PyBuffer_Release(&dst_view);
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  const uint64_t src_required = (uint64_t)n_rows * (uint64_t)row_size;
+  if ((uint64_t)src_view.len < src_required)
+  {
+    PyErr_SetString(PyExc_ValueError, "src buffer is smaller than n_rows * row_size bytes");
+    PyBuffer_Release(&dst_view);
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  const uint64_t out_size_u64 = (uint64_t)n_rows * (uint64_t)n_per_row * sizeof(float);
+  if ((uint64_t)dst_view.len < out_size_u64)
+  {
+    PyErr_SetString(PyExc_ValueError, "dst buffer is smaller than n_rows * n_per_row float32 values");
+    PyBuffer_Release(&dst_view);
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  size_t written = 0;
+  Py_BEGIN_ALLOW_THREADS
+  written = libgguf_dequantize_chunk(
+      (ggml_type)type,
+      src_view.buf,
+      (float *)dst_view.buf,
+      0,
+      n_rows,
+      n_per_row);
+  Py_END_ALLOW_THREADS
+
+  PyBuffer_Release(&dst_view);
+  PyBuffer_Release(&src_view);
+
+  if (written != (size_t)out_size_u64)
+  {
+    PyErr_SetString(PyExc_RuntimeError, "libgguf_dequantize_chunk returned an unexpected byte count");
+    return nullptr;
+  }
+
+  return PyLong_FromSize_t(written);
+}
+
 static PyObject *py_q4_0_backend(PyObject *, PyObject *)
 {
   return PyUnicode_FromString(libgguf_q4_0_backend());
@@ -540,6 +732,8 @@ static PyMethodDef module_methods[] = {
     {"quantize_free", py_quantize_free, METH_NOARGS, "Free lazily initialized quantization tables."},
     {"quantize_rows_raw", (PyCFunction)py_quantize_rows_raw, METH_VARARGS | METH_KEYWORDS, "Quantize float32 rows from a contiguous buffer and return bytes."},
     {"quantize_rows_into_raw", (PyCFunction)py_quantize_rows_into_raw, METH_VARARGS | METH_KEYWORDS, "Quantize float32 rows into an existing writable buffer."},
+    {"dequantize_rows_raw", (PyCFunction)py_dequantize_rows_raw, METH_VARARGS | METH_KEYWORDS, "Dequantize rows from a contiguous buffer and return float32 bytes."},
+    {"dequantize_rows_into_raw", (PyCFunction)py_dequantize_rows_into_raw, METH_VARARGS | METH_KEYWORDS, "Dequantize rows into an existing writable float32 buffer."},
     {"_q4_0_backend", py_q4_0_backend, METH_NOARGS, "Return selected Q4_0 backend."},
     {"_q4_0_cpu_supports_backend", py_q4_0_cpu_supports_backend, METH_VARARGS, "Return whether the CPU supports a Q4_0 backend."},
     {"_quantize_q4_0_for_backend", py_quantize_q4_0_for_backend, METH_VARARGS, "Quantize Q4_0 with a selected backend for tests."},

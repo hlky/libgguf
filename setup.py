@@ -21,13 +21,23 @@ class BuildExt(build_ext):
 
         def source_flags(source: str) -> list[str]:
             name = Path(source).name
-            if is_x86_build and name in {"quant_q4_0_avx2.cpp", "quant_q8_0_avx2.cpp"}:
+            if is_x86_build and name in {
+                "dequant_q4_0_avx2.cpp",
+                "dequant_q8_0_avx2.cpp",
+                "quant_q4_0_avx2.cpp",
+                "quant_q8_0_avx2.cpp",
+            }:
                 if self.compiler.compiler_type == "msvc":
                     return ["/arch:AVX2"]
                 return ["-mavx2"]
             if (
                 is_x86_build
-                and name in {"quant_q4_0_sse2.cpp", "quant_q8_0_sse2.cpp"}
+                and name in {
+                    "dequant_q4_0_sse2.cpp",
+                    "dequant_q8_0_sse2.cpp",
+                    "quant_q4_0_sse2.cpp",
+                    "quant_q8_0_sse2.cpp",
+                }
                 and self.compiler.compiler_type != "msvc"
             ):
                 return ["-msse2"]
