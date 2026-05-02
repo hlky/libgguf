@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[codz]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build outputs
+build/
+dist/
+*.egg
+*.so
+*.pyd
+*.dll
+*.dylib
+
+# Environments
+.venv/
+venv/
+env/
+
+# Local tooling
+.vscode/
+.idea/

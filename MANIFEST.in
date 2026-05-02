@@ -1,0 +1,6 @@
+include libgguf.cpp
+include libgguf.h
+include _libgguf_module.cpp
+include README.md
+recursive-include tests *.py
+recursive-include scripts *.py
