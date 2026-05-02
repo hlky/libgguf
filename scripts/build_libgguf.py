@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import os
+import platform
 from pathlib import Path
 import shutil
 import sys
@@ -16,6 +16,11 @@ if str(ROOT) not in sys.path:
 from scripts.native_sources import NATIVE_SOURCES
 
 
+def is_x86_build() -> bool:
+    machine = platform.machine().lower()
+    return machine in {"amd64", "x86_64", "x86", "i386", "i686"}
+
+
 def build_shared_lib(output: Path, build_dir: Path) -> Path:
     root = ROOT
 
@@ -26,24 +31,30 @@ def build_shared_lib(output: Path, build_dir: Path) -> Path:
     link_args = []
     if compiler.compiler_type == "msvc":
         compile_args.extend(["/O2", "/EHsc", "/std:c++17", "/D_CRT_SECURE_NO_WARNINGS"])
-        if os.environ.get("LIBGGUF_AVX2") == "1":
-            compile_args.append("/arch:AVX2")
     else:
         compile_args.extend(["-O3", "-std=c++17", "-fPIC", "-pthread"])
         link_args.extend(["-lm", "-pthread"])
-        if os.environ.get("LIBGGUF_AVX2") == "1":
-            compile_args.append("-mavx2")
 
     build_dir.mkdir(parents=True, exist_ok=True)
     output.parent.mkdir(parents=True, exist_ok=True)
+    x86_build = is_x86_build()
 
-    objects = compiler.compile(
-        sources=[str(root / source) for source in NATIVE_SOURCES],
-        output_dir=str(build_dir),
-        include_dirs=[str(root / "include"), str(root / "csrc"), str(root / "csrc" / "common")],
-        macros=[("NDEBUG", "1")],
-        extra_postargs=compile_args,
-    )
+    objects = []
+    for source in NATIVE_SOURCES:
+        source_args = list(compile_args)
+        if x86_build and Path(source).name == "quant_q8_0_avx2.cpp":
+            source_args.append("/arch:AVX2" if compiler.compiler_type == "msvc" else "-mavx2")
+        elif x86_build and Path(source).name == "quant_q8_0_sse2.cpp" and compiler.compiler_type != "msvc":
+            source_args.append("-msse2")
+        objects.extend(
+            compiler.compile(
+                sources=[str(root / source)],
+                output_dir=str(build_dir),
+                include_dirs=[str(root / "include"), str(root / "csrc"), str(root / "csrc" / "common")],
+                macros=[("NDEBUG", "1")],
+                extra_postargs=source_args,
+            )
+        )
     compiler.link_shared_object(
         objects=objects,
         output_filename=str(output),

@@ -1,5 +1,9 @@
 #include "libgguf_common.h"
 
+#if defined(__AVX2__)
+#include <immintrin.h>
+#endif
+
 // =============================== data validation
 
 static bool validate_float(float f, size_t i)

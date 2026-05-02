@@ -51,6 +51,8 @@ python scripts/build_libgguf.py
 
 On Windows this creates `libgguf.dll`; on Linux `libgguf.so`; on macOS `libgguf.dylib`.
 
+Native builds produce one portable artifact. On x86/x64, Q8_0 baseline, SSE2, and AVX2 implementations are compiled as separate translation units where supported, with AVX2 flags applied only to the AVX2 source file. Do not add global AVX2 flags to the extension or shared-library builds.
+
 ## Test Commands
 
 Run the full test suite:
@@ -78,6 +80,9 @@ python -m pytest tests/test_quantize_gguf.py
 - Keep native changes compatible with C++17 and the existing setuptools build flow.
 - Preserve the `src/libgguf` package layout and keep native implementation code under `csrc/`.
 - Prefer NumPy arrays that are contiguous and explicitly typed when crossing the Python/native boundary.
+- Keep runtime SIMD dispatch portable: feature detection belongs in `csrc/common/libgguf_cpu.*`, SIMD kernels should live in isolated translation units, and dispatch should fall back cleanly to scalar code on unsupported CPUs and non-x86 platforms.
+- Keep AVX2 code behind per-source compiler flags (`/arch:AVX2` or `-mavx2`) rather than global build flags. The normal Python and shared-library builds should not require `LIBGGUF_AVX2`.
+- Use private test/debug hooks for backend selection checks instead of expanding the public C ABI unless a public API change is intentional.
 - Keep quantization policy changes covered by focused pytest cases in `tests/test_quantize_gguf.py`.
 - Keep extension or ABI changes covered by `tests/test_libgguf_reference.py`.
 - Do not commit generated build outputs such as `build/`, `dist/`, extension binaries, shared libraries, egg-info, or pytest caches.

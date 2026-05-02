@@ -2,6 +2,8 @@
 
 Standalone CPython bindings and command-line helpers for minimized GGUF reference quantizers derived from llama.cpp.
 
+The native extension builds as one portable artifact. On x86/x64 it includes runtime-dispatched Q8_0 scalar, SSE2, and AVX2 paths where the compiler and CPU support them; AVX2 is compiled only for the isolated AVX2 translation unit, not as a global build mode.
+
 ## Install
 
 Use Python 3.10+ with a C++17 compiler.
@@ -40,6 +42,25 @@ Run the conversion CLI:
 
 ```bash
 python -m libgguf.quantize_gguf --src model.safetensors --dst model.gguf --qtype Q8_0
+```
+
+## Python API
+
+Quantize rows into a newly allocated bytes object:
+
+```python
+import libgguf
+
+Q8_0 = 8
+raw = libgguf.quantize_rows_raw(Q8_0, rows, rows.shape[0], rows.shape[1])
+```
+
+Or reuse a preallocated writable buffer:
+
+```python
+Q8_0 = 8
+dst = bytearray(libgguf.row_size(Q8_0, rows.shape[1]) * rows.shape[0])
+written = libgguf.quantize_rows_into_raw(Q8_0, rows, dst, rows.shape[0], rows.shape[1])
 ```
 
 ## Layout

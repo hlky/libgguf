@@ -48,6 +48,26 @@ def quantize_rows_raw(
     )
 
 
+def quantize_rows_into_raw(
+    qtype: int | Any,
+    src: Any,
+    dst: Any,
+    n_rows: int,
+    n_per_row: int,
+    imatrix: Any | None = None,
+) -> int:
+    return int(
+        _libgguf.quantize_rows_into_raw(
+            _qtype_value(qtype),
+            src,
+            dst,
+            int(n_rows),
+            int(n_per_row),
+            imatrix,
+        )
+    )
+
+
 def quantize_rows(data: np.ndarray, qtype: int | Any, imatrix: Any | None = None) -> np.ndarray:
     rows = np.ascontiguousarray(data, dtype=np.float32)
     if rows.ndim == 0:
@@ -67,9 +87,10 @@ def quantize_rows(data: np.ndarray, qtype: int | Any, imatrix: Any | None = None
     else:
         quant_weights = None
 
-    raw = quantize_rows_raw(qtype_value, rows, n_rows, n_per_row, quant_weights)
     bytes_per_row = row_size(qtype_value, n_per_row)
-    return np.frombuffer(raw, dtype=np.uint8).reshape((*rows.shape[:-1], bytes_per_row)).copy()
+    out = np.empty((*rows.shape[:-1], bytes_per_row), dtype=np.uint8)
+    quantize_rows_into_raw(qtype_value, rows, out, n_rows, n_per_row, quant_weights)
+    return out
 
 
 atexit.register(_libgguf.quantize_free)
@@ -77,6 +98,7 @@ atexit.register(_libgguf.quantize_free)
 __all__ = [
     "quantize_requires_imatrix",
     "quantize_rows",
+    "quantize_rows_into_raw",
     "quantize_rows_raw",
     "load_imatrix",
     "QuantResult",

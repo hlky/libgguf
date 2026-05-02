@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
+import subprocess
 import struct
+import sys
 
 import numpy as np
 import pytest
 
 import libgguf
+from libgguf import _libgguf
 from ggml_types import GGML_FORMAT_INFO, GGMLQuantizationType, quant_shape_to_byte_shape
 from scripts.build_libgguf import build_shared_lib, default_output_path
 
@@ -16,6 +20,7 @@ REQUIRED_EXTENSION_FUNCTIONS = (
     "load_imatrix",
     "quantize_requires_imatrix",
     "quantize_rows_raw",
+    "quantize_rows_into_raw",
     "row_size",
     "type_name",
     "type_size",
@@ -136,6 +141,29 @@ def test_libgguf_raw_quantization_returns_expected_byte_count(qtype: GGMLQuantiz
     assert len(raw) == rows.shape[0] * info.type_size
 
 
+def test_libgguf_quantize_rows_into_raw_matches_allocating_raw() -> None:
+    qtype = GGMLQuantizationType.Q8_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-1.5, 1.5, 5 * info.block_size, dtype=np.float32).reshape(5, info.block_size)
+    dst = bytearray(rows.shape[0] * info.type_size)
+
+    written = libgguf.quantize_rows_into_raw(qtype, rows, dst, rows.shape[0], rows.shape[1])
+    raw = libgguf.quantize_rows_raw(qtype, rows, rows.shape[0], rows.shape[1])
+
+    assert written == len(dst)
+    assert bytes(dst) == raw
+
+
+def test_libgguf_quantize_rows_into_raw_rejects_small_destination() -> None:
+    qtype = GGMLQuantizationType.Q8_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-1.5, 1.5, 3 * info.block_size, dtype=np.float32).reshape(3, info.block_size)
+    dst = bytearray(rows.shape[0] * info.type_size - 1)
+
+    with pytest.raises(ValueError, match="dst buffer is smaller"):
+        libgguf.quantize_rows_into_raw(qtype, rows, dst, rows.shape[0], rows.shape[1])
+
+
 @pytest.mark.parametrize("qtype", SUPPORTED_LIBGGUF_QTYPES)
 def test_libgguf_quantization_smoke(qtype: GGMLQuantizationType) -> None:
     info = GGML_FORMAT_INFO[qtype]
@@ -179,6 +207,57 @@ def test_libgguf_q8_0_matches_scalar_reference() -> None:
     raw = libgguf.quantize_rows_raw(qtype, rows, rows.shape[0], rows.shape[1], None)
 
     assert raw == bytes(expected)
+
+
+def test_libgguf_q8_0_runtime_backend_is_supported() -> None:
+    backend = _libgguf._q8_0_backend()
+
+    assert backend in {"ref", "sse2", "avx2"}
+    assert _libgguf._q8_0_cpu_supports_backend(backend)
+
+
+def test_libgguf_q8_0_supported_backends_match_reference() -> None:
+    qtype = GGMLQuantizationType.Q8_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 7 * info.block_size, dtype=np.float32).reshape(7, info.block_size)
+    expected = _libgguf._quantize_q8_0_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+    for backend in ("sse2", "avx2"):
+        if _libgguf._q8_0_cpu_supports_backend(backend):
+            actual = _libgguf._quantize_q8_0_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+            assert actual == expected
+
+
+def test_libgguf_q8_0_forced_ref_backend_via_environment() -> None:
+    env = os.environ.copy()
+    src_dir = Path(__file__).resolve().parents[1] / "src"
+    env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
+    env["LIBGGUF_Q8_0_BACKEND"] = "ref"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from libgguf import _libgguf; print(_libgguf._q8_0_backend())",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.stdout.strip() == "ref"
+
+
+def test_libgguf_builds_do_not_use_global_avx2_flags() -> None:
+    root = Path(__file__).resolve().parents[1]
+    setup_py = (root / "setup.py").read_text(encoding="utf-8")
+    shared_build = (root / "scripts" / "build_libgguf.py").read_text(encoding="utf-8")
+
+    assert "LIBGGUF_AVX2" not in setup_py
+    assert "LIBGGUF_AVX2" not in shared_build
+    assert 'name == "quant_q8_0_avx2.cpp"' in setup_py
+    assert 'Path(source).name == "quant_q8_0_avx2.cpp"' in shared_build
 
 
 def test_libgguf_loads_legacy_imatrix(tmp_path: Path) -> None:
