@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -18,10 +19,14 @@ def build_shared_lib(output: Path, build_dir: Path) -> Path:
     compile_args = []
     link_args = []
     if compiler.compiler_type == "msvc":
-        compile_args.extend(["/O2", "/std:c++17"])
+        compile_args.extend(["/O2", "/EHsc", "/std:c++17", "/D_CRT_SECURE_NO_WARNINGS"])
+        if os.environ.get("LIBGGUF_AVX2") == "1":
+            compile_args.append("/arch:AVX2")
     else:
-        compile_args.extend(["-O3", "-std=c++17", "-fPIC"])
-        link_args.extend(["-lm"])
+        compile_args.extend(["-O3", "-std=c++17", "-fPIC", "-pthread"])
+        link_args.extend(["-lm", "-pthread"])
+        if os.environ.get("LIBGGUF_AVX2") == "1":
+            compile_args.append("-mavx2")
 
     build_dir.mkdir(parents=True, exist_ok=True)
     output.parent.mkdir(parents=True, exist_ok=True)

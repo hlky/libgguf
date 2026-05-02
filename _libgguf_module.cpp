@@ -200,7 +200,9 @@ static PyObject *py_quantize_rows_raw(PyObject *, PyObject *args, PyObject *kwar
     return nullptr;
   }
 
-  const size_t written = libgguf_quantize_chunk(
+  size_t written = 0;
+  Py_BEGIN_ALLOW_THREADS
+  written = libgguf_quantize_chunk(
       (ggml_type)type,
       (const float *)src_view.buf,
       PyBytes_AS_STRING(out),
@@ -208,6 +210,7 @@ static PyObject *py_quantize_rows_raw(PyObject *, PyObject *args, PyObject *kwar
       n_rows,
       n_per_row,
       imatrix);
+  Py_END_ALLOW_THREADS
 
   if (has_imatrix)
   {

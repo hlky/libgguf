@@ -88,3 +88,7 @@ After changing the conversion CLI, run a small conversion through the module ent
 ```bash
 python -m libgguf.quantize_gguf --src model.safetensors --dst model.gguf --qtype Q8_0
 ```
+
+## .venv
+
+Prefer `.venv` if it exists.

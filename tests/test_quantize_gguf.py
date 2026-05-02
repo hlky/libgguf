@@ -103,6 +103,23 @@ def test_5d_tensor_is_written_without_sidecar_fix_file(tmp_path: Path, monkeypat
     assert not (tmp_path / "fix_5d_tensors_wan.safetensors").exists()
 
 
+def test_safetensors_conversion_does_not_use_eager_load_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import safetensors.torch
+
+    src = tmp_path / "flux.safetensors"
+    dst = tmp_path / "flux.gguf"
+    save_file({"double_blocks.0.img_attn.proj.weight": torch.ones(2, 256)}, src)
+
+    def fail_load_file(*args: object, **kwargs: object) -> None:
+        raise AssertionError("safetensors conversion should use safe_open")
+
+    monkeypatch.setattr(safetensors.torch, "load_file", fail_load_file)
+
+    convert_to_gguf(src, dst, "Q8_0")
+
+    assert dst.exists()
+
+
 def test_shape_fix_metadata_is_written(tmp_path: Path) -> None:
     src = tmp_path / "sd1.safetensors"
     dst = tmp_path / "sd1.gguf"

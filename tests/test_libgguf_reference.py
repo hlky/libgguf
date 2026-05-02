@@ -77,6 +77,40 @@ def test_shared_libgguf_exports_c_abi_symbols(built_shared_libgguf: Path) -> Non
         assert hasattr(lib, symbol), f"missing exported symbol {symbol}"
 
 
+def test_shared_libgguf_parallel_quantization_matches_serial(
+    built_shared_libgguf: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lib = ctypes.CDLL(str(built_shared_libgguf))
+    lib.libgguf_row_size.argtypes = [ctypes.c_int, ctypes.c_longlong]
+    lib.libgguf_row_size.restype = ctypes.c_size_t
+    lib.libgguf_quantize_chunk.argtypes = [
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_void_p,
+        ctypes.c_longlong,
+        ctypes.c_longlong,
+        ctypes.c_longlong,
+        ctypes.POINTER(ctypes.c_float),
+    ]
+    lib.libgguf_quantize_chunk.restype = ctypes.c_size_t
+
+    qtype = GGMLQuantizationType.Q4_K
+    rows = np.linspace(-1.5, 1.5, 128 * 256, dtype=np.float32).reshape(128, 256)
+    row_size = lib.libgguf_row_size(qtype, rows.shape[1])
+    serial = np.empty(rows.shape[0] * row_size, dtype=np.uint8)
+    parallel = np.empty_like(serial)
+    src = rows.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+    monkeypatch.setenv("LIBGGUF_NUM_THREADS", "1")
+    serial_written = lib.libgguf_quantize_chunk(qtype, src, serial.ctypes.data, 0, rows.shape[0], rows.shape[1], None)
+
+    monkeypatch.setenv("LIBGGUF_NUM_THREADS", "4")
+    parallel_written = lib.libgguf_quantize_chunk(qtype, src, parallel.ctypes.data, 0, rows.shape[0], rows.shape[1], None)
+
+    assert serial_written == parallel_written == serial.nbytes
+    np.testing.assert_array_equal(parallel, serial)
+
+
 @pytest.mark.parametrize("qtype", SUPPORTED_LIBGGUF_QTYPES)
 def test_libgguf_row_size_matches_format_metadata(qtype: GGMLQuantizationType) -> None:
     info = GGML_FORMAT_INFO[qtype]
@@ -124,6 +158,27 @@ def test_libgguf_quantize_rows_accepts_explicit_imatrix() -> None:
     raw = libgguf.quantize_rows_raw(qtype, rows, rows.shape[0], rows.shape[1], imatrix)
 
     assert np.array_equal(quantized.reshape(-1), np.frombuffer(raw, dtype=np.uint8))
+
+
+def test_libgguf_q8_0_matches_scalar_reference() -> None:
+    qtype = GGMLQuantizationType.Q8_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 5 * info.block_size, dtype=np.float32).reshape(5, info.block_size)
+
+    expected = bytearray()
+    for row in rows:
+        amax = np.max(np.abs(row), initial=np.float32(0.0)).astype(np.float32)
+        d = np.float32(amax / ((1 << 7) - 1))
+        inv = np.float32(1.0 / d) if d != 0 else np.float32(0.0)
+        scaled = row * inv
+        quants = np.trunc(np.abs(scaled) + np.float32(0.5)).astype(np.int32)
+        quants = np.where(scaled < 0, -quants, quants).astype(np.int8)
+        expected += np.float16(d).tobytes()
+        expected += quants.tobytes()
+
+    raw = libgguf.quantize_rows_raw(qtype, rows, rows.shape[0], rows.shape[1], None)
+
+    assert raw == bytes(expected)
 
 
 def test_libgguf_loads_legacy_imatrix(tmp_path: Path) -> None:

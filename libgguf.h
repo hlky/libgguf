@@ -8,6 +8,16 @@
 
 #define GGML_UNUSED(x) (void)(x)
 
+#ifndef GGML_UNREACHABLE
+#if defined(_MSC_VER)
+#define GGML_UNREACHABLE() __assume(0)
+#elif defined(__GNUC__) || defined(__clang__)
+#define GGML_UNREACHABLE() __builtin_unreachable()
+#else
+#define GGML_UNREACHABLE() abort()
+#endif
+#endif
+
 #if defined(_WIN32) && !defined(__MINGW32__)
 #define LIBGGUF_API __declspec(dllexport)
 #else

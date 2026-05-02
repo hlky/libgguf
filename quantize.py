@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 import logging
 import os
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
+from tqdm import tqdm
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 QUANTIZATION_THRESHOLD = 1024
@@ -22,6 +26,16 @@ class QuantResult:
     file_type: str
     tensor_type_counts: dict[str, int]
     fallback_counts: dict[str, int]
+
+
+@dataclass(frozen=True)
+class TensorPlan:
+    key: str
+    source_shape: tuple[int, ...]
+    write_shape: tuple[int, ...]
+    target_qtype: Any
+    quantize: bool
+    imatrix: np.ndarray | None
 
 
 class ModelTemplate:
@@ -209,17 +223,18 @@ FFN_DOWN_PATTERNS = (
 )
 
 
-def _lazy_imports() -> tuple[Any, Any, Any, Any]:
+def _lazy_imports() -> tuple[Any, Any, Any, Any, Any]:
     try:
         import torch
         import gguf
         import libgguf
+        from safetensors import safe_open
         from safetensors.torch import load_file
     except ImportError as exc:
         raise ImportError(
             "Direct GGUF quantization requires torch, gguf, safetensors, and the editable libgguf package."
         ) from exc
-    return torch, gguf, libgguf, load_file
+    return torch, gguf, libgguf, safe_open, load_file
 
 
 def _matches(name: str, patterns: Sequence[str] | None) -> bool:
@@ -266,7 +281,7 @@ def strip_prefix(state_dict: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def load_state_dict(path: str | os.PathLike[str]) -> dict[str, Any]:
-    torch, _, _, load_file = _lazy_imports()
+    torch, _, _, _, load_file = _lazy_imports()
     path_str = os.fspath(path)
     if path_str.endswith((".ckpt", ".pt", ".bin", ".pth")):
         state_dict = torch.load(path_str, map_location="cpu", weights_only=True)
@@ -279,6 +294,48 @@ def load_state_dict(path: str | os.PathLike[str]) -> dict[str, Any]:
     else:
         state_dict = load_file(path_str)
     return strip_prefix(state_dict)
+
+
+def _strip_prefix_keys(keys: Sequence[str]) -> tuple[dict[str, str], str | None]:
+    prefix = None
+    for pfx in ("model.diffusion_model.", "model."):
+        if any(key.startswith(pfx) for key in keys):
+            prefix = pfx
+            break
+    if prefix is None:
+        for pfx in ("net.",):
+            if all(key.startswith(pfx) for key in keys):
+                prefix = pfx
+                break
+
+    if prefix is None:
+        return {key: key for key in keys}, None
+
+    logging.info("State dict prefix found: %r", prefix)
+    return {key.removeprefix(prefix): key for key in keys if key.startswith(prefix)}, prefix
+
+
+def _is_safetensors_path(path: Path) -> bool:
+    return path.suffix.lower() == ".safetensors"
+
+
+def _torch_dtype_from_safetensors(torch: Any, dtype: str) -> Any:
+    dtypes = {
+        "F64": torch.float64,
+        "F32": torch.float32,
+        "F16": torch.float16,
+        "BF16": torch.bfloat16,
+        "I64": torch.int64,
+        "I32": torch.int32,
+        "I16": torch.int16,
+        "I8": torch.int8,
+        "U8": torch.uint8,
+        "BOOL": torch.bool,
+    }
+    try:
+        return dtypes[dtype]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported safetensors dtype: {dtype}") from exc
 
 
 def parse_qtype(qtype: str | Any) -> tuple[str, str]:
@@ -331,14 +388,22 @@ def _is_quantized_qtype(gguf: Any, qtype: Any) -> bool:
     return True
 
 
-def _base_storage_type(torch: Any, gguf: Any, key: str, tensor: Any, model_arch: ModelTemplate, n_params: int) -> Any:
-    if tensor.dtype == torch.bfloat16:
+def _base_storage_type_for_meta(
+    torch: Any,
+    gguf: Any,
+    key: str,
+    dtype: Any,
+    ndim: int,
+    model_arch: ModelTemplate,
+    n_params: int,
+) -> Any:
+    if dtype == torch.bfloat16:
         data_qtype = gguf.GGMLQuantizationType.BF16
     else:
         data_qtype = gguf.GGMLQuantizationType.F16
 
-    if tensor.dtype in (torch.float32, torch.bfloat16):
-        if tensor.ndim == 1 or n_params <= QUANTIZATION_THRESHOLD or any(marker in key for marker in model_arch.keys_hiprec):
+    if dtype in (torch.float32, torch.bfloat16):
+        if ndim == 1 or n_params <= QUANTIZATION_THRESHOLD or any(marker in key for marker in model_arch.keys_hiprec):
             data_qtype = gguf.GGMLQuantizationType.F32
     return data_qtype
 
@@ -353,10 +418,10 @@ def _to_numpy_for_qtype(torch: Any, gguf: Any, tensor: Any, qtype: Any) -> np.nd
     return tensor.to(torch.float32).numpy()
 
 
-def _policy_allows_quant(key: str, tensor: Any, model_arch: ModelTemplate, policy: str) -> bool:
+def _policy_allows_quant_shape(key: str, shape: tuple[int, ...], model_arch: ModelTemplate, policy: str) -> bool:
     if policy not in {"comfy", "uniform"}:
         raise ValueError("policy must be 'comfy' or 'uniform'")
-    if tensor.ndim != 2:
+    if len(shape) != 2:
         return False
     if not key.endswith("weight"):
         return False
@@ -419,40 +484,100 @@ def _override_qtype(key: str, overrides: Sequence[tuple[str, str]]) -> str | Non
     return None
 
 
-def _maybe_shape_fix(writer: Any, gguf: Any, key: str, data: np.ndarray, model_arch: ModelTemplate) -> np.ndarray:
-    n_params = int(np.prod(data.shape, dtype=np.int64))
+def _shape_fix_shape(writer: Any, key: str, shape: tuple[int, ...], model_arch: ModelTemplate) -> tuple[int, ...]:
+    n_params = int(np.prod(shape, dtype=np.int64))
     if (
         model_arch.shape_fix
-        and data.ndim > 1
+        and len(shape) > 1
         and n_params >= REARRANGE_THRESHOLD
         and n_params % 256 == 0
-        and data.shape[-1] % 256 != 0
+        and shape[-1] % 256 != 0
     ):
-        orig_shape = data.shape
-        data = data.reshape(n_params // 256, 256)
-        writer.add_array(f"comfy.gguf.orig_shape.{key}", tuple(int(dim) for dim in orig_shape))
-    return data
+        writer.add_array(f"comfy.gguf.orig_shape.{key}", tuple(int(dim) for dim in shape))
+        return (n_params // 256, 256)
+    return shape
 
 
-def _add_unquantized_tensor(writer: Any, gguf: Any, torch: Any, key: str, tensor: Any, qtype: Any) -> None:
+def _qtype_nbytes(gguf: Any, shape: tuple[int, ...], qtype: Any) -> int:
+    n_params = int(np.prod(shape, dtype=np.int64))
+    block_size, type_size = gguf.GGML_QUANT_SIZES[qtype]
+    if n_params % block_size != 0:
+        raise ValueError(f"Tensor with shape {shape} cannot be stored as {qtype.name}")
+    return n_params // block_size * type_size
+
+
+def _writer_info_shape(gguf: Any, shape: tuple[int, ...], qtype: Any, nbytes: int) -> tuple[int, ...]:
+    if qtype in {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16}:
+        return shape
+    if not shape:
+        return (nbytes,)
+    return (*shape[:-1], nbytes // max(1, int(np.prod(shape[:-1], dtype=np.int64))))
+
+
+def _writer_info_dtype(gguf: Any, qtype: Any) -> np.dtype[Any]:
+    if qtype == gguf.GGMLQuantizationType.F32:
+        return np.dtype(np.float32)
+    if qtype == gguf.GGMLQuantizationType.F16:
+        return np.dtype(np.float16)
+    return np.dtype(np.uint8)
+
+
+def _add_tensor_info(writer: Any, gguf: Any, key: str, shape: tuple[int, ...], qtype: Any) -> None:
+    nbytes = _qtype_nbytes(gguf, shape, qtype)
+    writer.add_tensor_info(
+        key,
+        _writer_info_shape(gguf, shape, qtype, nbytes),
+        _writer_info_dtype(gguf, qtype),
+        nbytes,
+        raw_dtype=qtype,
+    )
+
+
+def _unquantized_tensor_data(gguf: Any, torch: Any, tensor: Any, qtype: Any) -> np.ndarray:
     data = _to_numpy_for_qtype(torch, gguf, tensor, qtype)
-    data = gguf.quants.quantize(data, qtype)
-    writer.add_tensor(key, data, raw_dtype=qtype)
+    return gguf.quants.quantize(data, qtype)
 
 
-def _add_quantized_tensor(
-    writer: Any,
-    gguf: Any,
-    libgguf: Any,
-    torch: Any,
-    key: str,
-    tensor: Any,
-    qtype: Any,
-    imatrix: np.ndarray | None,
-) -> None:
+def _quantized_tensor_data(gguf: Any, libgguf: Any, torch: Any, tensor: Any, qtype: Any, imatrix: np.ndarray | None) -> np.ndarray:
     data = _to_numpy_for_qtype(torch, gguf, tensor, qtype)
-    quantized = libgguf.quantize_rows(data, qtype, imatrix=imatrix)
-    writer.add_tensor(key, quantized, raw_dtype=qtype)
+    return libgguf.quantize_rows(data, qtype, imatrix=imatrix)
+
+
+@contextmanager
+def _open_tensor_source(torch: Any, safe_open: Any, path: Path) -> Iterator[tuple[Mapping[str, str], Any]]:
+    if _is_safetensors_path(path):
+        with safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
+            keys = list(handle.keys())
+            key_map, _ = _strip_prefix_keys(keys)
+
+            class SafetensorsSource:
+                def keys(self) -> Sequence[str]:
+                    return tuple(key_map)
+
+                def tensor_meta(self, key: str) -> tuple[tuple[int, ...], Any]:
+                    tensor_slice = handle.get_slice(key_map[key])
+                    return tuple(int(dim) for dim in tensor_slice.get_shape()), _torch_dtype_from_safetensors(torch, tensor_slice.get_dtype())
+
+                def load_tensor(self, key: str) -> Any:
+                    return handle.get_tensor(key_map[key])
+
+            yield key_map, SafetensorsSource()
+        return
+
+    state_dict = load_state_dict(path)
+
+    class EagerSource:
+        def keys(self) -> Sequence[str]:
+            return tuple(state_dict)
+
+        def tensor_meta(self, key: str) -> tuple[tuple[int, ...], Any]:
+            tensor = state_dict[key]
+            return tuple(int(dim) for dim in tensor.shape), tensor.dtype
+
+        def load_tensor(self, key: str) -> Any:
+            return state_dict[key]
+
+    yield {key: key for key in state_dict}, EagerSource()
 
 
 def convert_to_gguf(
@@ -467,83 +592,101 @@ def convert_to_gguf(
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
 ) -> QuantResult:
-    torch, gguf, libgguf, _ = _lazy_imports()
+    torch, gguf, libgguf, safe_open, _ = _lazy_imports()
     src_path = Path(src)
     file_type_name, base_qtype_name = parse_qtype(qtype)
-    base_qtype = _tensor_qtype_enum(gguf, base_qtype_name)
     file_type = _file_type_enum(gguf, file_type_name)
     dst_path = Path(dst) if dst is not None else _default_output_path(src_path, file_type_name)
 
     if dst_path.exists() and not overwrite:
         raise OSError(f"Output exists and overwriting is disabled: {dst_path}")
 
-    state_dict = load_state_dict(src_path)
-    model_arch = detect_arch(state_dict)
-    name_lengths = sorted(((key, len(key)) for key in state_dict), key=lambda item: item[1], reverse=True)
-    if name_lengths and name_lengths[0][1] > MAX_TENSOR_NAME_LENGTH:
-        bad = ", ".join(f"{key!r} ({length})" for key, length in name_lengths if length > MAX_TENSOR_NAME_LENGTH)
-        raise ValueError(f"Can only handle tensor names up to {MAX_TENSOR_NAME_LENGTH} characters. Tensors exceeding the limit: {bad}")
-
     imatrix_data = libgguf.load_imatrix(imatrix) if isinstance(imatrix, (str, os.PathLike)) else dict(imatrix or {})
     overrides = _normalize_overrides(tensor_overrides)
-    writer = gguf.GGUFWriter(path=None, arch=model_arch.arch)
-    writer.add_quantization_version(gguf.GGML_QUANT_VERSION)
-    writer.add_file_type(file_type)
 
-    tensor_counts: dict[str, int] = {}
-    fallback_counts: dict[str, int] = {}
-    counters = {"attention_value": 0, "ffn_down": 0}
+    with _open_tensor_source(torch, safe_open, src_path) as (_, tensor_source):
+        keys = tuple(tensor_source.keys())
+        model_arch = detect_arch(set(keys))
+        name_lengths = sorted(((key, len(key)) for key in keys), key=lambda item: item[1], reverse=True)
+        if name_lengths and name_lengths[0][1] > MAX_TENSOR_NAME_LENGTH:
+            bad = ", ".join(f"{key!r} ({length})" for key, length in name_lengths if length > MAX_TENSOR_NAME_LENGTH)
+            raise ValueError(f"Can only handle tensor names up to {MAX_TENSOR_NAME_LENGTH} characters. Tensors exceeding the limit: {bad}")
 
-    for key, tensor in state_dict.items():
-        if any(marker in key for marker in model_arch.keys_ignore):
-            logging.info("Filtering ignored key: %r", key)
-            continue
+        writer = gguf.GGUFWriter(path=None, arch=model_arch.arch)
+        writer.add_quantization_version(gguf.GGML_QUANT_VERSION)
+        writer.add_file_type(file_type)
 
-        n_params = int(tensor.numel())
-        storage_qtype = _base_storage_type(torch, gguf, key, tensor, model_arch, n_params)
-        data_for_shape = _to_numpy_for_qtype(torch, gguf, tensor, storage_qtype)
-        data_for_shape = _maybe_shape_fix(writer, gguf, key, data_for_shape, model_arch)
-        if data_for_shape.shape != tuple(tensor.shape):
-            tensor = torch.from_numpy(data_for_shape)
+        tensor_counts: dict[str, int] = {}
+        fallback_counts: dict[str, int] = {}
+        counters = {"attention_value": 0, "ffn_down": 0}
+        plans: list[TensorPlan] = []
 
-        quantize = _policy_allows_quant(key, tensor, model_arch, policy)
-        if _matches(key, include) and tensor.ndim == 2:
-            quantize = True
-        if _matches(key, exclude):
-            quantize = False
+        for key in keys:
+            if any(marker in key for marker in model_arch.keys_ignore):
+                logging.info("Filtering ignored key: %r", key)
+                continue
 
-        forced_qtype = _override_qtype(key, overrides)
-        target_qtype = storage_qtype
-        if forced_qtype is not None:
-            forced_tensor_qtype_name = parse_tensor_qtype(forced_qtype)
-            target_qtype = _tensor_qtype_enum(gguf, forced_tensor_qtype_name)
-            quantize = _is_quantized_qtype(gguf, target_qtype)
-        elif quantize:
-            target_name = base_qtype_name
-            if policy == "comfy":
-                target_name = _mixed_policy_qtype(file_type_name, base_qtype_name, key, counters)
-            target_qtype = _tensor_qtype_enum(gguf, target_name)
+            source_shape, dtype = tensor_source.tensor_meta(key)
+            n_params = int(np.prod(source_shape, dtype=np.int64))
+            storage_qtype = _base_storage_type_for_meta(torch, gguf, key, dtype, len(source_shape), model_arch, n_params)
+            write_shape = _shape_fix_shape(writer, key, source_shape, model_arch)
 
-        if quantize and _is_quantized_qtype(gguf, target_qtype):
-            block_size = gguf.GGML_QUANT_SIZES[target_qtype][0]
-            if tensor.shape[-1] % block_size != 0:
-                fallback_counts[target_qtype.name] = fallback_counts.get(target_qtype.name, 0) + 1
-                target_qtype = gguf.GGMLQuantizationType.F16
+            quantize = _policy_allows_quant_shape(key, write_shape, model_arch, policy)
+            if _matches(key, include) and len(write_shape) == 2:
+                quantize = True
+            if _matches(key, exclude):
                 quantize = False
 
-        if quantize and _is_quantized_qtype(gguf, target_qtype):
-            tensor_imatrix = imatrix_data.get(key)
-            _add_quantized_tensor(writer, gguf, libgguf, torch, key, tensor, target_qtype, tensor_imatrix)
-        else:
-            _add_unquantized_tensor(writer, gguf, torch, key, tensor, target_qtype)
+            forced_qtype = _override_qtype(key, overrides)
+            target_qtype = storage_qtype
+            if forced_qtype is not None:
+                forced_tensor_qtype_name = parse_tensor_qtype(forced_qtype)
+                target_qtype = _tensor_qtype_enum(gguf, forced_tensor_qtype_name)
+                quantize = _is_quantized_qtype(gguf, target_qtype)
+            elif quantize:
+                target_name = base_qtype_name
+                if policy == "comfy":
+                    target_name = _mixed_policy_qtype(file_type_name, base_qtype_name, key, counters)
+                target_qtype = _tensor_qtype_enum(gguf, target_name)
 
-        tensor_counts[target_qtype.name] = tensor_counts.get(target_qtype.name, 0) + 1
-        logging.info("%s -> %s, shape=%s", key, target_qtype.name, tuple(tensor.shape))
+            if quantize and _is_quantized_qtype(gguf, target_qtype):
+                block_size = gguf.GGML_QUANT_SIZES[target_qtype][0]
+                if write_shape[-1] % block_size != 0:
+                    fallback_counts[target_qtype.name] = fallback_counts.get(target_qtype.name, 0) + 1
+                    target_qtype = gguf.GGMLQuantizationType.F16
+                    quantize = False
 
-    writer.write_header_to_file(path=dst_path)
-    writer.write_kv_data_to_file()
-    writer.write_tensors_to_file(progress=True)
-    writer.close()
+            plan = TensorPlan(
+                key=key,
+                source_shape=source_shape,
+                write_shape=write_shape,
+                target_qtype=target_qtype,
+                quantize=quantize and _is_quantized_qtype(gguf, target_qtype),
+                imatrix=imatrix_data.get(key),
+            )
+            plans.append(plan)
+            _add_tensor_info(writer, gguf, key, write_shape, target_qtype)
+            tensor_counts[target_qtype.name] = tensor_counts.get(target_qtype.name, 0) + 1
+            logging.info("%s -> %s, shape=%s", key, target_qtype.name, write_shape)
+
+        writer.write_header_to_file(path=dst_path)
+        writer.write_kv_data_to_file()
+        writer.write_ti_data_to_file()
+
+        try:
+            for plan in tqdm(plans):
+                tensor = tensor_source.load_tensor(plan.key)
+                if plan.write_shape != plan.source_shape:
+                    tensor = torch.from_numpy(_to_numpy_for_qtype(torch, gguf, tensor, plan.target_qtype).reshape(plan.write_shape))
+
+                if plan.quantize:
+                    data = _quantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype, plan.imatrix)
+                else:
+                    data = _unquantized_tensor_data(gguf, torch, tensor, plan.target_qtype)
+                writer.write_tensor_data(data)
+                del data, tensor
+        finally:
+            writer.close()
 
     return QuantResult(
         output_path=dst_path,

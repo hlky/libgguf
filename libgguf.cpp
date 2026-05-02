@@ -1,7 +1,20 @@
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
+#include <cerrno>
+#include <thread>
+#include <vector>
 
 #include "libgguf.h"
+
+#if defined(__AVX2__)
+#include <immintrin.h>
+#define LIBGGUF_USE_AVX2 1
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#include <emmintrin.h>
+#include <xmmintrin.h>
+#define LIBGGUF_USE_SSE2 1
+#endif
 
 extern "C" LIBGGUF_API size_t libgguf_row_size(enum ggml_type type, int64_t n_per_row)
 {
@@ -254,7 +267,35 @@ extern "C" LIBGGUF_API bool libgguf_quantize_requires_imatrix(enum ggml_type typ
          type == GGML_TYPE_IQ1_S;
 }
 
-extern "C" LIBGGUF_API size_t libgguf_quantize_chunk(
+static unsigned int libgguf_quantize_thread_count(int64_t nrows)
+{
+  if (nrows < 64)
+  {
+    return 1;
+  }
+
+  const char *env = std::getenv("LIBGGUF_NUM_THREADS");
+  if (env != nullptr && env[0] != '\0')
+  {
+    errno = 0;
+    char *end = nullptr;
+    const long long parsed = std::strtoll(env, &end, 10);
+    if (errno == 0 && end != env && parsed > 0)
+    {
+      return (unsigned int)std::min<int64_t>((int64_t)parsed, nrows);
+    }
+    return 1;
+  }
+
+  const unsigned int hardware = std::thread::hardware_concurrency();
+  if (hardware == 0)
+  {
+    return 1;
+  }
+  return std::min<unsigned int>(hardware, (unsigned int)nrows);
+}
+
+static size_t libgguf_quantize_chunk_serial(
     enum ggml_type type,
     const float *src,
     void *dst,
@@ -273,8 +314,6 @@ extern "C" LIBGGUF_API size_t libgguf_quantize_chunk(
   {
     assert(imatrix != nullptr);
   }
-
-  libgguf_quantize_init(type);
 
   switch (type)
   {
@@ -330,6 +369,76 @@ extern "C" LIBGGUF_API size_t libgguf_quantize_chunk(
     assert(false && "unsupported quantization type");
     return 0;
   }
+}
+
+extern "C" LIBGGUF_API size_t libgguf_quantize_chunk(
+    enum ggml_type type,
+    const float *src,
+    void *dst,
+    int64_t start,
+    int64_t nrows,
+    int64_t n_per_row,
+    const float *imatrix)
+{
+  if (nrows <= 0)
+  {
+    return 0;
+  }
+
+  const size_t row_size = libgguf_row_size(type, n_per_row);
+  assert(row_size != 0);
+  assert(start % n_per_row == 0);
+
+  if (libgguf_quantize_requires_imatrix(type))
+  {
+    assert(imatrix != nullptr);
+  }
+
+  libgguf_quantize_init(type);
+
+  const unsigned int nthreads = libgguf_quantize_thread_count(nrows);
+  if (nthreads <= 1)
+  {
+    return libgguf_quantize_chunk_serial(type, src, dst, start, nrows, n_per_row, imatrix);
+  }
+
+  std::vector<std::thread> threads;
+  std::vector<size_t> written(nthreads, 0);
+  threads.reserve(nthreads);
+
+  const int64_t rows_per_thread = (nrows + (int64_t)nthreads - 1) / (int64_t)nthreads;
+  for (unsigned int thread_id = 0; thread_id < nthreads; ++thread_id)
+  {
+    const int64_t row_begin = (int64_t)thread_id * rows_per_thread;
+    if (row_begin >= nrows)
+    {
+      written.resize(thread_id);
+      break;
+    }
+    const int64_t row_count = std::min<int64_t>(rows_per_thread, nrows - row_begin);
+    threads.emplace_back([=, &written]() {
+      written[thread_id] = libgguf_quantize_chunk_serial(
+          type,
+          src,
+          dst,
+          start + row_begin * n_per_row,
+          row_count,
+          n_per_row,
+          imatrix);
+    });
+  }
+
+  for (std::thread &thread : threads)
+  {
+    thread.join();
+  }
+
+  size_t total = 0;
+  for (size_t n : written)
+  {
+    total += n;
+  }
+  return total;
 }
 
 static inline float fp32_from_bits(uint32_t w)
@@ -900,6 +1009,114 @@ void quantize_row_q8_0_ref(const float *RESTRICT x, block_q8_0 *RESTRICT y, int6
     }
   }
 }
+
+#if defined(LIBGGUF_USE_AVX2)
+static inline __m256i q8_0_round_away_from_zero_avx2(__m256 v, __m256 id)
+{
+  const __m256 sign_mask = _mm256_set1_ps(-0.0f);
+  const __m256 half = _mm256_set1_ps(0.5f);
+  const __m256 scaled = _mm256_mul_ps(v, id);
+  const __m256 abs_scaled = _mm256_andnot_ps(sign_mask, scaled);
+  const __m256 rounded_abs = _mm256_add_ps(abs_scaled, half);
+  const __m256i abs_i = _mm256_cvttps_epi32(rounded_abs);
+  const __m256 negative = _mm256_cmp_ps(scaled, _mm256_setzero_ps(), _CMP_LT_OQ);
+  const __m256i sign_i = _mm256_castps_si256(negative);
+  return _mm256_sub_epi32(_mm256_xor_si256(abs_i, sign_i), sign_i);
+}
+
+static void quantize_row_q8_0_avx2(const float *RESTRICT x, block_q8_0 *RESTRICT y, int64_t k)
+{
+  assert(k % QK8_0 == 0);
+  static_assert(QK8_0 == 32, "QK8_0 must be 32");
+
+  const int nb = k / QK8_0;
+  const __m256 sign_mask = _mm256_set1_ps(-0.0f);
+  for (int i = 0; i < nb; ++i)
+  {
+    const float *xb = x + i * QK8_0;
+    __m256 maxv = _mm256_setzero_ps();
+    for (int j = 0; j < QK8_0; j += 8)
+    {
+      const __m256 v = _mm256_loadu_ps(xb + j);
+      maxv = _mm256_max_ps(maxv, _mm256_andnot_ps(sign_mask, v));
+    }
+
+    alignas(32) float max_parts[8];
+    _mm256_store_ps(max_parts, maxv);
+    const float amax = MAX(
+        MAX(MAX(max_parts[0], max_parts[1]), MAX(max_parts[2], max_parts[3])),
+        MAX(MAX(max_parts[4], max_parts[5]), MAX(max_parts[6], max_parts[7])));
+    const float d = amax / ((1 << 7) - 1);
+    const float id = d ? 1.0f / d : 0.0f;
+    const __m256 idv = _mm256_set1_ps(id);
+
+    y[i].d = GGML_FP32_TO_FP16(d);
+
+    const __m256i q0 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 0), idv);
+    const __m256i q1 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 8), idv);
+    const __m256i q2 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 16), idv);
+    const __m256i q3 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 24), idv);
+
+    const __m256i q01_i16 = _mm256_packs_epi32(q0, q1);
+    const __m256i q23_i16 = _mm256_packs_epi32(q2, q3);
+    const __m256i packed_lanes = _mm256_packs_epi16(q01_i16, q23_i16);
+    const __m256i packed = _mm256_permutevar8x32_epi32(
+        packed_lanes,
+        _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
+    _mm256_storeu_si256((__m256i *)y[i].qs, packed);
+  }
+}
+#elif defined(LIBGGUF_USE_SSE2)
+static inline __m128i q8_0_round_away_from_zero_sse2(__m128 v, __m128 id)
+{
+  const __m128 sign_mask = _mm_set1_ps(-0.0f);
+  const __m128 half = _mm_set1_ps(0.5f);
+  const __m128 scaled = _mm_mul_ps(v, id);
+  const __m128 abs_scaled = _mm_andnot_ps(sign_mask, scaled);
+  const __m128 rounded_abs = _mm_add_ps(abs_scaled, half);
+  const __m128i abs_i = _mm_cvttps_epi32(rounded_abs);
+  const __m128 negative = _mm_cmplt_ps(scaled, _mm_setzero_ps());
+  const __m128i sign_i = _mm_castps_si128(negative);
+  return _mm_sub_epi32(_mm_xor_si128(abs_i, sign_i), sign_i);
+}
+
+static void quantize_row_q8_0_sse2(const float *RESTRICT x, block_q8_0 *RESTRICT y, int64_t k)
+{
+  assert(k % QK8_0 == 0);
+  static_assert(QK8_0 == 32, "QK8_0 must be 32");
+
+  const int nb = k / QK8_0;
+  const __m128 sign_mask = _mm_set1_ps(-0.0f);
+  for (int i = 0; i < nb; ++i)
+  {
+    const float *xb = x + i * QK8_0;
+    __m128 maxv = _mm_setzero_ps();
+    for (int j = 0; j < QK8_0; j += 4)
+    {
+      const __m128 v = _mm_loadu_ps(xb + j);
+      maxv = _mm_max_ps(maxv, _mm_andnot_ps(sign_mask, v));
+    }
+
+    alignas(16) float max_parts[4];
+    _mm_store_ps(max_parts, maxv);
+    const float amax = MAX(MAX(max_parts[0], max_parts[1]), MAX(max_parts[2], max_parts[3]));
+    const float d = amax / ((1 << 7) - 1);
+    const float id = d ? 1.0f / d : 0.0f;
+    const __m128 idv = _mm_set1_ps(id);
+
+    y[i].d = GGML_FP32_TO_FP16(d);
+
+    for (int j = 0; j < QK8_0; j += 8)
+    {
+      const __m128i q0 = q8_0_round_away_from_zero_sse2(_mm_loadu_ps(xb + j), idv);
+      const __m128i q1 = q8_0_round_away_from_zero_sse2(_mm_loadu_ps(xb + j + 4), idv);
+      const __m128i packed_i16 = _mm_packs_epi32(q0, q1);
+      const __m128i packed_i8 = _mm_packs_epi16(packed_i16, _mm_setzero_si128());
+      _mm_storel_epi64((__m128i *)(y[i].qs + j), packed_i8);
+    }
+  }
+}
+#endif
 
 static inline int best_index_mxfp4(float x, float e)
 {
@@ -2804,7 +3021,13 @@ size_t quantize_q8_0(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow
 {
   (void)quant_weights; // not used
   const size_t row_size = libgguf_row_size(GGML_TYPE_Q8_0, n_per_row);
+#if defined(LIBGGUF_USE_AVX2)
+  quantize_row_q8_0_avx2(src, (block_q8_0 *)dst, (int64_t)nrow * n_per_row);
+#elif defined(LIBGGUF_USE_SSE2)
+  quantize_row_q8_0_sse2(src, (block_q8_0 *)dst, (int64_t)nrow * n_per_row);
+#else
   quantize_row_q8_0_ref(src, (block_q8_0 *)dst, (int64_t)nrow * n_per_row);
+#endif
   return nrow * row_size;
 }
 
