@@ -1,5 +1,36 @@
 from __future__ import annotations
 
+DEQUANT_BACKEND_QTYPES = [
+    "q1_0",
+    "q4_1",
+    "q5_0",
+    "q5_1",
+    "q2_k",
+    "q3_k",
+    "q4_k",
+    "q5_k",
+    "q6_k",
+    "iq2_xxs",
+    "iq2_xs",
+    "iq2_s",
+    "iq3_xxs",
+    "iq3_s",
+    "iq1_s",
+    "iq1_m",
+    "iq4_nl",
+    "iq4_xs",
+    "tq1_0",
+    "tq2_0",
+    "mxfp4",
+    "nvfp4",
+]
+
+DEQUANT_BACKEND_SOURCES = [
+    f"csrc/quant/dequant_{qtype}_{backend}.cpp"
+    for qtype in DEQUANT_BACKEND_QTYPES
+    for backend in ("sse2", "sse4_1", "avx2")
+]
+
 NATIVE_SOURCES = [
     "csrc/libgguf.cpp",
     "csrc/common/libgguf_common.cpp",
@@ -8,6 +39,7 @@ NATIVE_SOURCES = [
     "csrc/common/libgguf_cpu.cpp",
     "csrc/common/libgguf_validate.cpp",
     "csrc/quant/dequant.cpp",
+    "csrc/quant/dequant_generic.cpp",
     "csrc/quant/dequant_q4_0.cpp",
     "csrc/quant/dequant_q4_0_sse2.cpp",
     "csrc/quant/dequant_q4_0_avx2.cpp",
@@ -16,6 +48,7 @@ NATIVE_SOURCES = [
     "csrc/quant/dequant_q8_0_sse2.cpp",
     "csrc/quant/dequant_q8_0_sse4_1.cpp",
     "csrc/quant/dequant_q8_0_avx2.cpp",
+    *DEQUANT_BACKEND_SOURCES,
     "csrc/quant/quant_q1_0.cpp",
     "csrc/quant/quant_q4_0.cpp",
     "csrc/quant/quant_q4_0_sse2.cpp",

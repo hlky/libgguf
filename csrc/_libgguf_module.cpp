@@ -22,6 +22,15 @@ extern "C" size_t libgguf_quantize_q8_0_for_backend(
     void *dst,
     int64_t nrows,
     int64_t n_per_row);
+extern "C" const char *libgguf_dequant_backend(int type);
+extern "C" int libgguf_dequant_cpu_supports_backend(const char *backend);
+extern "C" size_t libgguf_dequantize_for_backend(
+    int type,
+    const char *backend,
+    const void *src,
+    float *dst,
+    int64_t nrows,
+    int64_t n_per_row);
 
 static bool parse_int64(PyObject *value, int64_t *out);
 
@@ -681,6 +690,115 @@ static PyObject *py_q4_0_backend(PyObject *, PyObject *)
   return PyUnicode_FromString(libgguf_q4_0_backend());
 }
 
+static PyObject *py_dequant_backend(PyObject *, PyObject *args)
+{
+  int type = 0;
+  if (!PyArg_ParseTuple(args, "i", &type))
+    return nullptr;
+
+  return PyUnicode_FromString(libgguf_dequant_backend(type));
+}
+
+static PyObject *py_dequant_cpu_supports_backend(PyObject *, PyObject *args)
+{
+  const char *backend = nullptr;
+  if (!PyArg_ParseTuple(args, "s", &backend))
+    return nullptr;
+
+  if (libgguf_dequant_cpu_supports_backend(backend))
+    Py_RETURN_TRUE;
+  Py_RETURN_FALSE;
+}
+
+static PyObject *py_dequantize_for_backend(PyObject *, PyObject *args)
+{
+  int type = 0;
+  const char *backend = nullptr;
+  PyObject *src_obj = nullptr;
+  PyObject *n_rows_obj = nullptr;
+  PyObject *n_per_row_obj = nullptr;
+
+  if (!PyArg_ParseTuple(args, "isOOO", &type, &backend, &src_obj, &n_rows_obj, &n_per_row_obj))
+    return nullptr;
+
+  int64_t nrows = PyLong_AsLongLong(n_rows_obj);
+  if (nrows == -1 && PyErr_Occurred())
+    return nullptr;
+  int64_t n_per_row = PyLong_AsLongLong(n_per_row_obj);
+  if (n_per_row == -1 && PyErr_Occurred())
+    return nullptr;
+
+  if (nrows < 0 || n_per_row < 0)
+  {
+    PyErr_SetString(PyExc_ValueError, "nrows and n_per_row must be non-negative");
+    return nullptr;
+  }
+
+  Py_buffer src_view;
+  if (PyObject_GetBuffer(src_obj, &src_view, PyBUF_CONTIG_RO) != 0)
+    return nullptr;
+
+  const size_t row_size = libgguf_row_size((ggml_type)type, n_per_row);
+  const size_t expected_src = row_size * (size_t)nrows;
+  if (row_size == 0)
+  {
+    PyBuffer_Release(&src_view);
+    PyErr_SetString(PyExc_ValueError, "unsupported or invalid quantization type");
+    return nullptr;
+  }
+  if ((size_t)src_view.len < expected_src)
+  {
+    PyBuffer_Release(&src_view);
+    PyErr_SetString(PyExc_ValueError, "src buffer is smaller than required");
+    return nullptr;
+  }
+
+  if (nrows != 0 && n_per_row > INT64_MAX / nrows)
+  {
+    PyBuffer_Release(&src_view);
+    PyErr_SetString(PyExc_OverflowError, "dequantized output is too large");
+    return nullptr;
+  }
+  const size_t values = (size_t)nrows * (size_t)n_per_row;
+  if (values > PY_SSIZE_T_MAX / sizeof(float))
+  {
+    PyBuffer_Release(&src_view);
+    PyErr_SetString(PyExc_OverflowError, "dequantized output is too large");
+    return nullptr;
+  }
+
+  PyObject *out = PyBytes_FromStringAndSize(nullptr, (Py_ssize_t)(values * sizeof(float)));
+  if (out == nullptr)
+  {
+    PyBuffer_Release(&src_view);
+    return nullptr;
+  }
+
+  const size_t written = libgguf_dequantize_for_backend(
+      type,
+      backend,
+      src_view.buf,
+      (float *)PyBytes_AS_STRING(out),
+      nrows,
+      n_per_row);
+  PyBuffer_Release(&src_view);
+
+  if (written == 0 && values != 0)
+  {
+    Py_DECREF(out);
+    PyErr_SetString(PyExc_ValueError, "unsupported dequant backend for this CPU");
+    return nullptr;
+  }
+  if (written != values * sizeof(float))
+  {
+    Py_DECREF(out);
+    PyErr_SetString(PyExc_RuntimeError, "libgguf_dequantize_for_backend returned an unexpected byte count");
+    return nullptr;
+  }
+
+  return out;
+}
+
 static PyObject *py_q4_0_cpu_supports_backend(PyObject *, PyObject *args)
 {
   const char *backend = nullptr;
@@ -734,6 +852,9 @@ static PyMethodDef module_methods[] = {
     {"quantize_rows_into_raw", (PyCFunction)py_quantize_rows_into_raw, METH_VARARGS | METH_KEYWORDS, "Quantize float32 rows into an existing writable buffer."},
     {"dequantize_rows_raw", (PyCFunction)py_dequantize_rows_raw, METH_VARARGS | METH_KEYWORDS, "Dequantize rows from a contiguous buffer and return float32 bytes."},
     {"dequantize_rows_into_raw", (PyCFunction)py_dequantize_rows_into_raw, METH_VARARGS | METH_KEYWORDS, "Dequantize rows into an existing writable float32 buffer."},
+    {"_dequant_backend", py_dequant_backend, METH_VARARGS, "Return selected dequant backend for a qtype."},
+    {"_dequant_cpu_supports_backend", py_dequant_cpu_supports_backend, METH_VARARGS, "Return whether the CPU supports a dequant backend."},
+    {"_dequantize_for_backend", py_dequantize_for_backend, METH_VARARGS, "Dequantize with a selected backend for tests."},
     {"_q4_0_backend", py_q4_0_backend, METH_NOARGS, "Return selected Q4_0 backend."},
     {"_q4_0_cpu_supports_backend", py_q4_0_cpu_supports_backend, METH_VARARGS, "Return whether the CPU supports a Q4_0 backend."},
     {"_quantize_q4_0_for_backend", py_quantize_q4_0_for_backend, METH_VARARGS, "Quantize Q4_0 with a selected backend for tests."},

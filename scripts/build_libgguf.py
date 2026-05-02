@@ -42,26 +42,28 @@ def build_shared_lib(output: Path, build_dir: Path) -> Path:
     objects = []
     for source in NATIVE_SOURCES:
         source_args = list(compile_args)
-        if x86_build and Path(source).name in {
-            "dequant_q4_0_avx2.cpp",
-            "dequant_q8_0_avx2.cpp",
-            "quant_q4_0_avx2.cpp",
-            "quant_q8_0_avx2.cpp",
-        }:
+        source_name = Path(source).name
+        is_dequant_backend = source_name.startswith("dequant_")
+        if x86_build and (
+            (is_dequant_backend and source_name.endswith("_avx2.cpp"))
+            or source_name in {
+                "quant_q4_0_avx2.cpp",
+                "quant_q8_0_avx2.cpp",
+            }
+        ):
             source_args.append("/arch:AVX2" if compiler.compiler_type == "msvc" else "-mavx2")
         elif (
             x86_build
-            and Path(source).name in {
-                "dequant_q4_0_sse2.cpp",
-                "dequant_q4_0_sse4_1.cpp",
-                "dequant_q8_0_sse2.cpp",
-                "dequant_q8_0_sse4_1.cpp",
-                "quant_q4_0_sse2.cpp",
-                "quant_q8_0_sse2.cpp",
-            }
+            and (
+                (is_dequant_backend and (source_name.endswith("_sse2.cpp") or source_name.endswith("_sse4_1.cpp")))
+                or source_name in {
+                    "quant_q4_0_sse2.cpp",
+                    "quant_q8_0_sse2.cpp",
+                }
+            )
             and compiler.compiler_type != "msvc"
         ):
-            source_args.append("-msse4.1" if Path(source).name in {"dequant_q4_0_sse4_1.cpp", "dequant_q8_0_sse4_1.cpp"} else "-msse2")
+            source_args.append("-msse4.1" if source_name.endswith("_sse4_1.cpp") else "-msse2")
         objects.extend(
             compiler.compile(
                 sources=[str(root / source)],

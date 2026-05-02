@@ -294,17 +294,27 @@ def test_libgguf_dequantize_rows_into_raw_rejects_small_destination() -> None:
     [
         (GGMLQuantizationType.Q4_0, "LIBGGUF_DEQUANT_Q4_0_BACKEND"),
         (GGMLQuantizationType.Q8_0, "LIBGGUF_DEQUANT_Q8_0_BACKEND"),
+        (GGMLQuantizationType.Q5_1, "LIBGGUF_DEQUANT_Q5_1_BACKEND"),
+        (GGMLQuantizationType.Q4_K, "LIBGGUF_DEQUANT_Q4_K_BACKEND"),
+        (GGMLQuantizationType.TQ2_0, "LIBGGUF_DEQUANT_TQ2_0_BACKEND"),
+        (GGMLQuantizationType.IQ2_XS, "LIBGGUF_DEQUANT_IQ2_XS_BACKEND"),
     ],
 )
 def test_libgguf_dequant_simd_backends_match_reference(qtype: GGMLQuantizationType, env_name: str) -> None:
+    block_size = GGML_FORMAT_INFO[qtype].block_size
     child = f"""
 import hashlib
 import numpy as np
 import libgguf
 
 qtype = {int(qtype)}
-rows = np.linspace(-2.0, 2.0, 257 * 32, dtype=np.float32).reshape(257, 32)
-quantized = libgguf.quantize_rows(rows, qtype)
+block_size = {block_size}
+rows = np.linspace(-2.0, 2.0, 257 * block_size, dtype=np.float32).reshape(257, block_size)
+if libgguf.quantize_requires_imatrix(qtype):
+    imatrix = np.sum(rows * rows, axis=0, dtype=np.float32)
+else:
+    imatrix = None
+quantized = libgguf.quantize_rows(rows, qtype, imatrix=imatrix)
 dequantized = libgguf.dequantize_rows(quantized, qtype)
 print(hashlib.sha256(dequantized.tobytes()).hexdigest())
 """
@@ -320,7 +330,7 @@ print(hashlib.sha256(dequantized.tobytes()).hexdigest())
         env=env,
     ).stdout.strip()
 
-    for backend in ("sse2", "avx2"):
+    for backend in ("sse2", "sse4_1", "avx2"):
         env[env_name] = backend
         actual = subprocess.run(
             [sys.executable, "-c", child],
@@ -330,6 +340,25 @@ print(hashlib.sha256(dequantized.tobytes()).hexdigest())
             env=env,
         ).stdout.strip()
         assert actual == expected
+
+
+@pytest.mark.parametrize("qtype", SUPPORTED_LIBGGUF_QTYPES)
+def test_libgguf_dequant_supported_backends_match_reference(qtype: GGMLQuantizationType) -> None:
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 5 * info.block_size, dtype=np.float32).reshape(5, info.block_size)
+    if libgguf.quantize_requires_imatrix(qtype):
+        imatrix = np.sum(rows * rows, axis=0, dtype=np.float32)
+    else:
+        imatrix = None
+    quantized = libgguf.quantize_rows(rows, qtype, imatrix=imatrix)
+
+    expected = _libgguf._dequantize_for_backend(qtype, "ref", quantized, rows.shape[0], rows.shape[1])
+    assert _libgguf._dequant_backend(qtype) in {"ref", "sse2", "sse4_1", "avx2"}
+
+    for backend in ("sse2", "sse4_1", "avx2"):
+        if _libgguf._dequant_cpu_supports_backend(backend):
+            actual = _libgguf._dequantize_for_backend(qtype, backend, quantized, rows.shape[0], rows.shape[1])
+            assert actual == expected
 
 
 def test_libgguf_quantize_rows_accepts_explicit_imatrix() -> None:
@@ -477,21 +506,60 @@ def test_libgguf_builds_do_not_use_global_avx2_flags() -> None:
     root = Path(__file__).resolve().parents[1]
     setup_py = (root / "setup.py").read_text(encoding="utf-8")
     shared_build = (root / "scripts" / "build_libgguf.py").read_text(encoding="utf-8")
+    native_sources = (root / "scripts" / "native_sources.py").read_text(encoding="utf-8")
 
     assert "LIBGGUF_AVX2" not in setup_py
     assert "LIBGGUF_AVX2" not in shared_build
-    for source in (
-        "dequant_q4_0_avx2.cpp",
-        "dequant_q8_0_avx2.cpp",
-        "quant_q4_0_avx2.cpp",
-        "quant_q8_0_avx2.cpp",
-        "dequant_q4_0_sse2.cpp",
-        "dequant_q8_0_sse2.cpp",
-        "quant_q4_0_sse2.cpp",
-        "quant_q8_0_sse2.cpp",
-    ):
-        assert source in setup_py
-        assert source in shared_build
+    assert 'name.endswith("_avx2.cpp")' in setup_py
+    assert 'name.endswith("_sse2.cpp")' in setup_py
+    assert 'name.endswith("_sse4_1.cpp")' in setup_py
+    assert 'source_name.endswith("_avx2.cpp")' in shared_build
+    assert 'source_name.endswith("_sse2.cpp")' in shared_build
+    assert 'source_name.endswith("_sse4_1.cpp")' in shared_build
+    assert "DEQUANT_BACKEND_SOURCES" in native_sources
+    assert "dequant_generic_sse2.cpp" not in native_sources
+    assert "dequant_generic_sse4_1.cpp" not in native_sources
+    assert "dequant_generic_avx2.cpp" not in native_sources
+
+
+def test_libgguf_completed_dequant_simd_sources_do_not_delegate_to_ref() -> None:
+    root = Path(__file__).resolve().parents[1]
+    completed = (
+        "q1_0",
+        "q4_1",
+        "q5_0",
+        "q5_1",
+        "q2_k",
+        "q3_k",
+        "q4_k",
+        "q5_k",
+        "q6_k",
+        "tq1_0",
+        "tq2_0",
+        "iq2_xxs",
+        "iq2_xs",
+        "iq2_s",
+        "iq3_xxs",
+        "iq3_s",
+        "iq1_s",
+        "iq1_m",
+        "iq4_nl",
+        "iq4_xs",
+        "mxfp4",
+        "nvfp4",
+    )
+    forbidden = (
+        "dequant_backend_fallback.h",
+        "dequant_simd_simple",
+        "LIBGGUF_DEQUANT_DEFINE_BACKEND",
+        "_ref(",
+    )
+
+    for qtype in completed:
+        for backend in ("sse2", "sse4_1", "avx2"):
+            source = (root / "csrc" / "quant" / f"dequant_{qtype}_{backend}.cpp").read_text(encoding="utf-8")
+            for token in forbidden:
+                assert token not in source, f"{qtype}/{backend} delegates instead of using a real backend"
 
 
 def test_libgguf_loads_legacy_imatrix(tmp_path: Path) -> None:
