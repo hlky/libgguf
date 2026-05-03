@@ -156,4 +156,3 @@ size_t quantize_tq2_0(const float *RESTRICT src, void *RESTRICT dst, int64_t nro
 }
 
 // ================================ IQ2 quantization =============================================
-

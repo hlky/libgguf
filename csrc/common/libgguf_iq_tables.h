@@ -8,11 +8,12 @@
 #define IQ1S_DELTA 0.125f
 #define IQ1M_DELTA 0.125f
 
-extern "C" {
-void iq2xs_init_impl(enum ggml_type type);
-void iq2xs_free_impl(enum ggml_type type);
-void iq3xs_init_impl(int grid_size);
-void iq3xs_free_impl(int grid_size);
+extern "C"
+{
+  void iq2xs_init_impl(enum ggml_type type);
+  void iq2xs_free_impl(enum ggml_type type);
+  void iq3xs_init_impl(int grid_size);
+  void iq3xs_free_impl(int grid_size);
 }
 
 int iq2_data_index(enum ggml_type type);

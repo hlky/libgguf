@@ -128,4 +128,3 @@ size_t quantize_mxfp4(const float *RESTRICT src, void *RESTRICT dst, int64_t nro
   libgguf_mxfp4_selected().kernel(src, (block_mxfp4 *)dst, (int64_t)nrow * n_per_row);
   return nrow * libgguf_row_size(GGML_TYPE_MXFP4, n_per_row);
 }
-

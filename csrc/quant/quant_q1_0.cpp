@@ -130,4 +130,3 @@ size_t quantize_q1_0(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow
   libgguf_q1_0_selected().kernel(src, (block_q1_0 *)dst, nrow * n_per_row);
   return nrow * libgguf_row_size(GGML_TYPE_Q1_0, n_per_row);
 }
-

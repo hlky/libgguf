@@ -189,4 +189,3 @@ size_t quantize_tq1_0(const float *RESTRICT src, void *RESTRICT dst, int64_t nro
   libgguf_tq1_0_kernel()(src, (block_tq1_0 *)dst, (int64_t)nrow * n_per_row);
   return nrow * row_size;
 }
-

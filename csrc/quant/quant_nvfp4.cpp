@@ -139,4 +139,3 @@ size_t quantize_nvfp4(const float *RESTRICT src, void *RESTRICT dst, int64_t nro
 }
 
 // ====================== Ternary (de)-quantization (BitNet b1.58 and TriLMs)
-

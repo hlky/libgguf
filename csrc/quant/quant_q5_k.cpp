@@ -336,4 +336,3 @@ size_t quantize_q5_K(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow
 }
 
 // ====================== 6-bit (de)-quantization
-

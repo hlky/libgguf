@@ -286,4 +286,3 @@ size_t quantize_q6_K(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow
   }
   return nrow * row_size;
 }
-
