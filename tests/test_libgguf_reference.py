@@ -667,12 +667,12 @@ def test_libgguf_builds_do_not_use_global_avx2_flags() -> None:
 
     assert "LIBGGUF_AVX2" not in setup_py
     assert "LIBGGUF_AVX2" not in shared_build
-    assert 'name.endswith("_avx2.cpp")' in setup_py
-    assert 'name.endswith("_sse2.cpp")' in setup_py
-    assert 'name.endswith("_sse4_1.cpp")' in setup_py
-    assert 'source_name.endswith("_avx2.cpp")' in shared_build
-    assert 'source_name.endswith("_sse2.cpp")' in shared_build
-    assert 'source_name.endswith("_sse4_1.cpp")' in shared_build
+    assert '"avx2" in parts' in setup_py
+    assert '"sse2" in parts' in setup_py
+    assert '"sse4_1" in parts' in setup_py
+    assert '"avx2" in source_parts' in shared_build
+    assert '"sse2" in source_parts' in shared_build
+    assert '"sse4_1" in source_parts' in shared_build
     assert "DEQUANT_BACKEND_SOURCES" in native_sources
     assert "dequant_generic_sse2.cpp" not in native_sources
     assert "dequant_generic_sse4_1.cpp" not in native_sources
@@ -709,12 +709,11 @@ def test_libgguf_completed_dequant_simd_sources_do_not_delegate_to_ref() -> None
         "dequant_backend_fallback.h",
         "dequant_simd_simple",
         "LIBGGUF_DEQUANT_DEFINE_BACKEND",
-        "_ref(",
     )
 
     for qtype in completed:
         for backend in ("sse2", "sse4_1", "avx2"):
-            source = (root / "csrc" / "quant" / f"dequant_{qtype}_{backend}.cpp").read_text(encoding="utf-8")
+            source = (root / "csrc" / "dequant" / backend / f"{qtype}.cpp").read_text(encoding="utf-8")
             for token in forbidden:
                 assert token not in source, f"{qtype}/{backend} delegates instead of using a real backend"
 

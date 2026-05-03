@@ -2,9 +2,11 @@ from __future__ import annotations
 
 DEQUANT_BACKEND_QTYPES = [
     "q1_0",
+    "q4_0",
     "q4_1",
     "q5_0",
     "q5_1",
+    "q8_0",
     "q2_k",
     "q3_k",
     "q4_k",
@@ -26,7 +28,7 @@ DEQUANT_BACKEND_QTYPES = [
 ]
 
 DEQUANT_BACKEND_SOURCES = [
-    f"csrc/quant/dequant_{qtype}_{backend}.cpp"
+    f"csrc/dequant/{backend}/{qtype}.cpp"
     for qtype in DEQUANT_BACKEND_QTYPES
     for backend in ("sse2", "sse4_1", "avx2")
 ]
@@ -59,60 +61,29 @@ QUANT_BACKEND_QTYPES = [
 ]
 
 QUANT_BACKEND_SOURCES = [
-    f"csrc/quant/quant_{qtype}_{backend}.cpp"
+    f"csrc/quant/{backend}/{qtype}.cpp"
     for qtype in QUANT_BACKEND_QTYPES
     for backend in ("sse2", "sse4_1", "avx2")
 ]
+QUANT_BACKEND_SOURCES.extend([f"csrc/quant/{qtype}.cpp" for qtype in QUANT_BACKEND_QTYPES])
 
 NATIVE_SOURCES = [
     "csrc/libgguf.cpp",
     "csrc/common/libgguf_common.cpp",
     "csrc/common/libgguf_common_quant.cpp",
-    "csrc/common/libgguf_common_quant_sse2.cpp",
-    "csrc/common/libgguf_common_quant_sse4_1.cpp",
-    "csrc/common/libgguf_common_quant_avx2.cpp",
+    "csrc/common/sse2/libgguf_common_quant.cpp",
+    "csrc/common/sse4_1/libgguf_common_quant.cpp",
+    "csrc/common/avx2/libgguf_common_quant.cpp",
     "csrc/common/libgguf_storage.cpp",
-    "csrc/common/libgguf_storage_sse2.cpp",
-    "csrc/common/libgguf_storage_sse4_1.cpp",
-    "csrc/common/libgguf_storage_avx2.cpp",
+    "csrc/common/sse2/libgguf_storage.cpp",
+    "csrc/common/sse4_1/libgguf_storage.cpp",
+    "csrc/common/avx2/libgguf_storage.cpp",
     "csrc/common/libgguf_tables.cpp",
     "csrc/common/libgguf_iq_tables.cpp",
     "csrc/common/libgguf_cpu.cpp",
     "csrc/common/libgguf_validate.cpp",
-    "csrc/quant/dequant.cpp",
-    "csrc/quant/dequant_generic.cpp",
-    "csrc/quant/dequant_q4_0.cpp",
-    "csrc/quant/dequant_q4_0_sse2.cpp",
-    "csrc/quant/dequant_q4_0_avx2.cpp",
-    "csrc/quant/dequant_q4_0_sse4_1.cpp",
-    "csrc/quant/dequant_q8_0.cpp",
-    "csrc/quant/dequant_q8_0_sse2.cpp",
-    "csrc/quant/dequant_q8_0_sse4_1.cpp",
-    "csrc/quant/dequant_q8_0_avx2.cpp",
+    "csrc/dequant/dequant.cpp",
+    "csrc/dequant/dequant_generic.cpp",
     *DEQUANT_BACKEND_SOURCES,
     *QUANT_BACKEND_SOURCES,
-    "csrc/quant/quant_q1_0.cpp",
-    "csrc/quant/quant_q4_0.cpp",
-    "csrc/quant/quant_q4_1.cpp",
-    "csrc/quant/quant_q5_0.cpp",
-    "csrc/quant/quant_q5_1.cpp",
-    "csrc/quant/quant_q8_0.cpp",
-    "csrc/quant/quant_q2_k.cpp",
-    "csrc/quant/quant_q3_k.cpp",
-    "csrc/quant/quant_q4_k.cpp",
-    "csrc/quant/quant_q5_k.cpp",
-    "csrc/quant/quant_q6_k.cpp",
-    "csrc/quant/quant_iq1_s.cpp",
-    "csrc/quant/quant_iq1_m.cpp",
-    "csrc/quant/quant_iq2_xxs.cpp",
-    "csrc/quant/quant_iq2_xs.cpp",
-    "csrc/quant/quant_iq2_s.cpp",
-    "csrc/quant/quant_iq3_xxs.cpp",
-    "csrc/quant/quant_iq3_s.cpp",
-    "csrc/quant/quant_iq4_nl.cpp",
-    "csrc/quant/quant_iq4_xs.cpp",
-    "csrc/quant/quant_tq1_0.cpp",
-    "csrc/quant/quant_tq2_0.cpp",
-    "csrc/quant/quant_mxfp4.cpp",
-    "csrc/quant/quant_nvfp4.cpp",
 ]

@@ -43,41 +43,42 @@ def build_shared_lib(output: Path, build_dir: Path, jobs: int | None = None) -> 
 
     def compile_one(source: str) -> list[str]:
         source_args = list(compile_args)
-        source_name = Path(source).name
-        is_dequant_backend = source_name.startswith("dequant_")
-        is_quant_backend = source_name.startswith("quant_") and (
-            source_name.endswith("_sse2.cpp")
-            or source_name.endswith("_sse4_1.cpp")
-            or source_name.endswith("_avx2.cpp")
-        )
-        is_common_quant_backend = source_name.startswith("libgguf_common_quant_") and (
-            source_name.endswith("_sse2.cpp")
-            or source_name.endswith("_sse4_1.cpp")
-            or source_name.endswith("_avx2.cpp")
-        )
-        is_common_storage_backend = source_name.startswith("libgguf_storage_") and (
-            source_name.endswith("_sse2.cpp")
-            or source_name.endswith("_sse4_1.cpp")
-            or source_name.endswith("_avx2.cpp")
-        )
+        source_path = Path(source)
+        source_parts = set(source_path.parts)
+        source_name = source_path.name
+        is_dequant_backend = "dequant" in source_parts and bool(source_parts & {"sse2", "sse4_1", "avx2"})
+        is_quant_backend = "quant" in source_parts and bool(source_parts & {"sse2", "sse4_1", "avx2"})
+        is_common_quant_backend = source_name == "libgguf_common_quant.cpp" and bool(source_parts & {"sse2", "sse4_1", "avx2"})
+        is_common_storage_backend = source_name == "libgguf_storage.cpp" and bool(source_parts & {"sse2", "sse4_1", "avx2"})
         if x86_build and (
-            (is_dequant_backend and source_name.endswith("_avx2.cpp"))
-            or (is_quant_backend and source_name.endswith("_avx2.cpp"))
-            or (is_common_quant_backend and source_name.endswith("_avx2.cpp"))
-            or (is_common_storage_backend and source_name.endswith("_avx2.cpp"))
+            (is_dequant_backend and "avx2" in source_parts)
+            or (is_quant_backend and "avx2" in source_parts)
+            or (is_common_quant_backend and "avx2" in source_parts)
+            or (is_common_storage_backend and "avx2" in source_parts)
         ):
             source_args.append("/arch:AVX2" if compiler.compiler_type == "msvc" else "-mavx2")
         elif (
             x86_build
-            and (
-                (is_dequant_backend and (source_name.endswith("_sse2.cpp") or source_name.endswith("_sse4_1.cpp")))
-                or is_quant_backend
-                or is_common_quant_backend
-                or is_common_storage_backend
-            )
             and compiler.compiler_type != "msvc"
+            and (
+                (is_dequant_backend and "sse4_1" in source_parts)
+                or (is_quant_backend and "sse4_1" in source_parts)
+                or (is_common_quant_backend and "sse4_1" in source_parts)
+                or (is_common_storage_backend and "sse4_1" in source_parts)
+            )
         ):
-            source_args.append("-msse4.1" if source_name.endswith("_sse4_1.cpp") else "-msse2")
+            source_args.append("-msse4.1")
+        elif (
+            x86_build
+            and compiler.compiler_type != "msvc"
+            and (
+                (is_dequant_backend and "sse2" in source_parts)
+                or (is_quant_backend and "sse2" in source_parts)
+                or (is_common_quant_backend and "sse2" in source_parts)
+                or (is_common_storage_backend and "sse2" in source_parts)
+            )
+        ):
+            source_args.append("-msse2")
         return compiler.compile(
             sources=[str(root / source)],
             output_dir=str(build_dir),

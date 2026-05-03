@@ -32,22 +32,18 @@ class BuildExt(build_ext):
         is_x86_build = _is_x86_build()
 
         def source_flags(source: str) -> list[str]:
-            name = Path(source).name
-            is_dequant_backend = name.startswith("dequant_")
-            is_quant_backend = name.startswith("quant_") and (
-                name.endswith("_sse2.cpp") or name.endswith("_sse4_1.cpp") or name.endswith("_avx2.cpp")
-            )
-            is_common_quant_backend = name.startswith("libgguf_common_quant_") and (
-                name.endswith("_sse2.cpp") or name.endswith("_sse4_1.cpp") or name.endswith("_avx2.cpp")
-            )
-            is_common_storage_backend = name.startswith("libgguf_storage_") and (
-                name.endswith("_sse2.cpp") or name.endswith("_sse4_1.cpp") or name.endswith("_avx2.cpp")
-            )
+            path = Path(source)
+            parts = set(path.parts)
+            name = path.name
+            is_dequant_backend = "dequant" in parts and bool(parts & {"sse2", "sse4_1", "avx2"})
+            is_quant_backend = "quant" in parts and bool(parts & {"sse2", "sse4_1", "avx2"})
+            is_common_quant_backend = name == "libgguf_common_quant.cpp" and bool(parts & {"sse2", "sse4_1", "avx2"})
+            is_common_storage_backend = name == "libgguf_storage.cpp" and bool(parts & {"sse2", "sse4_1", "avx2"})
             if is_x86_build and (
-                (is_dequant_backend and name.endswith("_avx2.cpp"))
-                or (is_quant_backend and name.endswith("_avx2.cpp"))
-                or (is_common_quant_backend and name.endswith("_avx2.cpp"))
-                or (is_common_storage_backend and name.endswith("_avx2.cpp"))
+                (is_dequant_backend and "avx2" in parts)
+                or (is_quant_backend and "avx2" in parts)
+                or (is_common_quant_backend and "avx2" in parts)
+                or (is_common_storage_backend and "avx2" in parts)
             ):
                 if self.compiler.compiler_type == "msvc":
                     return ["/arch:AVX2"]
@@ -55,10 +51,10 @@ class BuildExt(build_ext):
             if (
                 is_x86_build
                 and (
-                    (is_dequant_backend and name.endswith("_sse2.cpp"))
-                    or (is_quant_backend and name.endswith("_sse2.cpp"))
-                    or (is_common_quant_backend and name.endswith("_sse2.cpp"))
-                    or (is_common_storage_backend and name.endswith("_sse2.cpp"))
+                    (is_dequant_backend and "sse2" in parts)
+                    or (is_quant_backend and "sse2" in parts)
+                    or (is_common_quant_backend and "sse2" in parts)
+                    or (is_common_storage_backend and "sse2" in parts)
                 )
                 and self.compiler.compiler_type != "msvc"
             ):
@@ -66,10 +62,10 @@ class BuildExt(build_ext):
             if (
                 is_x86_build
                 and (
-                    (is_dequant_backend and name.endswith("_sse4_1.cpp"))
-                    or (is_quant_backend and name.endswith("_sse4_1.cpp"))
-                    or (is_common_quant_backend and name.endswith("_sse4_1.cpp"))
-                    or (is_common_storage_backend and name.endswith("_sse4_1.cpp"))
+                    (is_dequant_backend and "sse4_1" in parts)
+                    or (is_quant_backend and "sse4_1" in parts)
+                    or (is_common_quant_backend and "sse4_1" in parts)
+                    or (is_common_storage_backend and "sse4_1" in parts)
                 )
                 and self.compiler.compiler_type != "msvc"
             ):

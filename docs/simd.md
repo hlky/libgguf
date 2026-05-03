@@ -5,7 +5,7 @@
 `libgguf` keeps SIMD code in backend-specific translation units and builds one portable extension/shared library. Runtime dispatch chooses the best available backend after CPU feature checks.
 
 - Scalar/reference code must remain available for every supported qtype.
-- SSE2, SSE4.1, and AVX2 kernels live in backend-specific files named like `csrc/quant/dequant_<qtype>_<backend>.cpp` or `csrc/quant/quant_<qtype>_<backend>.cpp`.
+- SSE2, SSE4.1, and AVX2 kernels live in backend-specific directories named like `csrc/dequant/<backend>/<qtype>.cpp` or `csrc/quant/<backend>/<qtype>.cpp`.
 - AVX2 files are compiled with `/arch:AVX2` on MSVC or `-mavx2` elsewhere.
 - SSE2 and SSE4.1 files get per-source flags on non-MSVC builds. Do not add global `-msse*`, `-mavx2`, or `/arch:AVX2` flags.
 - Keep source lists in `scripts/native_sources.py`; both `setup.py` and `scripts/build_libgguf.py` consume that list.

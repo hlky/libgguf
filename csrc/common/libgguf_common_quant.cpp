@@ -104,11 +104,11 @@ static const libgguf_common_quant_backend_fns REF_BACKEND = {
     best_index_mxfp4,
     nearest_int,
     get_scale_min_k4,
-    libgguf_make_qx_quants_ref,
-    libgguf_make_q3_quants_ref,
-    libgguf_make_qkx2_quants_ref,
-    libgguf_make_qkx3_quants_ref,
-    libgguf_make_qp_quants_ref,
+    libgguf_make_qx_quants,
+    libgguf_make_q3_quants,
+    libgguf_make_qkx2_quants,
+    libgguf_make_qkx3_quants,
+    libgguf_make_qp_quants,
 };
 
 static const libgguf_common_quant_backend_fns *libgguf_common_quant_backend_for_name(const char *backend)
