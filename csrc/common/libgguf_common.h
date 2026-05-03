@@ -344,8 +344,60 @@ static inline int nearest_int(float fval)
   return (i & 0x007fffff) - 0x00400000;
 }
 
-static float make_qx_quants(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, int rmse_type,
-                            const float *RESTRICT qw)
+typedef float (*libgguf_make_qx_quants_fn)(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, int rmse_type,
+                                           const float *RESTRICT qw);
+typedef float (*libgguf_make_q3_quants_fn)(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, bool do_rmse);
+typedef float (*libgguf_make_qkx_quants_fn)(int n, int nmax, const float *RESTRICT x, const float *RESTRICT weights,
+                                            uint8_t *RESTRICT L, float *RESTRICT the_min, uint8_t *RESTRICT Laux,
+                                            float rmin, float rdelta, int nstep, bool use_mad);
+typedef float (*libgguf_make_qp_quants_fn)(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L,
+                                           const float *quant_weights);
+typedef float (*libgguf_fp16_to_fp32_fn)(ggml_fp16_t h);
+typedef ggml_fp16_t (*libgguf_fp32_to_fp16_fn)(float f);
+typedef float (*libgguf_bf16_to_fp32_fn)(ggml_bf16_t h);
+typedef ggml_bf16_t (*libgguf_fp32_to_bf16_fn)(float f);
+typedef float (*libgguf_e8m0_to_fp32_fn)(uint8_t x);
+typedef float (*libgguf_ue4m3_to_fp32_fn)(uint8_t x);
+typedef uint8_t (*libgguf_fp32_to_ue4m3_fn)(float x);
+typedef int (*libgguf_best_index_int8_fn)(int n, const int8_t *val, float x);
+typedef int (*libgguf_best_index_mxfp4_fn)(float x, float e);
+typedef int (*libgguf_nearest_int_fn)(float fval);
+typedef void (*libgguf_get_scale_min_k4_fn)(int j, const uint8_t *RESTRICT q, uint8_t *RESTRICT d, uint8_t *RESTRICT m);
+
+extern "C" const char *libgguf_common_quant_backend(void);
+extern "C" int libgguf_common_quant_cpu_supports_backend(const char *backend);
+extern "C" int libgguf_common_quant_set_backend(const char *backend);
+extern "C" uint64_t libgguf_common_quant_probe_for_backend(const char *backend);
+extern "C" float libgguf_fp16_to_fp32_dispatch(ggml_fp16_t h);
+extern "C" ggml_fp16_t libgguf_fp32_to_fp16_dispatch(float f);
+extern "C" float libgguf_bf16_to_fp32_dispatch(ggml_bf16_t h);
+extern "C" ggml_bf16_t libgguf_fp32_to_bf16_dispatch(float f);
+extern "C" float libgguf_e8m0_to_fp32_dispatch(uint8_t x);
+extern "C" float libgguf_e8m0_to_fp32_half_dispatch(uint8_t x);
+extern "C" float libgguf_ue4m3_to_fp32_dispatch(uint8_t x);
+extern "C" uint8_t libgguf_fp32_to_ue4m3_dispatch(float x);
+extern "C" int libgguf_best_index_int8_dispatch(int n, const int8_t *val, float x);
+extern "C" int libgguf_best_index_mxfp4_dispatch(float x, float e);
+extern "C" int libgguf_nearest_int_dispatch(float fval);
+extern "C" void libgguf_get_scale_min_k4_dispatch(int j, const uint8_t *RESTRICT q, uint8_t *RESTRICT d,
+                                                   uint8_t *RESTRICT m);
+extern "C" float libgguf_make_qx_quants_dispatch(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
+                                                  int rmse_type, const float *RESTRICT qw);
+extern "C" float libgguf_make_q3_quants_dispatch(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
+                                                  bool do_rmse);
+extern "C" float libgguf_make_qkx2_quants_dispatch(int n, int nmax, const float *RESTRICT x,
+                                                    const float *RESTRICT weights, uint8_t *RESTRICT L,
+                                                    float *RESTRICT the_min, uint8_t *RESTRICT Laux,
+                                                    float rmin, float rdelta, int nstep, bool use_mad);
+extern "C" float libgguf_make_qkx3_quants_dispatch(int n, int nmax, const float *RESTRICT x,
+                                                    const float *RESTRICT weights, uint8_t *RESTRICT L,
+                                                    float *RESTRICT the_min, uint8_t *RESTRICT Laux,
+                                                    float rmin, float rdelta, int nstep, bool use_mad);
+extern "C" float libgguf_make_qp_quants_dispatch(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L,
+                                                  const float *quant_weights);
+
+static float libgguf_make_qx_quants_ref(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, int rmse_type,
+                                        const float *RESTRICT qw)
 {
   float max = 0;
   float amax = 0;
@@ -439,7 +491,7 @@ static float make_qx_quants(int n, int nmax, const float *RESTRICT x, int8_t *RE
   return scale;
 }
 
-static float make_q3_quants(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, bool do_rmse)
+static float libgguf_make_q3_quants_ref(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, bool do_rmse)
 {
   float max = 0;
   float amax = 0;
@@ -520,9 +572,9 @@ static float make_q3_quants(int n, int nmax, const float *RESTRICT x, int8_t *RE
   return 1 / iscale;
 }
 
-static float make_qkx2_quants(int n, int nmax, const float *RESTRICT x, const float *RESTRICT weights,
-                              uint8_t *RESTRICT L, float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                              float rmin, float rdelta, int nstep, bool use_mad)
+static float libgguf_make_qkx2_quants_ref(int n, int nmax, const float *RESTRICT x, const float *RESTRICT weights,
+                                          uint8_t *RESTRICT L, float *RESTRICT the_min, uint8_t *RESTRICT Laux,
+                                          float rmin, float rdelta, int nstep, bool use_mad)
 {
   float min = x[0];
   float max = x[0];
@@ -635,9 +687,9 @@ static inline void get_scale_min_k4(int j, const uint8_t *RESTRICT q, uint8_t *R
 //========================- 2-bit (de)-quantization
 
 
-static float make_qkx3_quants(int n, int nmax, const float *RESTRICT x, const float *RESTRICT weights,
-                              uint8_t *RESTRICT L, float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                              float rmin, float rdelta, int nstep, bool use_mad)
+static float libgguf_make_qkx3_quants_ref(int n, int nmax, const float *RESTRICT x, const float *RESTRICT weights,
+                                          uint8_t *RESTRICT L, float *RESTRICT the_min, uint8_t *RESTRICT Laux,
+                                          float rmin, float rdelta, int nstep, bool use_mad)
 {
   float min = x[0];
   float max = x[0];
@@ -734,7 +786,8 @@ static float make_qkx3_quants(int n, int nmax, const float *RESTRICT x, const fl
   return scale;
 }
 
-static float make_qp_quants(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L, const float *quant_weights)
+static float libgguf_make_qp_quants_ref(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L,
+                                        const float *quant_weights)
 {
   float max = 0;
   for (int i = 0; i < n; ++i)
@@ -826,5 +879,36 @@ static float make_qp_quants(int n, int nmax, const float *RESTRICT x, uint8_t *R
     }
   }
   return suml2 > 0.0f ? sumlx / suml2 : 0.0f;
+}
+
+static inline float make_qx_quants(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, int rmse_type,
+                                   const float *RESTRICT qw)
+{
+  return libgguf_make_qx_quants_dispatch(n, nmax, x, L, rmse_type, qw);
+}
+
+static inline float make_q3_quants(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L, bool do_rmse)
+{
+  return libgguf_make_q3_quants_dispatch(n, nmax, x, L, do_rmse);
+}
+
+static inline float make_qkx2_quants(int n, int nmax, const float *RESTRICT x, const float *RESTRICT weights,
+                                     uint8_t *RESTRICT L, float *RESTRICT the_min, uint8_t *RESTRICT Laux,
+                                     float rmin, float rdelta, int nstep, bool use_mad)
+{
+  return libgguf_make_qkx2_quants_dispatch(n, nmax, x, weights, L, the_min, Laux, rmin, rdelta, nstep, use_mad);
+}
+
+static inline float make_qkx3_quants(int n, int nmax, const float *RESTRICT x, const float *RESTRICT weights,
+                                     uint8_t *RESTRICT L, float *RESTRICT the_min, uint8_t *RESTRICT Laux,
+                                     float rmin, float rdelta, int nstep, bool use_mad)
+{
+  return libgguf_make_qkx3_quants_dispatch(n, nmax, x, weights, L, the_min, Laux, rmin, rdelta, nstep, use_mad);
+}
+
+static inline float make_qp_quants(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L,
+                                   const float *quant_weights)
+{
+  return libgguf_make_qp_quants_dispatch(n, nmax, x, L, quant_weights);
 }
 

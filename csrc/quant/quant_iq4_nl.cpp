@@ -1,5 +1,14 @@
 #include "libgguf_common.h"
+#include "common/libgguf_cpu.h"
 #include "libgguf_tables.h"
+
+#include <cstring>
+
+typedef void (*libgguf_iq4_nl_kernel_fn)(const float *RESTRICT, block_iq4_nl *RESTRICT, int64_t);
+
+extern "C" void quantize_row_iq4_nl_sse2(const float *RESTRICT x, block_iq4_nl *RESTRICT y, int64_t k);
+extern "C" void quantize_row_iq4_nl_sse4_1(const float *RESTRICT x, block_iq4_nl *RESTRICT y, int64_t k);
+extern "C" void quantize_row_iq4_nl_avx2(const float *RESTRICT x, block_iq4_nl *RESTRICT y, int64_t k);
 
 static void quantize_row_iq4_nl_impl(const int super_block_size, const int block_size, const float *RESTRICT x,
                                      ggml_fp16_t *dh, uint8_t *q4, uint16_t *scales_h, uint8_t *scales_l,
@@ -185,3 +194,45 @@ void quantize_row_iq4_nl_ref(const float *RESTRICT x, block_iq4_nl *RESTRICT y, 
   }
 }
 
+static libgguf_iq4_nl_kernel_fn libgguf_iq4_nl_kernel_for_backend(const char *backend)
+{
+  const libgguf_cpu_features &features = libgguf_get_cpu_features();
+  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
+  {
+    return quantize_row_iq4_nl_ref;
+  }
+  if (std::strcmp(backend, "sse2") == 0 && features.sse2)
+  {
+    return quantize_row_iq4_nl_sse2;
+  }
+  if (std::strcmp(backend, "sse4_1") == 0 && features.sse4_1)
+  {
+    return quantize_row_iq4_nl_sse4_1;
+  }
+  if (std::strcmp(backend, "avx2") == 0 && features.avx2)
+  {
+    return quantize_row_iq4_nl_avx2;
+  }
+  return nullptr;
+}
+
+extern "C" int libgguf_iq4_nl_cpu_supports_backend(const char *backend)
+{
+  return libgguf_iq4_nl_kernel_for_backend(backend) ? 1 : 0;
+}
+
+extern "C" size_t libgguf_quantize_iq4_nl_for_backend(
+    const char *backend,
+    const float *RESTRICT src,
+    void *RESTRICT dst,
+    int64_t nrows,
+    int64_t n_per_row)
+{
+  libgguf_iq4_nl_kernel_fn kernel = libgguf_iq4_nl_kernel_for_backend(backend);
+  if (!kernel)
+  {
+    return 0;
+  }
+  kernel(src, (block_iq4_nl *)dst, (int64_t)nrows * n_per_row);
+  return nrows * libgguf_row_size(GGML_TYPE_IQ4_NL, n_per_row);
+}

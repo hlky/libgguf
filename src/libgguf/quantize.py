@@ -173,7 +173,10 @@ SUPPORTED_QUANT_QTYPES = {
 SUPPORTED_STORAGE_QTYPES = SUPPORTED_QUANT_QTYPES | {"F32", "F16", "BF16"}
 
 FILE_TYPE_ALIASES = {
+    "Q3_K": "Q3_K_M",
     "Q4_K": "Q4_K_M",
+    "Q5_K": "Q5_K_M",
+    "MXFP4": "MXFP4_MOE",
 }
 
 FILE_TYPE_TO_TENSOR_QTYPE = {
@@ -185,6 +188,7 @@ FILE_TYPE_TO_TENSOR_QTYPE = {
     "Q5_K_S": "Q5_K",
     "Q5_K_M": "Q5_K",
     "Q2_K_S": "Q2_K",
+    "MXFP4_MOE": "MXFP4",
     "IQ2_M": "IQ2_S",
     "IQ3_M": "IQ3_S",
 }
@@ -533,8 +537,10 @@ def _add_tensor_info(writer: Any, gguf: Any, key: str, shape: tuple[int, ...], q
     )
 
 
-def _unquantized_tensor_data(gguf: Any, torch: Any, tensor: Any, qtype: Any) -> np.ndarray:
+def _unquantized_tensor_data(gguf: Any, libgguf: Any, torch: Any, tensor: Any, qtype: Any) -> np.ndarray:
     data = _to_numpy_for_qtype(torch, gguf, tensor, qtype)
+    if qtype in {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16, gguf.GGMLQuantizationType.BF16}:
+        return libgguf.store_rows(data, qtype)
     return gguf.quants.quantize(data, qtype)
 
 
@@ -682,7 +688,7 @@ def convert_to_gguf(
                 if plan.quantize:
                     data = _quantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype, plan.imatrix)
                 else:
-                    data = _unquantized_tensor_data(gguf, torch, tensor, plan.target_qtype)
+                    data = _unquantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype)
                 writer.write_tensor_data(data)
                 del data, tensor
         finally:

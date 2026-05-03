@@ -1,7 +1,6 @@
 #include "common/libgguf_common.h"
 #include "common/libgguf_cpu.h"
 
-#include <cstdlib>
 #include <cstring>
 
 typedef void (*libgguf_dequant_kernel_fn)(const void *RESTRICT, float *RESTRICT, int64_t);
@@ -111,13 +110,6 @@ WRAP_KERNEL(q8_0, avx2, block_q8_0)
 
 #undef WRAP_KERNEL
 
-#define SELECT_FORCED(name, backend_name)                         \
-  if (std::strcmp(forced, #backend_name) == 0 &&                  \
-      libgguf_dequant_backend_supported(#backend_name))           \
-  {                                                               \
-    return {#backend_name, libgguf_dequant_##name##_##backend_name##_wrap}; \
-  }
-
 #define SELECT_DEFAULT(name, backend_name)                         \
   if (std::strcmp(preferred, #backend_name) == 0 &&                \
       libgguf_dequant_backend_supported(#backend_name))            \
@@ -128,15 +120,7 @@ WRAP_KERNEL(q8_0, avx2, block_q8_0)
 #define DEFINE_SELECTION(upper, name, block_type, default_backend)                      \
   static libgguf_dequant_selection libgguf_dequant_##name##_select_kernel()             \
   {                                                                                     \
-    const char *forced = std::getenv("LIBGGUF_DEQUANT_" #upper "_BACKEND");            \
     const libgguf_cpu_features &features = libgguf_get_cpu_features();                  \
-    if (forced != nullptr && forced[0] != '\0')                                         \
-    {                                                                                   \
-      SELECT_FORCED(name, ref)                                                          \
-      SELECT_FORCED(name, sse2)                                                         \
-      SELECT_FORCED(name, sse4_1)                                                       \
-      SELECT_FORCED(name, avx2)                                                         \
-    }                                                                                   \
     const char *preferred = #default_backend;                                           \
     SELECT_DEFAULT(name, ref)                                                           \
     SELECT_DEFAULT(name, sse2)                                                          \
@@ -172,7 +156,6 @@ LIBGGUF_DEQUANT_TYPES(DEFINE_SELECTION)
 
 #undef DEFINE_SELECTION
 #undef SELECT_DEFAULT
-#undef SELECT_FORCED
 
 static const char *libgguf_dequant_selected_backend(enum ggml_type type)
 {
@@ -266,4 +249,3 @@ extern "C" size_t libgguf_dequantize_for_backend(
   kernel(src, dst, nrows * n_per_row);
   return (size_t)nrows * (size_t)n_per_row * sizeof(float);
 }
-

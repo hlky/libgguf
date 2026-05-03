@@ -24,6 +24,7 @@ REQUIRED_EXTENSION_FUNCTIONS = (
     "quantize_rows_raw",
     "quantize_rows_into_raw",
     "row_size",
+    "store_rows",
     "type_name",
     "type_size",
 )
@@ -69,6 +70,63 @@ SUPPORTED_LIBGGUF_QTYPES = (
 def test_libgguf_extension_imports() -> None:
     for name in REQUIRED_EXTENSION_FUNCTIONS:
         assert hasattr(libgguf, name), f"missing libgguf.{name}"
+
+
+def test_libgguf_store_rows_matches_plain_storage_formats() -> None:
+    rows = np.array(
+        [
+            [0.0, -0.0, 1.0, -2.0, 0.1, 65504.0, 1.0e-8],
+            [np.inf, -np.inf, np.nan, -3.5, 42.25, -1000.0, 3.1415927],
+        ],
+        dtype=np.float32,
+    )
+
+    stored_f32 = libgguf.store_rows(rows, 0)
+    assert stored_f32.dtype == np.float32
+    assert stored_f32.shape == rows.shape
+    np.testing.assert_array_equal(stored_f32.view(np.uint32), rows.view(np.uint32))
+
+    stored_f16 = libgguf.store_rows(rows, 1)
+    assert stored_f16.dtype == np.float16
+    assert stored_f16.shape == rows.shape
+    np.testing.assert_array_equal(stored_f16.view(np.uint16), rows.astype(np.float16).view(np.uint16))
+
+    bits = rows.view(np.uint32)
+    high = bits >> 16
+    expected_bf16 = np.where(
+        (bits & np.uint32(0x7FFFFFFF)) > np.uint32(0x7F800000),
+        high | np.uint32(64),
+        (bits + (np.uint32(0x7FFF) + (high & np.uint32(1)))) >> np.uint32(16),
+    ).astype(np.uint16)
+
+    stored_bf16 = libgguf.store_rows(rows, 30)
+    assert stored_bf16.dtype == np.uint8
+    assert stored_bf16.shape == (*rows.shape[:-1], rows.shape[-1] * 2)
+    np.testing.assert_array_equal(stored_bf16.view(np.uint16).reshape(rows.shape), expected_bf16)
+
+
+def test_libgguf_storage_backends_match_reference() -> None:
+    rows = np.array(
+        [
+            [0.0, -0.0, 1.0, -2.0, 0.1, 65504.0, 1.0e-8, np.inf, -np.inf],
+            [np.nan, -3.5, 42.25, -1000.0, 3.1415927, 1.5, -7.25, 2.0e-4, -2.0e-4],
+        ],
+        dtype=np.float32,
+    )
+
+    try:
+        _libgguf._storage_set_backend("ref")
+        expected = libgguf.store_rows(rows, 30).tobytes()
+
+        for backend in ("sse2", "sse4_1", "avx2"):
+            if not _libgguf._storage_cpu_supports_backend(backend):
+                continue
+            _libgguf._storage_set_backend(backend)
+            assert _libgguf._storage_backend() == backend
+            actual = libgguf.store_rows(rows, 30).tobytes()
+            assert actual == expected, backend
+    finally:
+        _libgguf._storage_set_backend("auto")
 
 
 @pytest.fixture(scope="session")
@@ -289,59 +347,6 @@ def test_libgguf_dequantize_rows_into_raw_rejects_small_destination() -> None:
         libgguf.dequantize_rows_into_raw(qtype, quantized, dst, rows.shape[0], rows.shape[1])
 
 
-@pytest.mark.parametrize(
-    ("qtype", "env_name"),
-    [
-        (GGMLQuantizationType.Q4_0, "LIBGGUF_DEQUANT_Q4_0_BACKEND"),
-        (GGMLQuantizationType.Q8_0, "LIBGGUF_DEQUANT_Q8_0_BACKEND"),
-        (GGMLQuantizationType.Q5_1, "LIBGGUF_DEQUANT_Q5_1_BACKEND"),
-        (GGMLQuantizationType.Q4_K, "LIBGGUF_DEQUANT_Q4_K_BACKEND"),
-        (GGMLQuantizationType.TQ2_0, "LIBGGUF_DEQUANT_TQ2_0_BACKEND"),
-        (GGMLQuantizationType.IQ2_XS, "LIBGGUF_DEQUANT_IQ2_XS_BACKEND"),
-    ],
-)
-def test_libgguf_dequant_simd_backends_match_reference(qtype: GGMLQuantizationType, env_name: str) -> None:
-    block_size = GGML_FORMAT_INFO[qtype].block_size
-    child = f"""
-import hashlib
-import numpy as np
-import libgguf
-
-qtype = {int(qtype)}
-block_size = {block_size}
-rows = np.linspace(-2.0, 2.0, 257 * block_size, dtype=np.float32).reshape(257, block_size)
-if libgguf.quantize_requires_imatrix(qtype):
-    imatrix = np.sum(rows * rows, axis=0, dtype=np.float32)
-else:
-    imatrix = None
-quantized = libgguf.quantize_rows(rows, qtype, imatrix=imatrix)
-dequantized = libgguf.dequantize_rows(quantized, qtype)
-print(hashlib.sha256(dequantized.tobytes()).hexdigest())
-"""
-    env = os.environ.copy()
-    src_dir = Path(__file__).resolve().parents[1] / "src"
-    env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
-    env[env_name] = "ref"
-    expected = subprocess.run(
-        [sys.executable, "-c", child],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=env,
-    ).stdout.strip()
-
-    for backend in ("sse2", "sse4_1", "avx2"):
-        env[env_name] = backend
-        actual = subprocess.run(
-            [sys.executable, "-c", child],
-            check=True,
-            capture_output=True,
-            text=True,
-            env=env,
-        ).stdout.strip()
-        assert actual == expected
-
-
 @pytest.mark.parametrize("qtype", SUPPORTED_LIBGGUF_QTYPES)
 def test_libgguf_dequant_supported_backends_match_reference(qtype: GGMLQuantizationType) -> None:
     info = GGML_FORMAT_INFO[qtype]
@@ -401,7 +406,7 @@ def test_libgguf_q4_0_matches_scalar_reference() -> None:
 def test_libgguf_q4_0_runtime_backend_is_supported() -> None:
     backend = _libgguf._q4_0_backend()
 
-    assert backend in {"ref", "sse2", "avx2"}
+    assert backend in {"ref", "sse2", "sse4_1", "avx2"}
     assert _libgguf._q4_0_cpu_supports_backend(backend)
 
 
@@ -414,31 +419,10 @@ def test_libgguf_q4_0_supported_backends_match_reference() -> None:
     rows[0, 4] = -3.0
     expected = _libgguf._quantize_q4_0_for_backend("ref", rows, rows.shape[0], rows.shape[1])
 
-    for backend in ("sse2", "avx2"):
+    for backend in ("sse2", "sse4_1", "avx2"):
         if _libgguf._q4_0_cpu_supports_backend(backend):
             actual = _libgguf._quantize_q4_0_for_backend(backend, rows, rows.shape[0], rows.shape[1])
             assert actual == expected
-
-
-def test_libgguf_q4_0_forced_ref_backend_via_environment() -> None:
-    env = os.environ.copy()
-    src_dir = Path(__file__).resolve().parents[1] / "src"
-    env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
-    env["LIBGGUF_Q4_0_BACKEND"] = "ref"
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from libgguf import _libgguf; print(_libgguf._q4_0_backend())",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-    assert result.stdout.strip() == "ref"
 
 
 def test_libgguf_q8_0_matches_scalar_reference() -> None:
@@ -465,7 +449,7 @@ def test_libgguf_q8_0_matches_scalar_reference() -> None:
 def test_libgguf_q8_0_runtime_backend_is_supported() -> None:
     backend = _libgguf._q8_0_backend()
 
-    assert backend in {"ref", "sse2", "avx2"}
+    assert backend in {"ref", "sse2", "sse4_1", "avx2"}
     assert _libgguf._q8_0_cpu_supports_backend(backend)
 
 
@@ -475,31 +459,204 @@ def test_libgguf_q8_0_supported_backends_match_reference() -> None:
     rows = np.linspace(-2.0, 2.0, 7 * info.block_size, dtype=np.float32).reshape(7, info.block_size)
     expected = _libgguf._quantize_q8_0_for_backend("ref", rows, rows.shape[0], rows.shape[1])
 
-    for backend in ("sse2", "avx2"):
+    for backend in ("sse2", "sse4_1", "avx2"):
         if _libgguf._q8_0_cpu_supports_backend(backend):
             actual = _libgguf._quantize_q8_0_for_backend(backend, rows, rows.shape[0], rows.shape[1])
             assert actual == expected
 
 
-def test_libgguf_q8_0_forced_ref_backend_via_environment() -> None:
-    env = os.environ.copy()
-    src_dir = Path(__file__).resolve().parents[1] / "src"
-    env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
-    env["LIBGGUF_Q8_0_BACKEND"] = "ref"
+def test_libgguf_simple_quant_supported_backends_match_reference() -> None:
+    cases = [
+        (
+            GGMLQuantizationType.Q1_0,
+            _libgguf._q1_0_cpu_supports_backend,
+            _libgguf._quantize_q1_0_for_backend,
+        ),
+        (
+            GGMLQuantizationType.Q4_1,
+            _libgguf._q4_1_cpu_supports_backend,
+            _libgguf._quantize_q4_1_for_backend,
+        ),
+        (
+            GGMLQuantizationType.Q5_0,
+            _libgguf._q5_0_cpu_supports_backend,
+            _libgguf._quantize_q5_0_for_backend,
+        ),
+        (
+            GGMLQuantizationType.Q5_1,
+            _libgguf._q5_1_cpu_supports_backend,
+            _libgguf._quantize_q5_1_for_backend,
+        ),
+        (
+            GGMLQuantizationType.MXFP4,
+            _libgguf._mxfp4_cpu_supports_backend,
+            _libgguf._quantize_mxfp4_for_backend,
+        ),
+        (
+            GGMLQuantizationType.NVFP4,
+            _libgguf._nvfp4_cpu_supports_backend,
+            _libgguf._quantize_nvfp4_for_backend,
+        ),
+    ]
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from libgguf import _libgguf; print(_libgguf._q8_0_backend())",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    for qtype, supports_backend, quantize_for_backend in cases:
+        info = GGML_FORMAT_INFO[qtype]
+        rows = np.linspace(-2.0, 2.0, 5 * info.block_size, dtype=np.float32).reshape(5, info.block_size)
+        rows[0] = 0.0
+        rows[1, ::3] *= np.float32(-1.75)
+        rows[2, 1::5] += np.float32(0.125)
+        expected = quantize_for_backend("ref", rows, rows.shape[0], rows.shape[1])
 
-    assert result.stdout.strip() == "ref"
+        for backend in ("sse2", "sse4_1", "avx2"):
+            if supports_backend(backend):
+                actual = quantize_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+                assert actual == expected, f"{qtype.name}/{backend}"
+
+
+def test_libgguf_q4_k_supported_backends_match_reference() -> None:
+    qtype = GGMLQuantizationType.Q4_K
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 3 * info.block_size, dtype=np.float32).reshape(3, info.block_size)
+    rows[0] = 0.0
+    rows[1, ::17] *= -3.0
+    expected = _libgguf._quantize_q4_k_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+    for backend in ("sse2", "sse4_1", "avx2"):
+        if _libgguf._q4_k_cpu_supports_backend(backend):
+            actual = _libgguf._quantize_q4_k_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+            assert actual == expected
+
+
+def test_libgguf_k_quant_supported_backends_match_reference() -> None:
+    cases = [
+        (GGMLQuantizationType.Q2_K, _libgguf._q2_k_cpu_supports_backend, _libgguf._quantize_q2_k_for_backend),
+        (GGMLQuantizationType.Q3_K, _libgguf._q3_k_cpu_supports_backend, _libgguf._quantize_q3_k_for_backend),
+        (GGMLQuantizationType.Q5_K, _libgguf._q5_k_cpu_supports_backend, _libgguf._quantize_q5_k_for_backend),
+        (GGMLQuantizationType.Q6_K, _libgguf._q6_k_cpu_supports_backend, _libgguf._quantize_q6_k_for_backend),
+    ]
+    for qtype, supports_backend, quantize_for_backend in cases:
+        info = GGML_FORMAT_INFO[qtype]
+        rows = np.linspace(-2.0, 2.0, 4 * info.block_size, dtype=np.float32).reshape(4, info.block_size)
+        rows[0] = 0.0
+        rows[1, ::7] *= np.float32(-1.75)
+        rows[2, 3::11] += np.float32(0.25)
+        expected = quantize_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+        for backend in ("sse2", "sse4_1", "avx2"):
+            if not supports_backend(backend):
+                continue
+            actual = quantize_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+            assert actual == expected, f"{qtype.name}/{backend}"
+
+
+def test_libgguf_tq2_0_supported_backends_match_reference() -> None:
+    qtype = GGMLQuantizationType.TQ2_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-1.0, 1.0, 3 * info.block_size, dtype=np.float32).reshape(3, info.block_size)
+    expected = _libgguf._quantize_tq2_0_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+    assert _libgguf._tq2_0_backend() in {"ref", "sse2", "sse4_1", "avx2"}
+    for backend in ("sse2", "sse4_1", "avx2"):
+        if _libgguf._tq2_0_cpu_supports_backend(backend):
+            actual = _libgguf._quantize_tq2_0_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+            assert actual == expected
+
+
+def test_libgguf_tq1_0_supported_backends_match_reference() -> None:
+    qtype = GGMLQuantizationType.TQ1_0
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 5 * info.block_size, dtype=np.float32).reshape(5, info.block_size)
+    rows[0] = 0.0
+    rows[1, ::3] *= -1.0
+    rows[2, 5::17] += np.float32(0.5)
+    expected = _libgguf._quantize_tq1_0_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+    assert _libgguf._tq1_0_backend() in {"ref", "sse2", "sse4_1", "avx2"}
+    for backend in ("sse2", "sse4_1", "avx2"):
+        if not _libgguf._tq1_0_cpu_supports_backend(backend):
+            continue
+        actual = _libgguf._quantize_tq1_0_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+        assert actual == expected
+
+
+def test_libgguf_iq4_nl_supported_backends_match_reference() -> None:
+    qtype = GGMLQuantizationType.IQ4_NL
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 5 * info.block_size, dtype=np.float32).reshape(5, info.block_size)
+    rows[0] = 0.0
+    rows[0, 0] = 0.75
+    expected = _libgguf._quantize_iq4_nl_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+    for backend in ("sse2", "sse4_1", "avx2"):
+        if _libgguf._iq4_nl_cpu_supports_backend(backend):
+            actual = _libgguf._quantize_iq4_nl_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+            assert actual == expected
+
+
+def test_libgguf_iq4_xs_supported_backends_match_reference() -> None:
+    qtype = GGMLQuantizationType.IQ4_XS
+    info = GGML_FORMAT_INFO[qtype]
+    rows = np.linspace(-2.0, 2.0, 4 * info.block_size, dtype=np.float32).reshape(4, info.block_size)
+    rows[0] = 0.0
+    rows[1, ::7] *= -1.5
+    rows[2, 3::11] += np.float32(0.25)
+    expected = _libgguf._quantize_iq4_xs_for_backend("ref", rows, rows.shape[0], rows.shape[1])
+
+    for backend in ("sse2", "sse4_1", "avx2"):
+        if not _libgguf._iq4_xs_cpu_supports_backend(backend):
+            continue
+        actual = _libgguf._quantize_iq4_xs_for_backend(backend, rows, rows.shape[0], rows.shape[1])
+        assert actual == expected
+
+
+def test_libgguf_common_quant_supported_backends_match_reference() -> None:
+    cases = [
+        (2, 32, False),
+        (2, 32, True),
+        (3, 32, True),
+        (6, 32, True),
+        (7, 32, True),
+        (10, 256, False),
+        (10, 256, True),
+        (11, 256, False),
+        (11, 256, True),
+        (12, 256, False),
+        (12, 256, True),
+        (13, 256, False),
+        (13, 256, True),
+        (14, 256, False),
+        (14, 256, True),
+    ]
+
+    def run_backend(backend: str) -> list[bytes]:
+        _libgguf._common_quant_set_backend(backend)
+        assert _libgguf._common_quant_backend() == backend
+        parts = []
+        for index, (qtype, block, weighted) in enumerate(cases):
+            rows = np.linspace(-2.5, 2.5, 3 * block, dtype=np.float32).reshape(3, block)
+            rows[0] = 0.0
+            rows[0, index % block] = np.float32(1.25)
+            rows[1, ::7] *= np.float32(-3.0)
+            rows[2, 1::5] += np.float32(0.125)
+            imatrix = np.linspace(0.25, 1.75, block, dtype=np.float32) if weighted else None
+            parts.append(libgguf.quantize_rows_raw(qtype, rows, rows.shape[0], rows.shape[1], imatrix))
+        return parts
+
+    try:
+        expected = run_backend("ref")
+        for backend in ("sse2", "sse4_1", "avx2"):
+            if _libgguf._common_quant_cpu_supports_backend(backend):
+                assert run_backend(backend) == expected
+    finally:
+        _libgguf._common_quant_set_backend("ref")
+
+
+def test_libgguf_common_small_helpers_match_reference() -> None:
+    expected = _libgguf._common_quant_probe_for_backend("ref")
+
+    for backend in ("sse2", "sse4_1", "avx2"):
+        if _libgguf._common_quant_cpu_supports_backend(backend):
+            assert _libgguf._common_quant_probe_for_backend(backend) == expected
 
 
 def test_libgguf_builds_do_not_use_global_avx2_flags() -> None:

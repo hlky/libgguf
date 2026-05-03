@@ -19,6 +19,10 @@ import libgguf
 from libgguf import _libgguf
 
 
+BACKENDS = ("ref", "sse2", "sse4_1", "avx2")
+
+# Non-IQ private dequant coverage only. IQ qtypes are intentionally omitted
+# from this standardized sweep.
 QTYPES: dict[str, int] = {
     "Q1_0": 41,
     "Q4_0": 2,
@@ -31,15 +35,6 @@ QTYPES: dict[str, int] = {
     "Q4_K": 12,
     "Q5_K": 13,
     "Q6_K": 14,
-    "IQ2_XXS": 16,
-    "IQ2_XS": 17,
-    "IQ3_XXS": 18,
-    "IQ1_S": 19,
-    "IQ4_NL": 20,
-    "IQ3_S": 21,
-    "IQ2_S": 22,
-    "IQ4_XS": 23,
-    "IQ1_M": 29,
     "TQ1_0": 34,
     "TQ2_0": 35,
     "MXFP4": 39,
@@ -57,15 +52,6 @@ BLOCK_SIZES: dict[int, int] = {
     12: 256,
     13: 256,
     14: 256,
-    16: 256,
-    17: 256,
-    18: 256,
-    19: 256,
-    20: 32,
-    21: 256,
-    22: 256,
-    23: 256,
-    29: 256,
     34: 256,
     35: 256,
     39: 32,
@@ -74,12 +60,22 @@ BLOCK_SIZES: dict[int, int] = {
 }
 
 
-def parse_qtype(value: str) -> int:
-    key = value.upper()
-    if key not in QTYPES:
-        supported = ", ".join(sorted(QTYPES))
-        raise argparse.ArgumentTypeError(f"unsupported qtype {value!r}; supported: {supported}")
-    return QTYPES[key]
+def parse_csv(value: str, choices: tuple[str, ...] | list[str], label: str) -> list[str]:
+    if value.strip().lower() == "all":
+        return list(choices)
+    selected = []
+    valid = set(choices)
+    for item in value.split(","):
+        key = item.strip().lower() if label == "backend" else item.strip().upper()
+        if not key:
+            continue
+        if key not in valid:
+            supported = ", ".join(choices)
+            raise argparse.ArgumentTypeError(f"unsupported {label} {item!r}; supported: all,{supported}")
+        selected.append(key)
+    if not selected:
+        raise argparse.ArgumentTypeError(f"empty {label} list")
+    return selected
 
 
 def build_input(qtype: int, rows: int, n_per_row: int, seed: int) -> np.ndarray:
@@ -92,34 +88,10 @@ def build_input(qtype: int, rows: int, n_per_row: int, seed: int) -> np.ndarray:
     return libgguf.quantize_rows(source, qtype, imatrix=imatrix)
 
 
-def benchmark_backend(
-    qtype: int,
-    backend: str,
-    quantized: np.ndarray,
-    rows: int,
-    n_per_row: int,
-    iterations: int,
-) -> dict[str, float | str]:
-    _libgguf._dequantize_for_backend(qtype, backend, quantized, rows, n_per_row)
-    start = time.perf_counter()
-    for _ in range(iterations):
-        result = _libgguf._dequantize_for_backend(qtype, backend, quantized, rows, n_per_row)
-    elapsed = time.perf_counter() - start
-    bytes_per_iter = rows * n_per_row * 4
-    return {
-        "backend": backend,
-        "elapsed_s": elapsed / iterations,
-        "throughput_gib_s": bytes_per_iter * iterations / elapsed / (1024**3),
-        "bytes_per_iter": float(bytes_per_iter),
-        "checksum": float(np.frombuffer(result, dtype=np.float32, count=1)[0]),
-    }
-
-
 def summarize(samples: list[dict[str, float | str]], iterations: int) -> dict[str, float | str]:
     elapsed = [float(sample["elapsed_s"]) for sample in samples]
     throughput = [float(sample["throughput_gib_s"]) for sample in samples]
     return {
-        "backend": str(samples[0]["backend"]),
         "elapsed_ms_mean": statistics.mean(elapsed) * 1e3,
         "elapsed_ms_median": statistics.median(elapsed) * 1e3,
         "throughput_gib_s_mean": statistics.mean(throughput),
@@ -129,39 +101,103 @@ def summarize(samples: list[dict[str, float | str]], iterations: int) -> dict[st
     }
 
 
+def benchmark_backend(
+    qtype_name: str,
+    backend: str,
+    quantized: np.ndarray,
+    rows: int,
+    n_per_row: int,
+    iterations: int,
+    repetitions: int,
+) -> dict[str, float | str]:
+    qtype = QTYPES[qtype_name]
+    samples = []
+    checksum = 0.0
+    for _ in range(repetitions):
+        _libgguf._dequantize_for_backend(qtype, backend, quantized, rows, n_per_row)
+        start = time.perf_counter()
+        for _ in range(iterations):
+            result = _libgguf._dequantize_for_backend(qtype, backend, quantized, rows, n_per_row)
+        elapsed = time.perf_counter() - start
+        output = np.frombuffer(result, dtype=np.float32)
+        checksum = float(output[: min(16, output.size)].sum(dtype=np.float64))
+        samples.append(
+            {
+                "elapsed_s": elapsed / iterations,
+                "throughput_gib_s": rows * n_per_row * 4 * iterations / elapsed / (1024**3),
+            }
+        )
+    summary = summarize(samples, iterations)
+    summary.update({"qtype": qtype_name, "backend": backend, "method": "private_hook", "checksum": checksum})
+    return summary
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Benchmark libgguf dequant backends.")
-    parser.add_argument("--qtype", type=parse_qtype, required=True)
+    parser = argparse.ArgumentParser(description="Benchmark non-IQ libgguf dequant backends.")
+    parser.add_argument("--qtypes", default="all", help="Comma-separated qtypes or all. IQ qtypes are not included.")
+    parser.add_argument("--qtype", default=None, help="Deprecated alias for --qtypes.")
     parser.add_argument("--rows", type=int, default=2048)
     parser.add_argument("--n-per-row", type=int, default=0)
     parser.add_argument("--iterations", type=int, default=200)
     parser.add_argument("--repetitions", type=int, default=3)
-    parser.add_argument("--backends", type=str, default="ref,sse2,sse4_1,avx2")
+    parser.add_argument("--backends", type=str, default="all")
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
 
-    block_size = BLOCK_SIZES[args.qtype]
-    n_per_row = args.n_per_row or block_size * 8
-    if n_per_row % block_size != 0:
-        raise SystemExit(f"--n-per-row must be a multiple of {block_size} for this qtype")
+    qtype_arg = args.qtype if args.qtype is not None else args.qtypes
+    qtypes = parse_csv(qtype_arg, list(QTYPES), "qtype")
+    backends = parse_csv(args.backends, list(BACKENDS), "backend")
 
-    quantized = build_input(args.qtype, args.rows, n_per_row, args.seed)
-    backends = [backend.strip() for backend in args.backends.split(",") if backend.strip()]
+    benchmarks: list[dict[str, float | str]] = []
+    for qtype_name in qtypes:
+        block_size = BLOCK_SIZES[QTYPES[qtype_name]]
+        n_per_row = args.n_per_row or block_size * 8
+        if n_per_row % block_size != 0:
+            raise SystemExit(f"--n-per-row must be a multiple of {block_size} for {qtype_name}")
+        quantized = build_input(QTYPES[qtype_name], args.rows, n_per_row, args.seed)
+        for backend in backends:
+            if not _libgguf._dequant_cpu_supports_backend(backend):
+                benchmarks.append(
+                    {
+                        "qtype": qtype_name,
+                        "backend": backend,
+                        "method": "private_hook",
+                        "skipped": "unsupported CPU backend",
+                    }
+                )
+                continue
+            benchmarks.append(
+                benchmark_backend(
+                    qtype_name,
+                    backend,
+                    quantized,
+                    args.rows,
+                    n_per_row,
+                    args.iterations,
+                    args.repetitions,
+                )
+            )
 
-    summaries = {}
-    for backend in backends:
-        if not _libgguf._dequant_cpu_supports_backend(backend):
-            summaries[backend] = {"backend": backend, "skipped": "unsupported CPU backend"}
-            continue
-        runs = [
-            benchmark_backend(args.qtype, backend, quantized, args.rows, n_per_row, args.iterations)
-            for _ in range(args.repetitions)
-        ]
-        summaries[backend] = summarize(runs, args.iterations)
-
-    print(json.dumps({"benchmarks": summaries}, sort_keys=True, indent=2))
+    print(
+        json.dumps(
+            {
+                "config": {
+                    "qtypes": qtypes,
+                    "backends": backends,
+                    "rows": args.rows,
+                    "n_per_row": args.n_per_row,
+                    "iterations": args.iterations,
+                    "repetitions": args.repetitions,
+                    "seed": args.seed,
+                    "iq_qtypes": "ignored",
+                },
+                "benchmarks": benchmarks,
+            },
+            sort_keys=True,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
     main()
-

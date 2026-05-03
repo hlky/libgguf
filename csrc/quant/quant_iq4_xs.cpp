@@ -1,5 +1,14 @@
 #include "libgguf_common.h"
+#include "common/libgguf_cpu.h"
 #include "libgguf_tables.h"
+
+#include <cstring>
+
+typedef void (*libgguf_iq4_xs_kernel_fn)(const float *RESTRICT, block_iq4_xs *RESTRICT, int64_t);
+
+extern "C" void quantize_row_iq4_xs_sse2(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
+extern "C" void quantize_row_iq4_xs_sse4_1(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
+extern "C" void quantize_row_iq4_xs_avx2(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
 
 static void quantize_row_iq4_nl_impl(const int super_block_size, const int block_size, const float *RESTRICT x,
                                      ggml_fp16_t *dh, uint8_t *q4, uint16_t *scales_h, uint8_t *scales_l,
@@ -142,11 +151,55 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
   }
 }
 
+static libgguf_iq4_xs_kernel_fn libgguf_iq4_xs_kernel_for_backend(const char *backend)
+{
+  const libgguf_cpu_features &features = libgguf_get_cpu_features();
+  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
+  {
+    return quantize_row_iq4_xs_ref;
+  }
+  if (std::strcmp(backend, "sse2") == 0 && features.sse2)
+  {
+    return quantize_row_iq4_xs_sse2;
+  }
+  if (std::strcmp(backend, "sse4_1") == 0 && features.sse4_1)
+  {
+    return quantize_row_iq4_xs_sse4_1;
+  }
+  if (std::strcmp(backend, "avx2") == 0 && features.avx2)
+  {
+    return quantize_row_iq4_xs_avx2;
+  }
+  return nullptr;
+}
+
+extern "C" int libgguf_iq4_xs_cpu_supports_backend(const char *backend)
+{
+  return libgguf_iq4_xs_kernel_for_backend(backend) ? 1 : 0;
+}
+
+extern "C" size_t libgguf_quantize_iq4_xs_for_backend(
+    const char *backend,
+    const float *RESTRICT src,
+    void *RESTRICT dst,
+    int64_t nrows,
+    int64_t n_per_row)
+{
+  libgguf_iq4_xs_kernel_fn kernel = libgguf_iq4_xs_kernel_for_backend(backend);
+  if (!kernel)
+  {
+    return 0;
+  }
+  kernel(src, (block_iq4_xs *)dst, (int64_t)nrows * n_per_row);
+  return nrows * libgguf_row_size(GGML_TYPE_IQ4_XS, n_per_row);
+}
+
 size_t quantize_iq4_xs(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
 {
   assert(n_per_row % QK_K == 0);
   int64_t nblock = n_per_row / QK_K;
   char *qrow = (char *)dst;
+
   uint8_t L[QK_K];
   float weight[32];
   float scales[QK_K / 32];
@@ -172,4 +225,3 @@ void quantize_row_iq4_xs_ref(const float *RESTRICT x, block_iq4_xs *RESTRICT y, 
 }
 
 // =============================== 2.5625 bpw
-

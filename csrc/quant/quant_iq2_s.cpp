@@ -236,4 +236,3 @@ void quantize_row_iq2_s_ref(const float *RESTRICT x, block_iq2_s *RESTRICT y, in
   assert(k % QK_K == 0);
   quantize_iq2_s(x, y, 1, k, nullptr);
 }
-

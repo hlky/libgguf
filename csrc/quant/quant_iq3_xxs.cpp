@@ -291,4 +291,3 @@ void quantize_row_iq3_xxs_ref(const float *RESTRICT x, block_iq3_xxs *RESTRICT y
   assert(k % QK_K == 0);
   quantize_row_iq3_xxs_impl(256, x, y, k, nullptr);
 }
-

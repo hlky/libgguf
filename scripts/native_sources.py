@@ -31,9 +31,50 @@ DEQUANT_BACKEND_SOURCES = [
     for backend in ("sse2", "sse4_1", "avx2")
 ]
 
+QUANT_BACKEND_QTYPES = [
+    "q1_0",
+    "q4_0",
+    "q4_1",
+    "q5_0",
+    "q5_1",
+    "q8_0",
+    "q2_k",
+    "q3_k",
+    "q4_k",
+    "q5_k",
+    "q6_k",
+    "iq2_xxs",
+    "iq2_xs",
+    "iq2_s",
+    "iq3_xxs",
+    "iq3_s",
+    "iq1_s",
+    "iq1_m",
+    "iq4_nl",
+    "iq4_xs",
+    "tq1_0",
+    "tq2_0",
+    "mxfp4",
+    "nvfp4",
+]
+
+QUANT_BACKEND_SOURCES = [
+    f"csrc/quant/quant_{qtype}_{backend}.cpp"
+    for qtype in QUANT_BACKEND_QTYPES
+    for backend in ("sse2", "sse4_1", "avx2")
+]
+
 NATIVE_SOURCES = [
     "csrc/libgguf.cpp",
     "csrc/common/libgguf_common.cpp",
+    "csrc/common/libgguf_common_quant.cpp",
+    "csrc/common/libgguf_common_quant_sse2.cpp",
+    "csrc/common/libgguf_common_quant_sse4_1.cpp",
+    "csrc/common/libgguf_common_quant_avx2.cpp",
+    "csrc/common/libgguf_storage.cpp",
+    "csrc/common/libgguf_storage_sse2.cpp",
+    "csrc/common/libgguf_storage_sse4_1.cpp",
+    "csrc/common/libgguf_storage_avx2.cpp",
     "csrc/common/libgguf_tables.cpp",
     "csrc/common/libgguf_iq_tables.cpp",
     "csrc/common/libgguf_cpu.cpp",
@@ -49,16 +90,13 @@ NATIVE_SOURCES = [
     "csrc/quant/dequant_q8_0_sse4_1.cpp",
     "csrc/quant/dequant_q8_0_avx2.cpp",
     *DEQUANT_BACKEND_SOURCES,
+    *QUANT_BACKEND_SOURCES,
     "csrc/quant/quant_q1_0.cpp",
     "csrc/quant/quant_q4_0.cpp",
-    "csrc/quant/quant_q4_0_sse2.cpp",
-    "csrc/quant/quant_q4_0_avx2.cpp",
     "csrc/quant/quant_q4_1.cpp",
     "csrc/quant/quant_q5_0.cpp",
     "csrc/quant/quant_q5_1.cpp",
     "csrc/quant/quant_q8_0.cpp",
-    "csrc/quant/quant_q8_0_sse2.cpp",
-    "csrc/quant/quant_q8_0_avx2.cpp",
     "csrc/quant/quant_q2_k.cpp",
     "csrc/quant/quant_q3_k.cpp",
     "csrc/quant/quant_q4_k.cpp",

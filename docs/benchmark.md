@@ -1,5 +1,100 @@
 # Benchmark
 
+## Quantization
+
+### Non-IQ Quant Default Selection Sweep
+
+Local sweep on 2026-05-03 after adding non-IQ explicit SIMD quant kernels and standardized benchmark output. This timed private row-kernel hooks where available and private environment-selected `quantize_rows_raw` paths for qtypes that do not expose a direct hook. IQ qtypes were intentionally omitted.
+
+Command shape:
+
+```powershell
+.\.venv\Scripts\python.exe setup.py build_ext --inplace --force
+.\.venv\Scripts\python.exe scripts\bench_quant.py --qtypes all --backends ref,sse2,sse4_1,avx2 --rows 1024 --iterations 20 --repetitions 3
+.\.venv\Scripts\python.exe scripts\bench_quant.py --qtypes Q5_0,Q3_K,Q4_K,Q5_K --backends ref,sse2,sse4_1,avx2 --rows 2048 --iterations 20 --repetitions 2
+.\.venv\Scripts\python.exe scripts\bench_common_quant.py --qtypes all --backends ref,sse2,sse4_1,avx2 --modes unweighted,weighted --rows 512 --iterations 20 --repetitions 3
+```
+
+Rows `1024`, mean throughput in GiB/s:
+
+```text
+qtype  ref  sse2 sse4_1 avx2 default
+Q1_0   0.62 2.95 2.86   3.06 avx2
+Q4_0   1.40 1.87 2.44   2.29 sse4_1
+Q4_1   1.46 2.31 2.25   1.70 sse2
+Q5_0   0.92 1.10 1.33   1.34 sse4_1
+Q5_1   1.17 1.32 1.28   1.27 sse2
+Q8_0   0.13 3.60 3.67   4.33 avx2
+Q2_K   0.55 0.68 0.70   0.67 sse4_1
+Q3_K   1.54 1.56 1.57   1.50 avx2
+Q4_K   0.03 0.04 0.04   0.04 sse4_1
+Q5_K   0.48 0.73 0.74   0.71 sse4_1
+Q6_K   0.63 0.63 0.77   0.80 avx2
+TQ1_0  1.70 1.74 1.56   1.51 sse2
+TQ2_0  0.21 3.13 3.17   1.68 sse4_1
+MXFP4  0.14 0.22 0.27   0.43 avx2
+NVFP4  0.13 0.21 0.25   0.37 avx2
+```
+
+Confirmation rows `2048` were used for close decisions. `Q5_0` confirmed `sse4_1`; `Q4_K` and `Q5_K` confirmed `sse4_1`; `Q3_K` favored `avx2` at larger row count (`2.66 GiB/s` vs `2.62` for `sse2` and `2.60` for `sse4_1`), so its default follows the larger-row result.
+
+Common helper dispatch stays `ref` by default. In the common-helper sweep, aggregate mean throughput was `ref=0.0639`, `sse2=0.0626`, `sse4_1=0.0621`, and `avx2=0.0605` GiB/s; normalized per-case scoring also favored `ref`.
+
+### Simple and FP4 Backend Sweep
+
+Local focused sweep on 2026-05-03 after wiring runtime dispatch for simple and FP4 quantizers. This times the private quantize backend hooks directly, not public API conversion overhead.
+
+Command shape:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\bench_quant.py --qtype <QTYPE> --rows 1024 --iterations 50 --repetitions 2 --backends ref,sse2,sse4_1,avx2
+.\.venv\Scripts\python.exe scripts\bench_quant.py --qtype <QTYPE> --rows 4096 --iterations 100 --repetitions 3 --backends ref,sse2,sse4_1,avx2
+```
+
+Rows `1024`, mean throughput in GiB/s:
+
+```text
+qtype  ref  sse2 sse4_1 avx2 best
+Q1_0   0.59 2.82 2.87   3.10 avx2
+Q4_1   1.39 2.18 2.15   1.65 sse2
+Q5_0   0.97 1.04 1.28   1.28 sse4_1
+Q5_1   1.12 1.24 1.21   1.25 avx2
+MXFP4  0.13 0.21 0.21   0.40 avx2
+NVFP4  0.12 0.20 0.20   0.33 avx2
+```
+
+Rows `4096` confirmation sweep for backend selection:
+
+```text
+qtype ref  sse2 sse4_1 avx2 best
+Q4_1  1.41 2.23 2.22   1.68 sse2
+Q5_0  0.90 0.97 1.13   1.11 sse4_1
+```
+
+### K-Quant Backend Sweep
+
+Focused subprocess sweep on 2026-05-03 using each qtype's private environment backend override. Rows `1024`, `n_per_row=1024`, `iterations=30`, `repetitions=2`; values are mean throughput in GiB/s.
+
+```text
+qtype ref  sse2 sse4_1 avx2 best
+Q2_K  0.48 0.54 0.53   0.51 sse2
+Q3_K  0.89 0.83 0.81   0.78 ref
+Q4_K  0.44 0.49 0.45   0.45 sse2
+Q5_K  0.46 0.54 0.52   0.52 sse2
+Q6_K  0.54 0.57 0.55   0.54 sse2
+```
+
+### Existing Quant Dispatch Sweep
+
+Focused private-hook sweep on 2026-05-03 for previously dispatched qtypes. Rows `512`, default `n_per_row`, `iterations=20`, `repetitions=2`; values are mean throughput in GiB/s.
+
+```text
+qtype  ref  sse2 sse4_1 avx2 best
+Q4_0   1.36 1.73 2.28   2.14 sse4_1
+Q8_0   0.13 3.53 3.65   4.40 avx2
+TQ2_0  0.21 3.13 3.14   1.67 sse4_1
+```
+
 ## Dequantization
 
 ### All Supported Dequant Backend Sweep

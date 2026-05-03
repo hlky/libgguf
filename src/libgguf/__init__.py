@@ -59,6 +59,13 @@ _BLOCK_SIZES: dict[int, int] = {
     41: 128,
 }
 
+_STORAGE_QTYPE_DTYPES: dict[int, np.dtype[Any]] = {
+    0: np.dtype(np.float32),
+    1: np.dtype(np.float16),
+}
+
+_STORAGE_QTYPES = frozenset((*_STORAGE_QTYPE_DTYPES, 30))
+
 
 def quantize_rows_raw(
     qtype: int | Any,
@@ -129,11 +136,14 @@ def dequantize_rows_into_raw(
 
 
 def quantize_rows(data: np.ndarray, qtype: int | Any, imatrix: Any | None = None) -> np.ndarray:
+    qtype_value = _qtype_value(qtype)
+    if qtype_value in _STORAGE_QTYPES:
+        return store_rows(data, qtype_value)
+
     rows = np.ascontiguousarray(data, dtype=np.float32)
     if rows.ndim == 0:
         raise ValueError("Expected an array with at least one dimension")
 
-    qtype_value = _qtype_value(qtype)
     n_rows = int(np.prod(rows.shape[:-1], dtype=np.int64)) if rows.ndim > 1 else 1
     n_per_row = int(rows.shape[-1])
 
@@ -151,6 +161,27 @@ def quantize_rows(data: np.ndarray, qtype: int | Any, imatrix: Any | None = None
     out = np.empty((*rows.shape[:-1], bytes_per_row), dtype=np.uint8)
     quantize_rows_into_raw(qtype_value, rows, out, n_rows, n_per_row, quant_weights)
     return out
+
+
+def store_rows(data: np.ndarray, qtype: int | Any) -> np.ndarray:
+    rows = np.ascontiguousarray(data, dtype=np.float32)
+    if rows.ndim == 0:
+        raise ValueError("Expected an array with at least one dimension")
+
+    qtype_value = _qtype_value(qtype)
+    if qtype_value not in _STORAGE_QTYPES:
+        raise ValueError("store_rows only supports F32, F16, and BF16 storage types")
+
+    n_rows = int(np.prod(rows.shape[:-1], dtype=np.int64)) if rows.ndim > 1 else 1
+    n_per_row = int(rows.shape[-1])
+    bytes_per_row = row_size(qtype_value, n_per_row)
+    out = np.empty((*rows.shape[:-1], bytes_per_row), dtype=np.uint8)
+    quantize_rows_into_raw(qtype_value, rows, out, n_rows, n_per_row)
+
+    dtype = _STORAGE_QTYPE_DTYPES.get(qtype_value)
+    if dtype is None:
+        return out
+    return out.view(dtype).reshape(rows.shape)
 
 
 def dequantize_rows(data: Any, qtype: int | Any, n_per_row: int | None = None) -> np.ndarray:
@@ -190,6 +221,7 @@ __all__ = [
     "quantize_rows",
     "quantize_rows_into_raw",
     "quantize_rows_raw",
+    "store_rows",
     "load_imatrix",
     "QuantResult",
     "convert_to_gguf",

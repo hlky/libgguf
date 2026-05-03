@@ -1,7 +1,6 @@
 #include "libgguf_common.h"
 #include "common/libgguf_cpu.h"
 
-#include <cstdlib>
 #include <cstring>
 
 typedef void (*libgguf_q4_0_kernel_fn)(const float *RESTRICT, block_q4_0 *RESTRICT, int64_t);
@@ -13,6 +12,7 @@ struct libgguf_q4_0_selection
 };
 
 extern "C" void quantize_row_q4_0_sse2(const float *RESTRICT x, block_q4_0 *RESTRICT y, int64_t k);
+extern "C" void quantize_row_q4_0_sse4_1(const float *RESTRICT x, block_q4_0 *RESTRICT y, int64_t k);
 extern "C" void quantize_row_q4_0_avx2(const float *RESTRICT x, block_q4_0 *RESTRICT y, int64_t k);
 
 void quantize_row_q4_0_ref(const float *RESTRICT x, block_q4_0 *RESTRICT y, int64_t k)
@@ -59,25 +59,20 @@ void quantize_row_q4_0_ref(const float *RESTRICT x, block_q4_0 *RESTRICT y, int6
 
 static libgguf_q4_0_selection libgguf_q4_0_select_kernel()
 {
-  const char *forced = std::getenv("LIBGGUF_Q4_0_BACKEND");
   const libgguf_cpu_features &features = libgguf_get_cpu_features();
 
-  if (forced != nullptr && forced[0] != '\0')
+  if (features.sse4_1)
   {
-    if (std::strcmp(forced, "ref") == 0)
-    {
-      return {"ref", quantize_row_q4_0_ref};
-    }
-    if (std::strcmp(forced, "sse2") == 0 && features.sse2)
-    {
-      return {"sse2", quantize_row_q4_0_sse2};
-    }
-    if (std::strcmp(forced, "avx2") == 0 && features.avx2)
-    {
-      return {"avx2", quantize_row_q4_0_avx2};
-    }
+    return {"sse4_1", quantize_row_q4_0_sse4_1};
   }
-
+  if (features.avx2)
+  {
+    return {"avx2", quantize_row_q4_0_avx2};
+  }
+  if (features.sse2)
+  {
+    return {"sse2", quantize_row_q4_0_sse2};
+  }
   return {"ref", quantize_row_q4_0_ref};
 }
 
@@ -112,6 +107,10 @@ extern "C" int libgguf_q4_0_cpu_supports_backend(const char *backend)
   {
     return features.sse2 ? 1 : 0;
   }
+  if (std::strcmp(backend, "sse4_1") == 0)
+  {
+    return features.sse4_1 ? 1 : 0;
+  }
   if (std::strcmp(backend, "avx2") == 0)
   {
     return features.avx2 ? 1 : 0;
@@ -138,6 +137,14 @@ extern "C" size_t libgguf_quantize_q4_0_for_backend(
       return 0;
     }
     kernel = quantize_row_q4_0_sse2;
+  }
+  else if (std::strcmp(backend, "sse4_1") == 0)
+  {
+    if (!libgguf_get_cpu_features().sse4_1)
+    {
+      return 0;
+    }
+    kernel = quantize_row_q4_0_sse4_1;
   }
   else if (std::strcmp(backend, "avx2") == 0)
   {

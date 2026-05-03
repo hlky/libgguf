@@ -224,4 +224,3 @@ size_t quantize_iq1_s(const float *RESTRICT src, void *RESTRICT dst, int64_t nro
   }
   return nrow * nblock * sizeof(block_iq1_s);
 }
-

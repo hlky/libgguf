@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import platform
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
@@ -32,12 +34,20 @@ class BuildExt(build_ext):
         def source_flags(source: str) -> list[str]:
             name = Path(source).name
             is_dequant_backend = name.startswith("dequant_")
+            is_quant_backend = name.startswith("quant_") and (
+                name.endswith("_sse2.cpp") or name.endswith("_sse4_1.cpp") or name.endswith("_avx2.cpp")
+            )
+            is_common_quant_backend = name.startswith("libgguf_common_quant_") and (
+                name.endswith("_sse2.cpp") or name.endswith("_sse4_1.cpp") or name.endswith("_avx2.cpp")
+            )
+            is_common_storage_backend = name.startswith("libgguf_storage_") and (
+                name.endswith("_sse2.cpp") or name.endswith("_sse4_1.cpp") or name.endswith("_avx2.cpp")
+            )
             if is_x86_build and (
                 (is_dequant_backend and name.endswith("_avx2.cpp"))
-                or name in {
-                    "quant_q4_0_avx2.cpp",
-                    "quant_q8_0_avx2.cpp",
-                }
+                or (is_quant_backend and name.endswith("_avx2.cpp"))
+                or (is_common_quant_backend and name.endswith("_avx2.cpp"))
+                or (is_common_storage_backend and name.endswith("_avx2.cpp"))
             ):
                 if self.compiler.compiler_type == "msvc":
                     return ["/arch:AVX2"]
@@ -46,18 +56,21 @@ class BuildExt(build_ext):
                 is_x86_build
                 and (
                     (is_dequant_backend and name.endswith("_sse2.cpp"))
-                    or name in {
-                        "quant_q4_0_sse2.cpp",
-                        "quant_q8_0_sse2.cpp",
-                    }
+                    or (is_quant_backend and name.endswith("_sse2.cpp"))
+                    or (is_common_quant_backend and name.endswith("_sse2.cpp"))
+                    or (is_common_storage_backend and name.endswith("_sse2.cpp"))
                 )
                 and self.compiler.compiler_type != "msvc"
             ):
                 return ["-msse2"]
             if (
                 is_x86_build
-                and is_dequant_backend
-                and name.endswith("_sse4_1.cpp")
+                and (
+                    (is_dequant_backend and name.endswith("_sse4_1.cpp"))
+                    or (is_quant_backend and name.endswith("_sse4_1.cpp"))
+                    or (is_common_quant_backend and name.endswith("_sse4_1.cpp"))
+                    or (is_common_storage_backend and name.endswith("_sse4_1.cpp"))
+                )
                 and self.compiler.compiler_type != "msvc"
             ):
                 return ["-msse4.1"]
@@ -73,21 +86,31 @@ class BuildExt(build_ext):
             extra_postargs=None,
             depends=None,
         ):
-            objects = []
             base_postargs = list(extra_postargs or [])
-            for source in sources:
-                objects.extend(
-                    original_compile(
-                        [source],
-                        output_dir=output_dir,
-                        macros=macros,
-                        include_dirs=include_dirs,
-                        debug=debug,
-                        extra_preargs=extra_preargs,
-                        extra_postargs=base_postargs + source_flags(source),
-                        depends=depends,
-                    )
+            jobs = self.parallel or int(os.environ.get("LIBGGUF_BUILD_JOBS") or os.environ.get("MAX_JOBS") or os.cpu_count() or 1)
+
+            def compile_one(source: str):
+                return original_compile(
+                    [source],
+                    output_dir=output_dir,
+                    macros=macros,
+                    include_dirs=include_dirs,
+                    debug=debug,
+                    extra_preargs=extra_preargs,
+                    extra_postargs=base_postargs + source_flags(source),
+                    depends=depends,
                 )
+
+            if jobs <= 1 or len(sources) <= 1:
+                objects = []
+                for source in sources:
+                    objects.extend(compile_one(source))
+                return objects
+
+            objects = []
+            with ThreadPoolExecutor(max_workers=jobs) as executor:
+                for compiled in executor.map(compile_one, sources):
+                    objects.extend(compiled)
             return objects
 
         self.compiler.compile = compile_with_source_flags

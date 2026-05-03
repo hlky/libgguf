@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+import numpy as np
 import pytest
 
 pytest.importorskip("gguf")
@@ -11,6 +12,7 @@ pytest.importorskip("libgguf")
 pytest.importorskip("safetensors")
 
 import gguf
+import libgguf
 import torch
 from safetensors.torch import save_file
 
@@ -33,12 +35,16 @@ def _field_int(reader: gguf.GGUFReader, key: str) -> int:
 
 
 def test_parse_qtype_aliases_and_rejects_unsupported() -> None:
+    assert parse_qtype("Q3_K") == ("Q3_K_M", "Q3_K")
     assert parse_qtype("Q4_K") == ("Q4_K_M", "Q4_K")
     assert parse_qtype("Q4_K_S") == ("Q4_K_S", "Q4_K")
     assert parse_qtype("Q4_K_M") == ("Q4_K_M", "Q4_K")
+    assert parse_qtype("Q5_K") == ("Q5_K_M", "Q5_K")
+    assert parse_qtype("MXFP4") == ("MXFP4_MOE", "MXFP4")
     assert parse_qtype("Q8_0") == ("Q8_0", "Q8_0")
     assert parse_tensor_qtype("F16") == "F16"
     assert parse_tensor_qtype("Q4_K_S") == "Q4_K"
+    assert parse_tensor_qtype("MXFP4_MOE") == "MXFP4"
 
     with pytest.raises(ValueError, match="Unsupported"):
         parse_qtype("Q8_1")
@@ -76,6 +82,31 @@ def test_direct_quantization_writes_readable_gguf_with_mixed_policy(tmp_path: Pa
     assert types["double_blocks.0.img_attn.proj.weight"] == gguf.GGMLQuantizationType.Q4_K
     assert types["block.ffn_down.weight"] == gguf.GGMLQuantizationType.Q5_K
     assert types["txt_in.weight"] == gguf.GGMLQuantizationType.F32
+
+
+def test_direct_quantization_uses_native_storage_for_unquantized_tensors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = tmp_path / "flux.safetensors"
+    dst = tmp_path / "flux.gguf"
+    save_file(
+        {
+            "double_blocks.0.img_attn.proj.weight": torch.ones(2, 256),
+            "txt_in.weight": torch.ones(2, 256),
+        },
+        src,
+    )
+
+    calls: list[str] = []
+    original_store_rows = libgguf.store_rows
+
+    def store_rows_spy(data: np.ndarray, qtype: object) -> np.ndarray:
+        calls.append(getattr(qtype, "name", str(qtype)))
+        return original_store_rows(data, qtype)
+
+    monkeypatch.setattr(libgguf, "store_rows", store_rows_spy)
+
+    convert_to_gguf(src, dst, "Q8_0")
+
+    assert "F32" in calls
 
 
 def test_5d_tensor_is_written_without_sidecar_fix_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

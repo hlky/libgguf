@@ -15,11 +15,11 @@ Environment:
 
 Method:
 
-- Dequantization uses public `dequantize_rows_into_raw` and `dequantize_rows` with each backend forced by `LIBGGUF_DEQUANT_<QTYPE>_BACKEND` before importing `libgguf`.
-- Quantization backend forcing exists only for public `Q4_0` and `Q8_0`, using `LIBGGUF_Q4_0_BACKEND` and `LIBGGUF_Q8_0_BACKEND`.
+- Backend-specific dequantization measurements should use the private `_dequantize_for_backend` hook; the public API uses automatic runtime dispatch.
+- Backend-specific quantization measurements should use private `_quantize_*_for_backend` hooks; the public API uses automatic runtime dispatch.
 - Imatrix values required by IQ qtypes are precomputed outside the timed region and passed explicitly.
 - Throughput is based on decoded float32 bytes. `*_into` modes use preallocated buffers; `*_alloc` modes allocate output arrays on each call.
-- Each qtype/backend run executes in a fresh Python process because native backend selection is cached after first use.
+- Backend hooks are selected in-process and do not require import-time environment variables.
 
 ## Dequantization By Backend
 
@@ -112,7 +112,7 @@ Method:
 
 ## Quantization Backend Controls
 
-Only `Q4_0` and `Q8_0` expose public quantization backend forcing in this build.
+Private quantization hooks are available for backend-specific benchmarking; the public API does not expose backend forcing.
 
 ### Small Tensors
 

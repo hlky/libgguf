@@ -7,11 +7,18 @@
 
 #include "libgguf.h"
 #include "common/libgguf_internal.h"
+#include "common/libgguf_storage.h"
 
 extern "C" LIBGGUF_API size_t libgguf_row_size(enum ggml_type type, int64_t n_per_row)
 {
   switch (type)
   {
+  case GGML_TYPE_F32:
+    return (size_t)n_per_row * sizeof(float);
+  case GGML_TYPE_F16:
+    return (size_t)n_per_row * sizeof(ggml_fp16_t);
+  case GGML_TYPE_BF16:
+    return (size_t)n_per_row * sizeof(ggml_bf16_t);
   case GGML_TYPE_Q1_0:
     return (size_t)n_per_row * sizeof(block_q1_0) / QK1_0;
   case GGML_TYPE_Q4_0:
@@ -309,6 +316,12 @@ static size_t libgguf_quantize_chunk_serial(
 
   switch (type)
   {
+  case GGML_TYPE_F32:
+    return libgguf_store_f32(src + start, (char *)dst + start_row * row_size, (size_t)nrows * (size_t)n_per_row);
+  case GGML_TYPE_F16:
+    return libgguf_store_f16(src + start, (char *)dst + start_row * row_size, (size_t)nrows * (size_t)n_per_row);
+  case GGML_TYPE_BF16:
+    return libgguf_store_bf16(src + start, (char *)dst + start_row * row_size, (size_t)nrows * (size_t)n_per_row);
   case GGML_TYPE_Q1_0:
     return quantize_q1_0(src + start, (char *)dst + start_row * row_size, nrows, n_per_row, imatrix);
   case GGML_TYPE_Q4_0:

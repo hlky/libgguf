@@ -1,4 +1,19 @@
 #include "libgguf_common.h"
+#include "common/libgguf_cpu.h"
+
+#include <cstring>
+
+typedef void (*libgguf_q2_k_kernel_fn)(const float *RESTRICT, block_q2_K *RESTRICT, int64_t);
+
+struct libgguf_q2_k_selection
+{
+  const char *backend;
+  libgguf_q2_k_kernel_fn kernel;
+};
+
+extern "C" void quantize_row_q2_K_sse2(const float *RESTRICT x, block_q2_K *RESTRICT y, int64_t k);
+extern "C" void quantize_row_q2_K_sse4_1(const float *RESTRICT x, block_q2_K *RESTRICT y, int64_t k);
+extern "C" void quantize_row_q2_K_avx2(const float *RESTRICT x, block_q2_K *RESTRICT y, int64_t k);
 
 void quantize_row_q2_K_ref(const float *RESTRICT x, block_q2_K *RESTRICT y, int64_t k)
 {
@@ -90,6 +105,82 @@ void quantize_row_q2_K_ref(const float *RESTRICT x, block_q2_K *RESTRICT y, int6
   }
 }
 
+static libgguf_q2_k_kernel_fn libgguf_q2_k_kernel_for_backend(const char *backend)
+{
+  const libgguf_cpu_features &features = libgguf_get_cpu_features();
+  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
+  {
+    return quantize_row_q2_K_ref;
+  }
+  if (std::strcmp(backend, "sse2") == 0 && features.sse2)
+  {
+    return quantize_row_q2_K_sse2;
+  }
+  if (std::strcmp(backend, "sse4_1") == 0 && features.sse4_1)
+  {
+    return quantize_row_q2_K_sse4_1;
+  }
+  if (std::strcmp(backend, "avx2") == 0 && features.avx2)
+  {
+    return quantize_row_q2_K_avx2;
+  }
+  return nullptr;
+}
+
+static libgguf_q2_k_selection libgguf_q2_k_select_kernel()
+{
+  if (libgguf_q2_k_kernel_fn kernel = libgguf_q2_k_kernel_for_backend("sse4_1"))
+  {
+    return {"sse4_1", kernel};
+  }
+  if (libgguf_q2_k_kernel_fn kernel = libgguf_q2_k_kernel_for_backend("sse2"))
+  {
+    return {"sse2", kernel};
+  }
+  if (libgguf_q2_k_kernel_fn kernel = libgguf_q2_k_kernel_for_backend("avx2"))
+  {
+    return {"avx2", kernel};
+  }
+  return {"ref", quantize_row_q2_K_ref};
+}
+
+static const libgguf_q2_k_selection &libgguf_q2_k_selected()
+{
+  static const libgguf_q2_k_selection selected = libgguf_q2_k_select_kernel();
+  return selected;
+}
+
+static libgguf_q2_k_kernel_fn libgguf_q2_k_kernel()
+{
+  return libgguf_q2_k_selected().kernel;
+}
+
+extern "C" const char *libgguf_q2_k_backend(void)
+{
+  return libgguf_q2_k_selected().backend;
+}
+
+extern "C" int libgguf_q2_k_cpu_supports_backend(const char *backend)
+{
+  return libgguf_q2_k_kernel_for_backend(backend) ? 1 : 0;
+}
+
+extern "C" size_t libgguf_quantize_q2_k_for_backend(
+    const char *backend,
+    const float *RESTRICT src,
+    void *RESTRICT dst,
+    int64_t nrows,
+    int64_t n_per_row)
+{
+  libgguf_q2_k_kernel_fn kernel = libgguf_q2_k_kernel_for_backend(backend);
+  if (!kernel)
+  {
+    return 0;
+  }
+  kernel(src, (block_q2_K *)dst, (int64_t)nrows * n_per_row);
+  return nrows * libgguf_row_size(GGML_TYPE_Q2_K, n_per_row);
+}
+
 static void quantize_row_q2_K_impl(const float *RESTRICT x, block_q2_K *RESTRICT y, int k, const float *RESTRICT quant_weights)
 {
   assert(quant_weights);
@@ -170,7 +261,7 @@ size_t quantize_q2_K(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow
   size_t row_size = libgguf_row_size(GGML_TYPE_Q2_K, n_per_row);
   if (!quant_weights)
   {
-    quantize_row_q2_K_ref(src, (block_q2_K *)dst, (int64_t)nrow * n_per_row);
+    libgguf_q2_k_kernel()(src, (block_q2_K *)dst, (int64_t)nrow * n_per_row);
   }
   else
   {
