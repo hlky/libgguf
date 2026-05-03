@@ -1,3 +1,16 @@
+# Copyright 2026 hlky
+# Copyright (c) 2023 Georgi Gerganov
+#
+# SPDX-License-Identifier: MIT
+#
+# Portions derived from llama.cpp gguf-py/gguf/quants.py:
+# https://github.com/ggml-org/llama.cpp/blob/29b28a98242692e352df38254c9a2bb9fa79c884/gguf-py/gguf/quants.py
+#
+# Modifications:
+# - Extended NumPy-native dequantization support.
+# - Implemented additional NumPy-native quantization functions.
+# - Added byte-parity fixes and validation against libgguf/native reference outputs.
+
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Sequence

@@ -1,5 +1,28 @@
+# Copyright 2026 hlky
+# Copyright 2025 City96
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Portions derived from ComfyUI-GGUF:
+# https://github.com/city96/ComfyUI-GGUF/blob/795e45156ece99afbc3efef911e63fcb46e6a20d/dequant.py
+#
+# Modifications:
+# - Extended torch-native dequantization.
+# - Implemented torch-native quantization.
+# - Added byte-parity fixes and validation.
+
 from libgguf._metadata import GGMLQuantizationType, GGML_QUANT_SIZES, quant_shape_to_byte_shape
-from libgguf.libgguf_numpy.gguf_np import (
+from libgguf.libgguf_numpy.libgguf_numpy import (
     GROUP_MAX_EPS,
     IQ2_XXS,
     dequantize as dequantize_np,

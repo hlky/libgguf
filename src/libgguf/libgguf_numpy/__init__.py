@@ -7,7 +7,7 @@ from libgguf._metadata import (
     quant_shape_from_byte_shape,
     quant_shape_to_byte_shape,
 )
-from .gguf_np import QuantError, dequantize, quantize
+from .libgguf_numpy import QuantError, dequantize, quantize
 
 __all__ = [
     "GGML_QUANT_SIZES",
