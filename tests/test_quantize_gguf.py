@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import sys
+import struct
 
 import numpy as np
 import pytest
@@ -17,6 +19,35 @@ import torch
 from safetensors.torch import save_file
 
 from libgguf.quantize import convert_to_gguf, parse_qtype, parse_tensor_qtype, strip_prefix
+
+
+def _write_bf16_safetensors(path: Path, tensors: dict[str, np.ndarray]) -> None:
+    entries = {}
+    data = bytearray()
+    for name, values in tensors.items():
+        raw = np.ascontiguousarray(values, dtype=np.uint16).tobytes()
+        begin = len(data)
+        data.extend(raw)
+        entries[name] = {
+            "dtype": "BF16",
+            "shape": list(values.shape),
+            "data_offsets": [begin, len(data)],
+        }
+    header = json.dumps(entries, separators=(",", ":")).encode("utf-8")
+    padding = (-((8 + len(header)) % 8)) % 8
+    json_bytes = header + (b" " * padding)
+    path.write_bytes(struct.pack("<Q", len(json_bytes)) + json_bytes + data)
+
+
+def _float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    bits = np.ascontiguousarray(values, dtype=np.float32).view(np.uint32)
+    high = bits >> 16
+    rounded = np.where(
+        (bits & np.uint32(0x7FFFFFFF)) > np.uint32(0x7F800000),
+        high | np.uint32(64),
+        (bits + (np.uint32(0x7FFF) + (high & np.uint32(1)))) >> np.uint32(16),
+    )
+    return rounded.astype(np.uint16)
 
 
 def _tensor_types(path: Path) -> dict[str, gguf.GGMLQuantizationType]:
@@ -149,6 +180,72 @@ def test_safetensors_conversion_does_not_use_eager_load_file(tmp_path: Path, mon
     convert_to_gguf(src, dst, "Q8_0")
 
     assert dst.exists()
+
+
+def test_safetensors_f32_f16_conversion_does_not_import_torch(tmp_path: Path) -> None:
+    src = tmp_path / "flux_numpy.safetensors"
+    dst = tmp_path / "flux_numpy.gguf"
+    script = f"""
+import builtins
+from pathlib import Path
+import numpy as np
+from safetensors.numpy import save_file
+
+real_import = builtins.__import__
+def blocked_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if name == "torch" or name.startswith("torch."):
+        raise ImportError("torch import blocked")
+    return real_import(name, globals, locals, fromlist, level)
+
+save_file({{
+    "double_blocks.0.img_attn.proj.weight": np.linspace(-1, 1, 64, dtype=np.float32).reshape(2, 32),
+    "txt_in.weight": np.ones((2, 32), dtype=np.float16),
+}}, {str(src)!r})
+
+builtins.__import__ = blocked_import
+from libgguf.quantize import convert_to_gguf
+convert_to_gguf({str(src)!r}, {str(dst)!r}, "Q8_0")
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
+
+    assert dst.exists()
+    types = _tensor_types(dst)
+    assert types["double_blocks.0.img_attn.proj.weight"] == gguf.GGMLQuantizationType.Q8_0
+    assert types["txt_in.weight"] == gguf.GGMLQuantizationType.F16
+
+
+def test_safetensors_bf16_storage_uses_raw_local_reader(tmp_path: Path) -> None:
+    src = tmp_path / "flux_bf16.safetensors"
+    dst = tmp_path / "flux_bf16.gguf"
+    source = {
+        "double_blocks.0.img_attn.proj.weight": _float32_to_bf16_bits(np.linspace(-1, 1, 64, dtype=np.float32).reshape(2, 32)),
+        "txt_in.weight": _float32_to_bf16_bits(np.array([[1.0, -2.0, 3.5, 0.25]], dtype=np.float32)),
+    }
+    _write_bf16_safetensors(src, source)
+
+    convert_to_gguf(src, dst, "Q8_0", tensor_overrides={"txt_in.weight": "BF16"})
+
+    reader = gguf.GGUFReader(dst)
+    tensors = {tensor.name: tensor for tensor in reader.tensors}
+    assert tensors["txt_in.weight"].tensor_type == gguf.GGMLQuantizationType.BF16
+    np.testing.assert_array_equal(tensors["txt_in.weight"].data.reshape(-1), source["txt_in.weight"].view(np.uint8).reshape(-1))
+
+
+def test_safetensors_bf16_quantization_converts_to_float32_once_loaded(tmp_path: Path) -> None:
+    src = tmp_path / "flux_bf16_quant.safetensors"
+    dst = tmp_path / "flux_bf16_quant.gguf"
+    rows = np.linspace(-1, 1, 64, dtype=np.float32).reshape(2, 32)
+    _write_bf16_safetensors(src, {"double_blocks.0.img_attn.proj.weight": _float32_to_bf16_bits(rows)})
+
+    convert_to_gguf(src, dst, "Q8_0", policy="uniform")
+
+    reader = gguf.GGUFReader(dst)
+    tensors = {tensor.name: tensor for tensor in reader.tensors}
+    tensor = tensors["double_blocks.0.img_attn.proj.weight"]
+    assert tensor.tensor_type == gguf.GGMLQuantizationType.Q8_0
+    dequantized = libgguf.dequantize_rows(tensor.data, libgguf.GGMLQuantizationType.Q8_0)
+    assert dequantized.shape == rows.shape
+    assert np.all(np.isfinite(dequantized))
 
 
 def test_shape_fix_metadata_is_written(tmp_path: Path) -> None:

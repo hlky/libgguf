@@ -3,13 +3,26 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+import struct
+from typing import Any, Iterator, Mapping, Protocol, Sequence
 
 import numpy as np
 from tqdm import tqdm
+
+from .imatrix import load_imatrix
+from ._metadata import GGMLQuantizationType, LlamaFileType, GGML_QUANT_SIZES
+
+try:
+    import gguf
+    from safetensors import safe_open
+except ImportError as exc:
+    raise ImportError(
+        "Direct GGUF quantization requires gguf, safetensors, and the editable libgguf package."
+    ) from exc
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -36,6 +49,33 @@ class TensorPlan:
     target_qtype: Any
     quantize: bool
     imatrix: np.ndarray | None
+
+
+@dataclass(frozen=True)
+class BFloat16Tensor:
+    data: np.ndarray
+    shape: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if self.data.dtype != np.uint16:
+            raise TypeError("BF16 tensor storage must be uint16")
+
+    def reshape(self, shape: tuple[int, ...]) -> "BFloat16Tensor":
+        return BFloat16Tensor(self.data.reshape(shape), shape)
+
+    def to_float32(self) -> np.ndarray:
+        return (self.data.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(self.shape)
+
+    def to_uint8_rows(self) -> np.ndarray:
+        return self.data.view(np.uint8).reshape((*self.shape[:-1], self.shape[-1] * 2))
+
+
+class TensorSource(Protocol):
+    def keys(self) -> Sequence[str]: ...
+
+    def tensor_meta(self, key: str) -> tuple[tuple[int, ...], str]: ...
+
+    def load_tensor(self, key: str) -> Any: ...
 
 
 class ModelTemplate:
@@ -227,20 +267,6 @@ FFN_DOWN_PATTERNS = (
 )
 
 
-def _lazy_imports() -> tuple[Any, Any, Any, Any, Any]:
-    try:
-        import torch
-        import gguf
-        import libgguf
-        from safetensors import safe_open
-        from safetensors.torch import load_file
-    except ImportError as exc:
-        raise ImportError(
-            "Direct GGUF quantization requires torch, gguf, safetensors, and the editable libgguf package."
-        ) from exc
-    return torch, gguf, libgguf, safe_open, load_file
-
-
 def _matches(name: str, patterns: Sequence[str] | None) -> bool:
     return bool(patterns) and any(fnmatchcase(name, pattern) for pattern in patterns)
 
@@ -285,9 +311,13 @@ def strip_prefix(state_dict: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def load_state_dict(path: str | os.PathLike[str]) -> dict[str, Any]:
-    torch, _, _, _, load_file = _lazy_imports()
     path_str = os.fspath(path)
     if path_str.endswith((".ckpt", ".pt", ".bin", ".pth")):
+        try:
+            import torch
+        except ImportError as exc:
+            raise ImportError("Loading Torch checkpoint formats requires torch.") from exc
+
         state_dict = torch.load(path_str, map_location="cpu", weights_only=True)
         for subkey in ("model", "module"):
             if subkey in state_dict:
@@ -296,6 +326,8 @@ def load_state_dict(path: str | os.PathLike[str]) -> dict[str, Any]:
         if len(state_dict) < 20:
             raise RuntimeError(f"pt subkey load failed: {state_dict.keys()}")
     else:
+        from safetensors.numpy import load_file
+
         state_dict = load_file(path_str)
     return strip_prefix(state_dict)
 
@@ -323,23 +355,69 @@ def _is_safetensors_path(path: Path) -> bool:
     return path.suffix.lower() == ".safetensors"
 
 
-def _torch_dtype_from_safetensors(torch: Any, dtype: str) -> Any:
-    dtypes = {
-        "F64": torch.float64,
-        "F32": torch.float32,
-        "F16": torch.float16,
-        "BF16": torch.bfloat16,
-        "I64": torch.int64,
-        "I32": torch.int32,
-        "I16": torch.int16,
-        "I8": torch.int8,
-        "U8": torch.uint8,
-        "BOOL": torch.bool,
+_NUMPY_DTYPE_TAGS: dict[np.dtype[Any], str] = {
+    np.dtype(np.float64): "F64",
+    np.dtype(np.float32): "F32",
+    np.dtype(np.float16): "F16",
+    np.dtype(np.int64): "I64",
+    np.dtype(np.int32): "I32",
+    np.dtype(np.int16): "I16",
+    np.dtype(np.int8): "I8",
+    np.dtype(np.uint8): "U8",
+    np.dtype(np.bool_): "BOOL",
+}
+
+
+def _dtype_tag(dtype: Any) -> str:
+    if isinstance(dtype, str):
+        return dtype
+    try:
+        return _NUMPY_DTYPE_TAGS[np.dtype(dtype)]
+    except TypeError:
+        pass
+    except KeyError as exc:
+        raise ValueError(f"Unsupported NumPy dtype: {dtype}") from exc
+
+    name = str(dtype)
+    torch_tags = {
+        "torch.float64": "F64",
+        "torch.float32": "F32",
+        "torch.float16": "F16",
+        "torch.bfloat16": "BF16",
+        "torch.int64": "I64",
+        "torch.int32": "I32",
+        "torch.int16": "I16",
+        "torch.int8": "I8",
+        "torch.uint8": "U8",
+        "torch.bool": "BOOL",
     }
     try:
-        return dtypes[dtype]
+        return torch_tags[name]
     except KeyError as exc:
-        raise ValueError(f"Unsupported safetensors dtype: {dtype}") from exc
+        raise ValueError(f"Unsupported tensor dtype: {dtype}") from exc
+
+
+def _read_safetensors_header(path: Path) -> tuple[int, dict[str, Any]]:
+    with path.open("rb") as f:
+        header_len_data = f.read(8)
+        if len(header_len_data) != 8:
+            raise ValueError(f"Invalid safetensors file: {path}")
+        header_len = struct.unpack("<Q", header_len_data)[0]
+        header = json.loads(f.read(header_len))
+    return 8 + header_len, header
+
+
+def _load_bf16_safetensors_tensor(path: Path, data_start: int, header: Mapping[str, Any], key: str) -> BFloat16Tensor:
+    info = header[key]
+    if info.get("dtype") != "BF16":
+        raise ValueError(f"Expected BF16 safetensors tensor for {key!r}")
+    shape = tuple(int(dim) for dim in info["shape"])
+    begin, end = (int(offset) for offset in info["data_offsets"])
+    nbytes = end - begin
+    if nbytes != int(np.prod(shape, dtype=np.int64)) * 2:
+        raise ValueError(f"Invalid BF16 byte length for tensor {key!r}")
+    raw = np.memmap(path, dtype=np.uint8, mode="r", offset=data_start + begin, shape=(nbytes,))
+    return BFloat16Tensor(raw.view(np.uint16).reshape(shape), shape)
 
 
 def parse_qtype(qtype: str | Any) -> tuple[str, str]:
@@ -374,52 +452,78 @@ def _enum_member(enum_cls: Any, name: str) -> Any:
         raise ValueError(f"Installed gguf package does not provide {enum_cls.__name__}.{name}") from exc
 
 
-def _file_type_enum(gguf: Any, file_type_name: str) -> Any:
-    return _enum_member(gguf.LlamaFileType, f"MOSTLY_{file_type_name}")
+def _file_type_enum(file_type_name: str) -> Any:
+    return _enum_member(LlamaFileType, f"MOSTLY_{file_type_name}")
 
 
-def _tensor_qtype_enum(gguf: Any, qtype_name: str) -> Any:
-    return _enum_member(gguf.GGMLQuantizationType, qtype_name)
+def _tensor_qtype_enum(qtype_name: str) -> Any:
+    return _enum_member(GGMLQuantizationType, qtype_name)
 
 
 def _default_output_path(src: Path, file_type_name: str) -> Path:
     return src.with_name(f"{src.stem}-{file_type_name}.gguf")
 
 
-def _is_quantized_qtype(gguf: Any, qtype: Any) -> bool:
-    if qtype in {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16, gguf.GGMLQuantizationType.BF16}:
+def _is_quantized_qtype(qtype: Any) -> bool:
+    if qtype in {GGMLQuantizationType.F32, GGMLQuantizationType.F16, GGMLQuantizationType.BF16}:
         return False
     return True
 
 
 def _base_storage_type_for_meta(
-    torch: Any,
-    gguf: Any,
     key: str,
-    dtype: Any,
+    dtype: str,
     ndim: int,
     model_arch: ModelTemplate,
     n_params: int,
 ) -> Any:
-    if dtype == torch.bfloat16:
-        data_qtype = gguf.GGMLQuantizationType.BF16
+    if dtype == "BF16":
+        data_qtype = GGMLQuantizationType.BF16
     else:
-        data_qtype = gguf.GGMLQuantizationType.F16
+        data_qtype = GGMLQuantizationType.F16
 
-    if dtype in (torch.float32, torch.bfloat16):
+    if dtype in {"F32", "BF16"}:
         if ndim == 1 or n_params <= QUANTIZATION_THRESHOLD or any(marker in key for marker in model_arch.keys_hiprec):
-            data_qtype = gguf.GGMLQuantizationType.F32
+            data_qtype = GGMLQuantizationType.F32
     return data_qtype
 
 
-def _to_numpy_for_qtype(torch: Any, gguf: Any, tensor: Any, qtype: Any) -> np.ndarray:
-    if qtype == gguf.GGMLQuantizationType.F32:
+def _to_numpy_for_qtype(tensor: Any, qtype: Any) -> np.ndarray:
+    if isinstance(tensor, BFloat16Tensor):
+        return tensor.to_float32()
+    if isinstance(tensor, np.ndarray):
+        if qtype == GGMLQuantizationType.F32:
+            return np.ascontiguousarray(tensor, dtype=np.float32)
+        if qtype == GGMLQuantizationType.F16:
+            return np.ascontiguousarray(tensor, dtype=np.float16)
+        return np.ascontiguousarray(tensor, dtype=np.float32)
+
+    try:
+        import torch
+    except ImportError as exc:
+        raise TypeError(f"Unsupported tensor object without torch installed: {type(tensor)!r}") from exc
+
+    if not isinstance(tensor, torch.Tensor):
+        return np.ascontiguousarray(tensor, dtype=np.float32)
+    if qtype == GGMLQuantizationType.F32:
         return tensor.to(torch.float32).numpy()
-    if qtype == gguf.GGMLQuantizationType.F16:
+    if qtype == GGMLQuantizationType.F16:
         return tensor.to(torch.float16).numpy()
-    if qtype == gguf.GGMLQuantizationType.BF16:
+    if qtype == GGMLQuantizationType.BF16:
         return tensor.to(torch.float32).numpy()
     return tensor.to(torch.float32).numpy()
+
+
+def _native_store_rows(data: np.ndarray, qtype: Any) -> np.ndarray:
+    import libgguf
+
+    return libgguf.store_rows(data, qtype)
+
+
+def _native_quantize_rows(data: np.ndarray, qtype: Any, imatrix: np.ndarray | None) -> np.ndarray:
+    import libgguf
+
+    return libgguf.quantize_rows(data, qtype, imatrix=imatrix)
 
 
 def _policy_allows_quant_shape(key: str, shape: tuple[int, ...], model_arch: ModelTemplate, policy: str) -> bool:
@@ -488,7 +592,7 @@ def _override_qtype(key: str, overrides: Sequence[tuple[str, str]]) -> str | Non
     return None
 
 
-def _shape_fix_shape(writer: Any, key: str, shape: tuple[int, ...], model_arch: ModelTemplate) -> tuple[int, ...]:
+def _shape_fix_shape(writer: gguf.GGUFWriter, key: str, shape: tuple[int, ...], model_arch: ModelTemplate) -> tuple[int, ...]:
     n_params = int(np.prod(shape, dtype=np.int64))
     if (
         model_arch.shape_fix
@@ -502,57 +606,61 @@ def _shape_fix_shape(writer: Any, key: str, shape: tuple[int, ...], model_arch: 
     return shape
 
 
-def _qtype_nbytes(gguf: Any, shape: tuple[int, ...], qtype: Any) -> int:
+def _qtype_nbytes(shape: tuple[int, ...], qtype: Any) -> int:
     n_params = int(np.prod(shape, dtype=np.int64))
-    block_size, type_size = gguf.GGML_QUANT_SIZES[qtype]
+    block_size, type_size = GGML_QUANT_SIZES[qtype]
     if n_params % block_size != 0:
         raise ValueError(f"Tensor with shape {shape} cannot be stored as {qtype.name}")
     return n_params // block_size * type_size
 
 
-def _writer_info_shape(gguf: Any, shape: tuple[int, ...], qtype: Any, nbytes: int) -> tuple[int, ...]:
-    if qtype in {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16}:
+def _writer_info_shape(shape: tuple[int, ...], qtype: Any, nbytes: int) -> tuple[int, ...]:
+    if qtype in {GGMLQuantizationType.F32, GGMLQuantizationType.F16}:
         return shape
     if not shape:
         return (nbytes,)
     return (*shape[:-1], nbytes // max(1, int(np.prod(shape[:-1], dtype=np.int64))))
 
 
-def _writer_info_dtype(gguf: Any, qtype: Any) -> np.dtype[Any]:
-    if qtype == gguf.GGMLQuantizationType.F32:
+def _writer_info_dtype(qtype: Any) -> np.dtype[Any]:
+    if qtype == GGMLQuantizationType.F32:
         return np.dtype(np.float32)
-    if qtype == gguf.GGMLQuantizationType.F16:
+    if qtype == GGMLQuantizationType.F16:
         return np.dtype(np.float16)
     return np.dtype(np.uint8)
 
 
-def _add_tensor_info(writer: Any, gguf: Any, key: str, shape: tuple[int, ...], qtype: Any) -> None:
-    nbytes = _qtype_nbytes(gguf, shape, qtype)
+def _add_tensor_info(writer: gguf.GGUFWriter, key: str, shape: tuple[int, ...], qtype: Any) -> None:
+    nbytes = _qtype_nbytes(shape, qtype)
     writer.add_tensor_info(
         key,
-        _writer_info_shape(gguf, shape, qtype, nbytes),
-        _writer_info_dtype(gguf, qtype),
+        _writer_info_shape(shape, qtype, nbytes),
+        _writer_info_dtype(qtype),
         nbytes,
         raw_dtype=qtype,
     )
 
 
-def _unquantized_tensor_data(gguf: Any, libgguf: Any, torch: Any, tensor: Any, qtype: Any) -> np.ndarray:
-    data = _to_numpy_for_qtype(torch, gguf, tensor, qtype)
-    if qtype in {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16, gguf.GGMLQuantizationType.BF16}:
-        return libgguf.store_rows(data, qtype)
-    return gguf.quants.quantize(data, qtype)
+def _unquantized_tensor_data(tensor: Any, qtype: Any) -> np.ndarray:
+    if qtype == GGMLQuantizationType.BF16 and isinstance(tensor, BFloat16Tensor):
+        return tensor.to_uint8_rows()
+
+    data = _to_numpy_for_qtype(tensor, qtype)
+    if qtype in {GGMLQuantizationType.F32, GGMLQuantizationType.F16, GGMLQuantizationType.BF16}:
+        return _native_store_rows(data, qtype)
+    raise ValueError(f"Unknown unquantized type: {qtype}")
 
 
-def _quantized_tensor_data(gguf: Any, libgguf: Any, torch: Any, tensor: Any, qtype: Any, imatrix: np.ndarray | None) -> np.ndarray:
-    data = _to_numpy_for_qtype(torch, gguf, tensor, qtype)
-    return libgguf.quantize_rows(data, qtype, imatrix=imatrix)
+def _quantized_tensor_data(tensor: Any, qtype: Any, imatrix: np.ndarray | None) -> np.ndarray:
+    data = _to_numpy_for_qtype(tensor, qtype)
+    return _native_quantize_rows(data, qtype, imatrix=imatrix)
 
 
 @contextmanager
-def _open_tensor_source(torch: Any, safe_open: Any, path: Path) -> Iterator[tuple[Mapping[str, str], Any]]:
+def _open_tensor_source(path: Path) -> Iterator[tuple[Mapping[str, str], TensorSource]]:
     if _is_safetensors_path(path):
-        with safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
+        data_start, header = _read_safetensors_header(path)
+        with safe_open(os.fspath(path), framework="np") as handle:
             keys = list(handle.keys())
             key_map, _ = _strip_prefix_keys(keys)
 
@@ -560,12 +668,15 @@ def _open_tensor_source(torch: Any, safe_open: Any, path: Path) -> Iterator[tupl
                 def keys(self) -> Sequence[str]:
                     return tuple(key_map)
 
-                def tensor_meta(self, key: str) -> tuple[tuple[int, ...], Any]:
+                def tensor_meta(self, key: str) -> tuple[tuple[int, ...], str]:
                     tensor_slice = handle.get_slice(key_map[key])
-                    return tuple(int(dim) for dim in tensor_slice.get_shape()), _torch_dtype_from_safetensors(torch, tensor_slice.get_dtype())
+                    return tuple(int(dim) for dim in tensor_slice.get_shape()), tensor_slice.get_dtype()
 
                 def load_tensor(self, key: str) -> Any:
-                    return handle.get_tensor(key_map[key])
+                    source_key = key_map[key]
+                    if header[source_key]["dtype"] == "BF16":
+                        return _load_bf16_safetensors_tensor(path, data_start, header, source_key)
+                    return handle.get_tensor(source_key)
 
             yield key_map, SafetensorsSource()
         return
@@ -576,9 +687,9 @@ def _open_tensor_source(torch: Any, safe_open: Any, path: Path) -> Iterator[tupl
         def keys(self) -> Sequence[str]:
             return tuple(state_dict)
 
-        def tensor_meta(self, key: str) -> tuple[tuple[int, ...], Any]:
+        def tensor_meta(self, key: str) -> tuple[tuple[int, ...], str]:
             tensor = state_dict[key]
-            return tuple(int(dim) for dim in tensor.shape), tensor.dtype
+            return tuple(int(dim) for dim in tensor.shape), _dtype_tag(tensor.dtype)
 
         def load_tensor(self, key: str) -> Any:
             return state_dict[key]
@@ -598,19 +709,18 @@ def convert_to_gguf(
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
 ) -> QuantResult:
-    torch, gguf, libgguf, safe_open, _ = _lazy_imports()
     src_path = Path(src)
     file_type_name, base_qtype_name = parse_qtype(qtype)
-    file_type = _file_type_enum(gguf, file_type_name)
+    file_type = _file_type_enum(file_type_name)
     dst_path = Path(dst) if dst is not None else _default_output_path(src_path, file_type_name)
 
     if dst_path.exists() and not overwrite:
         raise OSError(f"Output exists and overwriting is disabled: {dst_path}")
 
-    imatrix_data = libgguf.load_imatrix(imatrix) if isinstance(imatrix, (str, os.PathLike)) else dict(imatrix or {})
+    imatrix_data = load_imatrix(imatrix) if isinstance(imatrix, (str, os.PathLike)) else dict(imatrix or {})
     overrides = _normalize_overrides(tensor_overrides)
 
-    with _open_tensor_source(torch, safe_open, src_path) as (_, tensor_source):
+    with _open_tensor_source(src_path) as (_, tensor_source):
         keys = tuple(tensor_source.keys())
         model_arch = detect_arch(set(keys))
         name_lengths = sorted(((key, len(key)) for key in keys), key=lambda item: item[1], reverse=True)
@@ -634,7 +744,7 @@ def convert_to_gguf(
 
             source_shape, dtype = tensor_source.tensor_meta(key)
             n_params = int(np.prod(source_shape, dtype=np.int64))
-            storage_qtype = _base_storage_type_for_meta(torch, gguf, key, dtype, len(source_shape), model_arch, n_params)
+            storage_qtype = _base_storage_type_for_meta(key, dtype, len(source_shape), model_arch, n_params)
             write_shape = _shape_fix_shape(writer, key, source_shape, model_arch)
 
             quantize = _policy_allows_quant_shape(key, write_shape, model_arch, policy)
@@ -647,19 +757,19 @@ def convert_to_gguf(
             target_qtype = storage_qtype
             if forced_qtype is not None:
                 forced_tensor_qtype_name = parse_tensor_qtype(forced_qtype)
-                target_qtype = _tensor_qtype_enum(gguf, forced_tensor_qtype_name)
-                quantize = _is_quantized_qtype(gguf, target_qtype)
+                target_qtype = _tensor_qtype_enum(forced_tensor_qtype_name)
+                quantize = _is_quantized_qtype(target_qtype)
             elif quantize:
                 target_name = base_qtype_name
                 if policy == "comfy":
                     target_name = _mixed_policy_qtype(file_type_name, base_qtype_name, key, counters)
-                target_qtype = _tensor_qtype_enum(gguf, target_name)
+                target_qtype = _tensor_qtype_enum(target_name)
 
-            if quantize and _is_quantized_qtype(gguf, target_qtype):
-                block_size = gguf.GGML_QUANT_SIZES[target_qtype][0]
+            if quantize and _is_quantized_qtype(target_qtype):
+                block_size = GGML_QUANT_SIZES[target_qtype][0]
                 if write_shape[-1] % block_size != 0:
                     fallback_counts[target_qtype.name] = fallback_counts.get(target_qtype.name, 0) + 1
-                    target_qtype = gguf.GGMLQuantizationType.F16
+                    target_qtype = GGMLQuantizationType.F16
                     quantize = False
 
             plan = TensorPlan(
@@ -667,11 +777,11 @@ def convert_to_gguf(
                 source_shape=source_shape,
                 write_shape=write_shape,
                 target_qtype=target_qtype,
-                quantize=quantize and _is_quantized_qtype(gguf, target_qtype),
+                quantize=quantize and _is_quantized_qtype(target_qtype),
                 imatrix=imatrix_data.get(key),
             )
             plans.append(plan)
-            _add_tensor_info(writer, gguf, key, write_shape, target_qtype)
+            _add_tensor_info(writer, key, write_shape, target_qtype)
             tensor_counts[target_qtype.name] = tensor_counts.get(target_qtype.name, 0) + 1
             logging.info("%s -> %s, shape=%s", key, target_qtype.name, write_shape)
 
@@ -683,12 +793,15 @@ def convert_to_gguf(
             for plan in tqdm(plans):
                 tensor = tensor_source.load_tensor(plan.key)
                 if plan.write_shape != plan.source_shape:
-                    tensor = torch.from_numpy(_to_numpy_for_qtype(torch, gguf, tensor, plan.target_qtype).reshape(plan.write_shape))
+                    if isinstance(tensor, BFloat16Tensor):
+                        tensor = tensor.reshape(plan.write_shape)
+                    else:
+                        tensor = _to_numpy_for_qtype(tensor, plan.target_qtype).reshape(plan.write_shape)
 
                 if plan.quantize:
-                    data = _quantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype, plan.imatrix)
+                    data = _quantized_tensor_data(tensor, plan.target_qtype, plan.imatrix)
                 else:
-                    data = _unquantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype)
+                    data = _unquantized_tensor_data(tensor, plan.target_qtype)
                 writer.write_tensor_data(data)
                 del data, tensor
         finally:

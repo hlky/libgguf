@@ -8,7 +8,14 @@ import numpy as np
 
 from . import _libgguf
 from .imatrix import load_imatrix
-from .quantize import QuantResult, convert_to_gguf
+from ._metadata import (
+    GGML_QUANT_SIZES,
+    GGMLQuantizationType,
+    LlamaFileType,
+    QK_K,
+    quant_shape_from_byte_shape,
+    quant_shape_to_byte_shape,
+)
 
 
 def _qtype_value(qtype: int | Any) -> int:
@@ -213,6 +220,8 @@ def dequantize_rows(data: Any, qtype: int | Any, n_per_row: int | None = None) -
 
 atexit.register(_libgguf.quantize_free)
 
+from .quantize import QuantResult, convert_to_gguf  # noqa: E402
+
 __all__ = [
     "dequantize_rows",
     "dequantize_rows_into_raw",
@@ -228,4 +237,10 @@ __all__ = [
     "row_size",
     "type_name",
     "type_size",
+    "GGMLQuantizationType",
+    "LlamaFileType",
+    "GGML_QUANT_SIZES",
+    "QK_K",
+    "quant_shape_to_byte_shape",
+    "quant_shape_from_byte_shape",
 ]

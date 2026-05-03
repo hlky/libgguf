@@ -92,6 +92,15 @@ Dequantize encoded rows back to float32:
 decoded = libgguf.dequantize_rows(encoded, Q8_0)
 ```
 
+NumPy and Torch reference quantizers are available as subpackage APIs:
+
+```python
+from libgguf.libgguf_numpy import quantize, dequantize
+from libgguf.libgguf_torch import quantize as quantize_torch
+```
+
+The Torch subpackage requires Torch. Direct `.safetensors` conversion uses NumPy loading by default and only needs Torch for Torch checkpoint formats such as `.pt`, `.ckpt`, `.bin`, and `.pth`.
+
 ## Layout
 
 - `src/libgguf/` exposes the Python package and CLI.
