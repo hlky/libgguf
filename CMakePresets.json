@@ -1,0 +1,100 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 18,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-msvc-release",
+      "displayName": "Windows MSVC Release",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/cmake/windows-msvc-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LIBGGUF_BUILD_SHARED": "ON",
+        "LIBGGUF_BUILD_PYTHON": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-msvc-debug",
+      "displayName": "Windows MSVC Debug",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/cmake/windows-msvc-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "LIBGGUF_BUILD_SHARED": "ON",
+        "LIBGGUF_BUILD_PYTHON": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "ninja-release",
+      "displayName": "Ninja Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cmake/ninja-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LIBGGUF_BUILD_SHARED": "ON",
+        "LIBGGUF_BUILD_PYTHON": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-msvc-release",
+      "displayName": "Build Windows MSVC Release",
+      "configurePreset": "windows-msvc-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-msvc-debug",
+      "displayName": "Build Windows MSVC Debug",
+      "configurePreset": "windows-msvc-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "ninja-release",
+      "displayName": "Build Ninja Release",
+      "configurePreset": "ninja-release"
+    },
+    {
+      "name": "windows-msvc-release-libgguf",
+      "displayName": "Build libgguf with Windows MSVC Release",
+      "configurePreset": "windows-msvc-release",
+      "configuration": "Release",
+      "targets": ["libgguf"]
+    },
+    {
+      "name": "windows-msvc-release-python",
+      "displayName": "Build Python extension with Windows MSVC Release",
+      "configurePreset": "windows-msvc-release",
+      "configuration": "Release",
+      "targets": ["_libgguf"]
+    },
+    {
+      "name": "ninja-release-libgguf",
+      "displayName": "Build libgguf with Ninja Release",
+      "configurePreset": "ninja-release",
+      "targets": ["libgguf"]
+    },
+    {
+      "name": "ninja-release-python",
+      "displayName": "Build Python extension with Ninja Release",
+      "configurePreset": "ninja-release",
+      "targets": ["_libgguf"]
+    }
+  ]
+}
