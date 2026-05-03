@@ -45,29 +45,11 @@ class QuantResult:
 class TensorPlan:
     key: str
     source_shape: tuple[int, ...]
+    source_dtype: str
     write_shape: tuple[int, ...]
     target_qtype: Any
     quantize: bool
     imatrix: np.ndarray | None
-
-
-@dataclass(frozen=True)
-class BFloat16Tensor:
-    data: np.ndarray
-    shape: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        if self.data.dtype != np.uint16:
-            raise TypeError("BF16 tensor storage must be uint16")
-
-    def reshape(self, shape: tuple[int, ...]) -> "BFloat16Tensor":
-        return BFloat16Tensor(self.data.reshape(shape), shape)
-
-    def to_float32(self) -> np.ndarray:
-        return (self.data.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(self.shape)
-
-    def to_uint8_rows(self) -> np.ndarray:
-        return self.data.view(np.uint8).reshape((*self.shape[:-1], self.shape[-1] * 2))
 
 
 class TensorSource(Protocol):
@@ -407,7 +389,7 @@ def _read_safetensors_header(path: Path) -> tuple[int, dict[str, Any]]:
     return 8 + header_len, header
 
 
-def _load_bf16_safetensors_tensor(path: Path, data_start: int, header: Mapping[str, Any], key: str) -> BFloat16Tensor:
+def _load_bf16_safetensors_tensor(file_bytes: np.ndarray, data_start: int, header: Mapping[str, Any], key: str) -> np.ndarray:
     info = header[key]
     if info.get("dtype") != "BF16":
         raise ValueError(f"Expected BF16 safetensors tensor for {key!r}")
@@ -416,8 +398,10 @@ def _load_bf16_safetensors_tensor(path: Path, data_start: int, header: Mapping[s
     nbytes = end - begin
     if nbytes != int(np.prod(shape, dtype=np.int64)) * 2:
         raise ValueError(f"Invalid BF16 byte length for tensor {key!r}")
-    raw = np.memmap(path, dtype=np.uint8, mode="r", offset=data_start + begin, shape=(nbytes,))
-    return BFloat16Tensor(raw.view(np.uint16).reshape(shape), shape)
+    tensor_bytes = file_bytes[data_start + begin:data_start + end]
+    if tensor_bytes.nbytes != nbytes:
+        raise ValueError(f"Invalid BF16 byte range for tensor {key!r}")
+    return tensor_bytes.view(np.uint16).reshape(shape)
 
 
 def parse_qtype(qtype: str | Any) -> tuple[str, str]:
@@ -488,10 +472,23 @@ def _base_storage_type_for_meta(
     return data_qtype
 
 
-def _to_numpy_for_qtype(tensor: Any, qtype: Any) -> np.ndarray:
-    if isinstance(tensor, BFloat16Tensor):
-        return tensor.to_float32()
+def _bf16_bits_to_float32(tensor: np.ndarray) -> np.ndarray:
+    return (tensor.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(tensor.shape)
+
+
+def _is_direct_storage_array(tensor: Any, dtype: Any) -> bool:
+    return (
+        isinstance(tensor, np.ndarray)
+        and tensor.dtype == np.dtype(dtype)
+        and tensor.dtype.isnative
+        and tensor.flags.c_contiguous
+    )
+
+
+def _to_numpy_for_qtype(tensor: Any, qtype: Any, source_dtype: str | None = None) -> np.ndarray:
     if isinstance(tensor, np.ndarray):
+        if source_dtype == "BF16" and tensor.dtype == np.dtype(np.uint16):
+            tensor = _bf16_bits_to_float32(tensor)
         if qtype == GGMLQuantizationType.F32:
             return np.ascontiguousarray(tensor, dtype=np.float32)
         if qtype == GGMLQuantizationType.F16:
@@ -641,18 +638,22 @@ def _add_tensor_info(writer: gguf.GGUFWriter, key: str, shape: tuple[int, ...], 
     )
 
 
-def _unquantized_tensor_data(tensor: Any, qtype: Any) -> np.ndarray:
-    if qtype == GGMLQuantizationType.BF16 and isinstance(tensor, BFloat16Tensor):
-        return tensor.to_uint8_rows()
+def _unquantized_tensor_data(tensor: Any, source_dtype: str, qtype: Any) -> np.ndarray:
+    if qtype == GGMLQuantizationType.F32 and _is_direct_storage_array(tensor, np.float32):
+        return tensor
+    if qtype == GGMLQuantizationType.F16 and _is_direct_storage_array(tensor, np.float16):
+        return tensor
+    if qtype == GGMLQuantizationType.BF16 and source_dtype == "BF16" and _is_direct_storage_array(tensor, np.uint16):
+        return tensor
 
-    data = _to_numpy_for_qtype(tensor, qtype)
+    data = _to_numpy_for_qtype(tensor, qtype, source_dtype=source_dtype)
     if qtype in {GGMLQuantizationType.F32, GGMLQuantizationType.F16, GGMLQuantizationType.BF16}:
         return _native_store_rows(data, qtype)
     raise ValueError(f"Unknown unquantized type: {qtype}")
 
 
-def _quantized_tensor_data(tensor: Any, qtype: Any, imatrix: np.ndarray | None) -> np.ndarray:
-    data = _to_numpy_for_qtype(tensor, qtype)
+def _quantized_tensor_data(tensor: Any, source_dtype: str, qtype: Any, imatrix: np.ndarray | None) -> np.ndarray:
+    data = _to_numpy_for_qtype(tensor, qtype, source_dtype=source_dtype)
     return _native_quantize_rows(data, qtype, imatrix=imatrix)
 
 
@@ -660,9 +661,13 @@ def _quantized_tensor_data(tensor: Any, qtype: Any, imatrix: np.ndarray | None) 
 def _open_tensor_source(path: Path) -> Iterator[tuple[Mapping[str, str], TensorSource]]:
     if _is_safetensors_path(path):
         data_start, header = _read_safetensors_header(path)
+        file_bytes = np.memmap(path, dtype=np.uint8, mode="r")
         with safe_open(os.fspath(path), framework="np") as handle:
             keys = list(handle.keys())
             key_map, _ = _strip_prefix_keys(keys)
+
+            def load_bf16_tensor(source_key: str) -> np.ndarray:
+                return _load_bf16_safetensors_tensor(file_bytes, data_start, header, source_key)
 
             class SafetensorsSource:
                 def keys(self) -> Sequence[str]:
@@ -675,7 +680,7 @@ def _open_tensor_source(path: Path) -> Iterator[tuple[Mapping[str, str], TensorS
                 def load_tensor(self, key: str) -> Any:
                     source_key = key_map[key]
                     if header[source_key]["dtype"] == "BF16":
-                        return _load_bf16_safetensors_tensor(path, data_start, header, source_key)
+                        return load_bf16_tensor(source_key)
                     return handle.get_tensor(source_key)
 
             yield key_map, SafetensorsSource()
@@ -742,9 +747,9 @@ def convert_to_gguf(
                 logging.info("Filtering ignored key: %r", key)
                 continue
 
-            source_shape, dtype = tensor_source.tensor_meta(key)
+            source_shape, source_dtype = tensor_source.tensor_meta(key)
             n_params = int(np.prod(source_shape, dtype=np.int64))
-            storage_qtype = _base_storage_type_for_meta(key, dtype, len(source_shape), model_arch, n_params)
+            storage_qtype = _base_storage_type_for_meta(key, source_dtype, len(source_shape), model_arch, n_params)
             write_shape = _shape_fix_shape(writer, key, source_shape, model_arch)
 
             quantize = _policy_allows_quant_shape(key, write_shape, model_arch, policy)
@@ -775,6 +780,7 @@ def convert_to_gguf(
             plan = TensorPlan(
                 key=key,
                 source_shape=source_shape,
+                source_dtype=source_dtype,
                 write_shape=write_shape,
                 target_qtype=target_qtype,
                 quantize=quantize and _is_quantized_qtype(target_qtype),
@@ -793,15 +799,15 @@ def convert_to_gguf(
             for plan in tqdm(plans):
                 tensor = tensor_source.load_tensor(plan.key)
                 if plan.write_shape != plan.source_shape:
-                    if isinstance(tensor, BFloat16Tensor):
+                    if plan.source_dtype == "BF16" and isinstance(tensor, np.ndarray) and tensor.dtype == np.dtype(np.uint16):
                         tensor = tensor.reshape(plan.write_shape)
                     else:
-                        tensor = _to_numpy_for_qtype(tensor, plan.target_qtype).reshape(plan.write_shape)
+                        tensor = _to_numpy_for_qtype(tensor, plan.target_qtype, source_dtype=plan.source_dtype).reshape(plan.write_shape)
 
                 if plan.quantize:
-                    data = _quantized_tensor_data(tensor, plan.target_qtype, plan.imatrix)
+                    data = _quantized_tensor_data(tensor, plan.source_dtype, plan.target_qtype, plan.imatrix)
                 else:
-                    data = _unquantized_tensor_data(tensor, plan.target_qtype)
+                    data = _unquantized_tensor_data(tensor, plan.source_dtype, plan.target_qtype)
                 writer.write_tensor_data(data)
                 del data, tensor
         finally:

@@ -24,6 +24,24 @@
       }
     },
     {
+      "name": "windows-msvc-release-bench",
+      "displayName": "Windows MSVC Release With Benchmarks",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/cmake/windows-msvc-release-bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LIBGGUF_BUILD_SHARED": "ON",
+        "LIBGGUF_BUILD_PYTHON": "ON",
+        "LIBGGUF_BUILD_BENCHMARKS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
       "name": "windows-msvc-debug",
       "displayName": "Windows MSVC Debug",
       "generator": "Visual Studio 17 2022",
@@ -50,6 +68,18 @@
         "LIBGGUF_BUILD_SHARED": "ON",
         "LIBGGUF_BUILD_PYTHON": "ON"
       }
+    },
+    {
+      "name": "ninja-release-bench",
+      "displayName": "Ninja Release With Benchmarks",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cmake/ninja-release-bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "LIBGGUF_BUILD_SHARED": "ON",
+        "LIBGGUF_BUILD_PYTHON": "ON",
+        "LIBGGUF_BUILD_BENCHMARKS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -58,6 +88,13 @@
       "displayName": "Build Windows MSVC Release",
       "configurePreset": "windows-msvc-release",
       "configuration": "Release"
+    },
+    {
+      "name": "windows-msvc-release-bench",
+      "displayName": "Build Windows MSVC Release Benchmark",
+      "configurePreset": "windows-msvc-release-bench",
+      "configuration": "Release",
+      "targets": ["libgguf_backend_bench"]
     },
     {
       "name": "windows-msvc-debug",
@@ -95,6 +132,12 @@
       "displayName": "Build Python extension with Ninja Release",
       "configurePreset": "ninja-release",
       "targets": ["_libgguf"]
+    },
+    {
+      "name": "ninja-release-bench",
+      "displayName": "Build Ninja Release Benchmark",
+      "configurePreset": "ninja-release-bench",
+      "targets": ["libgguf_backend_bench"]
     }
   ]
 }

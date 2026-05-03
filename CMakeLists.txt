@@ -4,6 +4,7 @@ project(libgguf VERSION 0.1.0 LANGUAGES CXX)
 
 option(LIBGGUF_BUILD_SHARED "Build the standalone libgguf shared library" ON)
 option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
+option(LIBGGUF_BUILD_BENCHMARKS "Build native libgguf benchmark binaries" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -117,4 +118,33 @@ if(LIBGGUF_BUILD_PYTHON)
     target_compile_options(_libgguf PRIVATE -O3 -pthread)
   endif()
   install(TARGETS _libgguf DESTINATION libgguf)
+endif()
+
+if(LIBGGUF_BUILD_BENCHMARKS)
+  add_executable(
+    libgguf_backend_bench
+    "${CMAKE_CURRENT_SOURCE_DIR}/bench/backend_bench.cpp"
+    $<TARGET_OBJECTS:libgguf_objects>
+  )
+  target_include_directories(
+    libgguf_backend_bench
+    PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
+  )
+  target_link_libraries(libgguf_backend_bench PRIVATE libgguf_objects)
+  if(MSVC)
+    target_compile_options(
+      libgguf_backend_bench
+      PRIVATE
+        /O2
+        /EHsc
+        /std:c++17
+        /D_CRT_SECURE_NO_WARNINGS
+    )
+  else()
+    target_compile_options(libgguf_backend_bench PRIVATE -O3 -pthread)
+    target_link_libraries(libgguf_backend_bench PRIVATE m pthread)
+  endif()
 endif()
