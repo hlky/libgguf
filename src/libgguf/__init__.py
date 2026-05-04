@@ -220,7 +220,7 @@ def dequantize_rows(data: Any, qtype: int | Any, n_per_row: int | None = None) -
 
 atexit.register(_libgguf.quantize_free)
 
-from .quantize import QuantResult, convert_to_gguf  # noqa: E402
+from .quantize import QuantResult, convert_safetensors_to_gguf_native, convert_to_gguf  # noqa: E402
 
 __all__ = [
     "dequantize_rows",
@@ -233,6 +233,7 @@ __all__ = [
     "store_rows",
     "load_imatrix",
     "QuantResult",
+    "convert_safetensors_to_gguf_native",
     "convert_to_gguf",
     "row_size",
     "type_name",

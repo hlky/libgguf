@@ -17,6 +17,8 @@ test = ["pytest"]
 
 [project.scripts]
 quantize-gguf = "libgguf.quantize_gguf:main"
+quantize-gguf-native = "libgguf.quantize_gguf_native:main"
+quantize-gguf-pt = "libgguf.quantize_gguf_pt:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "src/libgguf/libgguf_numpy/tests", "src/libgguf/libgguf_torch/tests"]

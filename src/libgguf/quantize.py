@@ -30,6 +30,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 QUANTIZATION_THRESHOLD = 1024
 REARRANGE_THRESHOLD = 512
 MAX_TENSOR_NAME_LENGTH = 127
+NATIVE_DEFAULT_SCRATCH_BYTES = 32 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class QuantResult:
 @dataclass(frozen=True)
 class TensorPlan:
     key: str
+    source_key: str
     source_shape: tuple[int, ...]
     source_dtype: str
     write_shape: tuple[int, ...]
@@ -702,6 +704,111 @@ def _open_tensor_source(path: Path) -> Iterator[tuple[Mapping[str, str], TensorS
     yield {key: key for key in state_dict}, EagerSource()
 
 
+@contextmanager
+def _open_safetensors_metadata_source(path: Path) -> Iterator[tuple[Mapping[str, str], TensorSource]]:
+    if not _is_safetensors_path(path):
+        raise ValueError("Native GGUF conversion only supports .safetensors inputs")
+
+    with safe_open(os.fspath(path), framework="np") as handle:
+        keys = list(handle.keys())
+        key_map, _ = _strip_prefix_keys(keys)
+
+        class SafetensorsMetadataSource:
+            def keys(self) -> Sequence[str]:
+                return tuple(key_map)
+
+            def tensor_meta(self, key: str) -> tuple[tuple[int, ...], str]:
+                tensor_slice = handle.get_slice(key_map[key])
+                return tuple(int(dim) for dim in tensor_slice.get_shape()), tensor_slice.get_dtype()
+
+            def load_tensor(self, key: str) -> Any:
+                raise RuntimeError("Metadata-only safetensors source cannot load tensor data")
+
+        yield key_map, SafetensorsMetadataSource()
+
+
+def _prepare_conversion(
+    file_type: Any,
+    file_type_name: str,
+    base_qtype_name: str,
+    key_map: Mapping[str, str],
+    tensor_source: TensorSource,
+    *,
+    policy: str,
+    imatrix_data: Mapping[str, np.ndarray],
+    overrides: Sequence[tuple[str, str]],
+    include: Sequence[str] | None,
+    exclude: Sequence[str] | None,
+) -> tuple[gguf.GGUFWriter, ModelTemplate, list[TensorPlan], dict[str, int], dict[str, int]]:
+    keys = tuple(tensor_source.keys())
+    model_arch = detect_arch(set(keys))
+    name_lengths = sorted(((key, len(key)) for key in keys), key=lambda item: item[1], reverse=True)
+    if name_lengths and name_lengths[0][1] > MAX_TENSOR_NAME_LENGTH:
+        bad = ", ".join(f"{key!r} ({length})" for key, length in name_lengths if length > MAX_TENSOR_NAME_LENGTH)
+        raise ValueError(f"Can only handle tensor names up to {MAX_TENSOR_NAME_LENGTH} characters. Tensors exceeding the limit: {bad}")
+
+    writer = gguf.GGUFWriter(path=None, arch=model_arch.arch)
+    writer.add_quantization_version(gguf.GGML_QUANT_VERSION)
+    writer.add_file_type(file_type)
+
+    tensor_counts: dict[str, int] = {}
+    fallback_counts: dict[str, int] = {}
+    counters = {"attention_value": 0, "ffn_down": 0}
+    plans: list[TensorPlan] = []
+
+    for key in keys:
+        if any(marker in key for marker in model_arch.keys_ignore):
+            logging.info("Filtering ignored key: %r", key)
+            continue
+
+        source_shape, source_dtype = tensor_source.tensor_meta(key)
+        n_params = int(np.prod(source_shape, dtype=np.int64))
+        storage_qtype = _base_storage_type_for_meta(key, source_dtype, len(source_shape), model_arch, n_params)
+        write_shape = _shape_fix_shape(writer, key, source_shape, model_arch)
+
+        quantize = _policy_allows_quant_shape(key, write_shape, model_arch, policy)
+        if _matches(key, include) and len(write_shape) == 2:
+            quantize = True
+        if _matches(key, exclude):
+            quantize = False
+
+        forced_qtype = _override_qtype(key, overrides)
+        target_qtype = storage_qtype
+        if forced_qtype is not None:
+            forced_tensor_qtype_name = parse_tensor_qtype(forced_qtype)
+            target_qtype = _tensor_qtype_enum(forced_tensor_qtype_name)
+            quantize = _is_quantized_qtype(target_qtype)
+        elif quantize:
+            target_name = base_qtype_name
+            if policy == "comfy":
+                target_name = _mixed_policy_qtype(file_type_name, base_qtype_name, key, counters)
+            target_qtype = _tensor_qtype_enum(target_name)
+
+        if quantize and _is_quantized_qtype(target_qtype):
+            block_size = GGML_QUANT_SIZES[target_qtype][0]
+            if write_shape[-1] % block_size != 0:
+                fallback_counts[target_qtype.name] = fallback_counts.get(target_qtype.name, 0) + 1
+                target_qtype = GGMLQuantizationType.F16
+                quantize = False
+
+        plan = TensorPlan(
+            key=key,
+            source_key=key_map[key],
+            source_shape=source_shape,
+            source_dtype=source_dtype,
+            write_shape=write_shape,
+            target_qtype=target_qtype,
+            quantize=quantize and _is_quantized_qtype(target_qtype),
+            imatrix=imatrix_data.get(key),
+        )
+        plans.append(plan)
+        _add_tensor_info(writer, key, write_shape, target_qtype)
+        tensor_counts[target_qtype.name] = tensor_counts.get(target_qtype.name, 0) + 1
+        logging.info("%s -> %s, shape=%s", key, target_qtype.name, write_shape)
+
+    return writer, model_arch, plans, tensor_counts, fallback_counts
+
+
 def convert_to_gguf(
     src: str | os.PathLike[str],
     dst: str | os.PathLike[str] | None = None,
@@ -725,71 +832,19 @@ def convert_to_gguf(
     imatrix_data = load_imatrix(imatrix) if isinstance(imatrix, (str, os.PathLike)) else dict(imatrix or {})
     overrides = _normalize_overrides(tensor_overrides)
 
-    with _open_tensor_source(src_path) as (_, tensor_source):
-        keys = tuple(tensor_source.keys())
-        model_arch = detect_arch(set(keys))
-        name_lengths = sorted(((key, len(key)) for key in keys), key=lambda item: item[1], reverse=True)
-        if name_lengths and name_lengths[0][1] > MAX_TENSOR_NAME_LENGTH:
-            bad = ", ".join(f"{key!r} ({length})" for key, length in name_lengths if length > MAX_TENSOR_NAME_LENGTH)
-            raise ValueError(f"Can only handle tensor names up to {MAX_TENSOR_NAME_LENGTH} characters. Tensors exceeding the limit: {bad}")
-
-        writer = gguf.GGUFWriter(path=None, arch=model_arch.arch)
-        writer.add_quantization_version(gguf.GGML_QUANT_VERSION)
-        writer.add_file_type(file_type)
-
-        tensor_counts: dict[str, int] = {}
-        fallback_counts: dict[str, int] = {}
-        counters = {"attention_value": 0, "ffn_down": 0}
-        plans: list[TensorPlan] = []
-
-        for key in keys:
-            if any(marker in key for marker in model_arch.keys_ignore):
-                logging.info("Filtering ignored key: %r", key)
-                continue
-
-            source_shape, source_dtype = tensor_source.tensor_meta(key)
-            n_params = int(np.prod(source_shape, dtype=np.int64))
-            storage_qtype = _base_storage_type_for_meta(key, source_dtype, len(source_shape), model_arch, n_params)
-            write_shape = _shape_fix_shape(writer, key, source_shape, model_arch)
-
-            quantize = _policy_allows_quant_shape(key, write_shape, model_arch, policy)
-            if _matches(key, include) and len(write_shape) == 2:
-                quantize = True
-            if _matches(key, exclude):
-                quantize = False
-
-            forced_qtype = _override_qtype(key, overrides)
-            target_qtype = storage_qtype
-            if forced_qtype is not None:
-                forced_tensor_qtype_name = parse_tensor_qtype(forced_qtype)
-                target_qtype = _tensor_qtype_enum(forced_tensor_qtype_name)
-                quantize = _is_quantized_qtype(target_qtype)
-            elif quantize:
-                target_name = base_qtype_name
-                if policy == "comfy":
-                    target_name = _mixed_policy_qtype(file_type_name, base_qtype_name, key, counters)
-                target_qtype = _tensor_qtype_enum(target_name)
-
-            if quantize and _is_quantized_qtype(target_qtype):
-                block_size = GGML_QUANT_SIZES[target_qtype][0]
-                if write_shape[-1] % block_size != 0:
-                    fallback_counts[target_qtype.name] = fallback_counts.get(target_qtype.name, 0) + 1
-                    target_qtype = GGMLQuantizationType.F16
-                    quantize = False
-
-            plan = TensorPlan(
-                key=key,
-                source_shape=source_shape,
-                source_dtype=source_dtype,
-                write_shape=write_shape,
-                target_qtype=target_qtype,
-                quantize=quantize and _is_quantized_qtype(target_qtype),
-                imatrix=imatrix_data.get(key),
-            )
-            plans.append(plan)
-            _add_tensor_info(writer, key, write_shape, target_qtype)
-            tensor_counts[target_qtype.name] = tensor_counts.get(target_qtype.name, 0) + 1
-            logging.info("%s -> %s, shape=%s", key, target_qtype.name, write_shape)
+    with _open_tensor_source(src_path) as (key_map, tensor_source):
+        writer, model_arch, plans, tensor_counts, fallback_counts = _prepare_conversion(
+            file_type,
+            file_type_name,
+            base_qtype_name,
+            key_map,
+            tensor_source,
+            policy=policy,
+            imatrix_data=imatrix_data,
+            overrides=overrides,
+            include=include,
+            exclude=exclude,
+        )
 
         writer.write_header_to_file(path=dst_path)
         writer.write_kv_data_to_file()
@@ -822,8 +877,108 @@ def convert_to_gguf(
     )
 
 
+def _native_payload_plan(plan: TensorPlan, header: Mapping[str, Any], data_start: int) -> dict[str, Any]:
+    info = header[plan.source_key]
+    if info.get("dtype") != plan.source_dtype:
+        raise ValueError(f"Plan/source dtype mismatch for tensor {plan.key!r}")
+    begin, end = (int(offset) for offset in info["data_offsets"])
+    imatrix = None
+    if plan.imatrix is not None:
+        imatrix = np.ascontiguousarray(plan.imatrix, dtype=np.float32)
+    return {
+        "key": plan.key,
+        "source_dtype": plan.source_dtype,
+        "source_shape": plan.source_shape,
+        "write_shape": plan.write_shape,
+        "qtype": int(plan.target_qtype),
+        "nbytes": _qtype_nbytes(plan.write_shape, plan.target_qtype),
+        "data_begin": int(data_start + begin),
+        "data_end": int(data_start + end),
+        "imatrix": imatrix,
+    }
+
+
+def convert_safetensors_to_gguf_native(
+    src: str | os.PathLike[str],
+    dst: str | os.PathLike[str] | None = None,
+    qtype: str | Any = "Q4_K_S",
+    *,
+    policy: str = "comfy",
+    overwrite: bool = False,
+    imatrix: str | os.PathLike[str] | Mapping[str, np.ndarray] | None = None,
+    tensor_overrides: Mapping[str, str] | Sequence[tuple[str, str]] | None = None,
+    include: Sequence[str] | None = None,
+    exclude: Sequence[str] | None = None,
+    scratch_bytes: int = NATIVE_DEFAULT_SCRATCH_BYTES,
+) -> QuantResult:
+    from . import _libgguf
+
+    src_path = Path(src)
+    if not _is_safetensors_path(src_path):
+        raise ValueError("Native GGUF conversion only supports .safetensors inputs")
+
+    file_type_name, base_qtype_name = parse_qtype(qtype)
+    file_type = _file_type_enum(file_type_name)
+    dst_path = Path(dst) if dst is not None else _default_output_path(src_path, file_type_name)
+
+    if dst_path.exists() and not overwrite:
+        raise OSError(f"Output exists and overwriting is disabled: {dst_path}")
+
+    data_start, header = _read_safetensors_header(src_path)
+    imatrix_data = load_imatrix(imatrix) if isinstance(imatrix, (str, os.PathLike)) else dict(imatrix or {})
+    overrides = _normalize_overrides(tensor_overrides)
+
+    with _open_safetensors_metadata_source(src_path) as (key_map, tensor_source):
+        writer, model_arch, plans, tensor_counts, fallback_counts = _prepare_conversion(
+            file_type,
+            file_type_name,
+            base_qtype_name,
+            key_map,
+            tensor_source,
+            policy=policy,
+            imatrix_data=imatrix_data,
+            overrides=overrides,
+            include=include,
+            exclude=exclude,
+        )
+
+        native_plans = [_native_payload_plan(plan, header, data_start) for plan in plans]
+
+        writer.write_header_to_file(path=dst_path)
+        writer.write_kv_data_to_file()
+        writer.write_ti_data_to_file()
+
+        try:
+            if writer.fout is None or len(writer.fout) != 1:
+                raise ValueError("Native GGUF conversion currently supports single-file outputs only")
+            fout = writer.fout[0]
+            fout.flush()
+            _libgguf.write_safetensors_payload(
+                os.fspath(src_path),
+                fout.fileno(),
+                native_plans,
+                int(getattr(writer, "data_alignment", 32)),
+                scratch_bytes=int(scratch_bytes),
+            )
+            fout.flush()
+            for tensors in writer.tensors:
+                tensors.clear()
+        finally:
+            writer.close()
+
+    return QuantResult(
+        output_path=dst_path,
+        arch=model_arch.arch,
+        file_type=file_type.name,
+        tensor_type_counts=tensor_counts,
+        fallback_counts=fallback_counts,
+    )
+
+
 __all__ = [
     "QuantResult",
+    "NATIVE_DEFAULT_SCRATCH_BYTES",
+    "convert_safetensors_to_gguf_native",
     "convert_to_gguf",
     "detect_arch",
     "load_state_dict",
