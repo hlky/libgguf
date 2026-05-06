@@ -109,12 +109,9 @@ static __global__ void quantize_block_iq2_xs(
                     int q = gguf_cuda_nearest_int(0.5f * (id * xval[8 * k + i] - 1.0f));
                     laux[8 * k + i] = gguf_cuda_clamp_int(q, 0, 2);
                 }
-                int grid_index = gguf_cuda_iq2_find_grid_index(iq2xs_grid, 512, laux + 8 * k);
-                if (grid_index < 0) {
-                    is_on_grid_aux[k] = false;
-                    grid_index = gguf_cuda_iq2_find_best_neighbour(
-                        iq2xs_grid, 512, 2, xval + 8 * k, waux + 8 * k, this_scale, laux + 8 * k);
-                }
+                int grid_index = gguf_cuda_iq2_find_grid_or_best_neighbour(
+                    iq2xs_grid, 512, 2, xval + 8 * k, waux + 8 * k, this_scale, laux + 8 * k, is_on_grid_aux + k);
+                (void)grid_index;
             }
 
             float sumqx = 0.0f;
@@ -146,15 +143,10 @@ static __global__ void quantize_block_iq2_xs(
                     int q = gguf_cuda_nearest_int(0.5f * (id * xval[8 * k + i] - 1.0f));
                     l[8 * k + i] = gguf_cuda_clamp_int(q, 0, 2);
                 }
-                int grid_index = gguf_cuda_iq2_find_grid_index(iq2xs_grid, 512, l + 8 * k);
-                if (grid_index < 0) {
-                    grid_index = gguf_cuda_iq2_find_best_neighbour(
-                        iq2xs_grid, 512, 2, xval + 8 * k, waux + 8 * k, scale, l + 8 * k);
-                } else {
-                    for (int i = 0; i < 8; ++i) {
-                        l[8 * k + i] = gguf_cuda_iq2_grid_l(iq2xs_grid, grid_index, i);
-                    }
-                }
+                bool on_grid = false;
+                int grid_index = gguf_cuda_iq2_find_grid_or_best_neighbour(
+                    iq2xs_grid, 512, 2, xval + 8 * k, waux + 8 * k, scale, l + 8 * k, &on_grid);
+                (void)grid_index;
             }
             float sumqx = 0.0f;
             float sumq2 = 0.0f;

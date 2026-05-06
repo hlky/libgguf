@@ -93,12 +93,10 @@ static __global__ void quantize_block_iq3_xxs(const float * __restrict__ x, bloc
                     int q = gguf_cuda_nearest_int(0.5f * (id * xval[4 * k + i] - 1.0f));
                     laux[4 * k + i] = gguf_cuda_clamp_int(q, 0, 7);
                 }
-                int grid_index = gguf_cuda_iq3_find_grid_index(iq3xxs_grid, 256, laux + 4 * k);
-                if (grid_index < 0) {
-                    is_on_grid_aux[k] = false;
-                    grid_index = gguf_cuda_iq3_find_best_neighbour(
-                        iq3xxs_grid, 256, 2, xval + 4 * k, waux + 4 * k, this_scale, laux + 4 * k);
-                }
+                int grid_index = gguf_cuda_iq3_find_grid_or_best_neighbour(
+                    iq3xxs_grid, 256, 2, xval + 4 * k, waux + 4 * k, this_scale, laux + 4 * k,
+                    is_on_grid_aux + k);
+                (void)grid_index;
             }
 
             float sumqx = 0.0f;
@@ -135,15 +133,10 @@ static __global__ void quantize_block_iq3_xxs(const float * __restrict__ x, bloc
                     int q = gguf_cuda_nearest_int(0.5f * (id * xval[4 * k + i] - 1.0f));
                     l[4 * k + i] = gguf_cuda_clamp_int(q, 0, 7);
                 }
-                int grid_index = gguf_cuda_iq3_find_grid_index(iq3xxs_grid, 256, l + 4 * k);
-                if (grid_index < 0) {
-                    grid_index = gguf_cuda_iq3_find_best_neighbour(
-                        iq3xxs_grid, 256, 2, xval + 4 * k, waux + 4 * k, scale, l + 4 * k);
-                } else {
-                    for (int i = 0; i < 4; ++i) {
-                        l[4 * k + i] = gguf_cuda_iq3_grid_l(iq3xxs_grid, grid_index, i);
-                    }
-                }
+                bool on_grid = false;
+                int grid_index = gguf_cuda_iq3_find_grid_or_best_neighbour(
+                    iq3xxs_grid, 256, 2, xval + 4 * k, waux + 4 * k, scale, l + 4 * k, &on_grid);
+                (void)grid_index;
             }
             float sumqx = 0.0f;
             float sumq2 = 0.0f;

@@ -133,11 +133,10 @@ static __global__ void quantize_block_iq1_m(
         bool all_on_grid = true;
         for (int k = 0; k < 2; ++k) {
             const float * values = (k == 0 ? (best_k < 2 ? x_p : x_m) : (best_k % 2 == 0 ? x_p : x_m));
-            int grid_index = gguf_cuda_iq1_find_grid_index(l + 8 * k);
-            if (grid_index < 0) {
-                all_on_grid = false;
-                grid_index = gguf_cuda_iq1_find_best_neighbour(x16 + 8 * k, weight + 8 * k, scale, values, l + 8 * k);
-            }
+            bool on_grid = false;
+            int grid_index = gguf_cuda_iq1_find_grid_or_best_neighbour(
+                x16 + 8 * k, weight + 8 * k, scale, values, l + 8 * k, &on_grid);
+            all_on_grid = all_on_grid && on_grid;
             index[k] = grid_index;
         }
         if (!all_on_grid) {
