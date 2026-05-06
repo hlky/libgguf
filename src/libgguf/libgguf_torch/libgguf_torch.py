@@ -137,7 +137,13 @@ def split_block_dims(blocks, *args):
 
 
 def _fp16_to_bytes(x):
-    return x.to(torch.float16).contiguous().view(torch.uint8)
+    x = x.to(torch.float16).contiguous()
+    return x.reshape(-1).view(torch.uint8).reshape(*x.shape[:-1], x.shape[-1] * 2)
+
+
+def _int16_to_bytes(x):
+    x = x.to(torch.int16).contiguous()
+    return x.reshape(-1).view(torch.uint8).reshape(*x.shape[:-1], x.shape[-1] * 2)
 
 
 def _round_away_from_zero(x):
@@ -369,7 +375,7 @@ def quantize_blocks_BF16(blocks, block_size, type_size):
         n,
     )
     n = (n + (0x7FFF + ((n >> 16) & 1))) >> 16
-    return n.to(torch.int16).contiguous().view(torch.uint8)
+    return _int16_to_bytes(n)
 
 
 def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
