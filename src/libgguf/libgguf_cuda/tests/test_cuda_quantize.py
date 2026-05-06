@@ -135,6 +135,8 @@ def test_cuda_quantize_k_edge_cases_match_libgguf(qtype: GGMLQuantizationType, c
         GGMLQuantizationType.Q4_K,
         GGMLQuantizationType.Q5_K,
         GGMLQuantizationType.Q6_K,
+        GGMLQuantizationType.TQ1_0,
+        GGMLQuantizationType.TQ2_0,
     ),
     ids=qtype_id,
 )
