@@ -160,7 +160,8 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
       libgguf_cuda_C_gguf
       MODULE
       "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/torch_bindings.cpp"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/kernel.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize.cu"
       WITH_SOABI
     )
     set_target_properties(
