@@ -46,27 +46,6 @@ static __device__ __forceinline__ float gguf_cuda_warp_reduce_absmax_first(float
     return __shfl_sync(mask, best_value, 0);
 }
 
-static __global__ void quantize_block_q8_0(const float * __restrict__ x, block_q8_0 * __restrict__ y, int64_t n_blocks) {
-    const int64_t ib = blockDim.x * blockIdx.x + threadIdx.x;
-    if (ib >= n_blocks) {
-        return;
-    }
-
-    const float * xb = x + ib * QK8_0;
-    float amax = 0.0f;
-    for (int j = 0; j < QK8_0; ++j) {
-        amax = fmaxf(amax, fabsf(xb[j]));
-    }
-
-    const float d = __fdiv_rn(amax, 127.0f);
-    const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
-    y[ib].d = gguf_cuda_compute_fp32_to_fp16(d);
-
-    for (int j = 0; j < QK8_0; ++j) {
-        y[ib].qs[j] = (int8_t)roundf(__fmul_rn(xb[j], id));
-    }
-}
-
 static __global__ void quantize_block_q8_0_warp(const float * __restrict__ x, block_q8_0 * __restrict__ y, int64_t n_blocks) {
     const int lane = threadIdx.x & 31;
     const int warp = threadIdx.x >> 5;
@@ -86,7 +65,6 @@ static __global__ void quantize_block_q8_0_warp(const float * __restrict__ x, bl
     }
     y[ib].qs[lane] = (int8_t)roundf(__fmul_rn(v, id));
 }
-
 
 static __global__ void quantize_block_q1_0(const float * __restrict__ x, block_q1_0 * __restrict__ y, int64_t n_blocks) {
     const int64_t ib = blockDim.x * blockIdx.x + threadIdx.x;
@@ -298,43 +276,6 @@ static __device__ __forceinline__ void gguf_cuda_store_u32_le(uint8_t * dst, uin
     dst[3] = (value >> 24) & 0xffu;
 }
 
-static __global__ void quantize_block_q5_0(const float * __restrict__ x, block_q5_0 * __restrict__ y, int64_t n_blocks) {
-    const int64_t ib = blockDim.x * blockIdx.x + threadIdx.x;
-    if (ib >= n_blocks) {
-        return;
-    }
-
-    const float * xb = x + ib * QK5_0;
-    float amax = 0.0f;
-    float max = 0.0f;
-    for (int j = 0; j < QK5_0; ++j) {
-        const float v = xb[j];
-        const float av = fabsf(v);
-        if (amax < av) {
-            amax = av;
-            max = v;
-        }
-    }
-
-    const float d = __fdiv_rn(max, -16.0f);
-    const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
-    y[ib].d = gguf_cuda_compute_fp32_to_fp16(d);
-
-    uint32_t qh = 0;
-    for (int j = 0; j < QK5_0 / 2; ++j) {
-        const float x0 = __fmul_rn(xb[j], id);
-        const float x1 = __fmul_rn(xb[QK5_0 / 2 + j], id);
-
-        const uint8_t xi0 = gguf_cuda_min_u8(31, (int8_t)(x0 + 16.5f));
-        const uint8_t xi1 = gguf_cuda_min_u8(31, (int8_t)(x1 + 16.5f));
-
-        y[ib].qs[j] = (xi0 & 0x0f) | ((xi1 & 0x0f) << 4);
-        qh |= ((xi0 & 0x10u) >> 4) << (j + 0);
-        qh |= ((xi1 & 0x10u) >> 4) << (j + QK5_0 / 2);
-    }
-    gguf_cuda_store_u32_le(y[ib].qh, qh);
-}
-
 static __global__ void quantize_block_q5_0_warp(const float * __restrict__ x, block_q5_0 * __restrict__ y, int64_t n_blocks) {
     constexpr unsigned mask = 0xffffffffu;
     const int lane = threadIdx.x & 31;
@@ -364,45 +305,6 @@ static __global__ void quantize_block_q5_0_warp(const float * __restrict__ x, bl
         y[ib].d = gguf_cuda_compute_fp32_to_fp16(d);
         gguf_cuda_store_u32_le(y[ib].qh, qh0 | qh1);
     }
-}
-
-static __global__ void quantize_block_q5_1(const float * __restrict__ x, block_q5_1 * __restrict__ y, int64_t n_blocks) {
-    const int64_t ib = blockDim.x * blockIdx.x + threadIdx.x;
-    if (ib >= n_blocks) {
-        return;
-    }
-
-    const float * xb = x + ib * QK5_1;
-    float min = 3.4028234663852886e38f;
-    float max = -3.4028234663852886e38f;
-    for (int j = 0; j < QK5_1; ++j) {
-        const float v = xb[j];
-        if (v < min) {
-            min = v;
-        }
-        if (v > max) {
-            max = v;
-        }
-    }
-
-    const float d = __fdiv_rn(max - min, 31.0f);
-    const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
-    y[ib].d = gguf_cuda_compute_fp32_to_fp16(d);
-    y[ib].m = gguf_cuda_compute_fp32_to_fp16(min);
-
-    uint32_t qh = 0;
-    for (int j = 0; j < QK5_1 / 2; ++j) {
-        const float x0 = __fmul_rn(xb[j] - min, id);
-        const float x1 = __fmul_rn(xb[QK5_1 / 2 + j] - min, id);
-
-        const uint8_t xi0 = (uint8_t)(x0 + 0.5f);
-        const uint8_t xi1 = (uint8_t)(x1 + 0.5f);
-
-        y[ib].qs[j] = (xi0 & 0x0f) | ((xi1 & 0x0f) << 4);
-        qh |= ((xi0 & 0x10u) >> 4) << (j + 0);
-        qh |= ((xi1 & 0x10u) >> 4) << (j + QK5_1 / 2);
-    }
-    gguf_cuda_store_u32_le(y[ib].qh, qh);
 }
 
 static __global__ void quantize_block_q5_1_warp(const float * __restrict__ x, block_q5_1 * __restrict__ y, int64_t n_blocks) {
@@ -1407,38 +1309,49 @@ static __device__ __forceinline__ int gguf_cuda_iq1_find_grid_index(const int8_t
     return -1;
 }
 
+static __device__ __forceinline__ int gguf_cuda_iq1_grid_dist(int grid_index, const int8_t * l) {
+    int dist = 0;
+    for (int i = 0; i < 8; ++i) {
+        const int diff = (int)gguf_cuda_iq1_grid_l(grid_index, i) - (int)l[i];
+        dist += diff * diff;
+    }
+    return dist;
+}
+
 static __device__ __forceinline__ int gguf_cuda_iq1_find_best_neighbour(
     const float * xval, const float * weight, float scale, const float * values, int8_t * l
 ) {
-    int previous_dist = -1;
-    int cutoff_dist = INT_MAX;
-    for (int shell = 0; shell < 3; ++shell) {
-        int shell_dist = INT_MAX;
-        for (int grid_index = 0; grid_index < NGRID_IQ1S; ++grid_index) {
-            int dist = 0;
-            for (int i = 0; i < 8; ++i) {
-                const int diff = (int)gguf_cuda_iq1_grid_l(grid_index, i) - (int)l[i];
-                dist += diff * diff;
-            }
-            if (dist > previous_dist && dist < shell_dist) {
-                shell_dist = dist;
-            }
+    int shell0 = INT_MAX;
+    int shell1 = INT_MAX;
+    int shell2 = INT_MAX;
+    for (int grid_index = 0; grid_index < NGRID_IQ1S; ++grid_index) {
+        const int dist = gguf_cuda_iq1_grid_dist(grid_index, l);
+        if (dist == shell0 || dist == shell1 || dist == shell2) {
+            continue;
         }
-        if (shell_dist == INT_MAX) {
-            break;
+        if (dist < shell0) {
+            shell2 = shell1;
+            shell1 = shell0;
+            shell0 = dist;
+        } else if (dist < shell1) {
+            shell2 = shell1;
+            shell1 = dist;
+        } else if (dist < shell2) {
+            shell2 = dist;
         }
-        previous_dist = shell_dist;
-        cutoff_dist = shell_dist;
+    }
+    int cutoff_dist = shell0;
+    if (shell1 != INT_MAX) {
+        cutoff_dist = shell1;
+    }
+    if (shell2 != INT_MAX) {
+        cutoff_dist = shell2;
     }
 
     float best_d2 = FLT_MAX;
     int best_index = 0;
     for (int grid_index = 0; grid_index < NGRID_IQ1S; ++grid_index) {
-        int dist = 0;
-        for (int i = 0; i < 8; ++i) {
-            const int diff = (int)gguf_cuda_iq1_grid_l(grid_index, i) - (int)l[i];
-            dist += diff * diff;
-        }
+        const int dist = gguf_cuda_iq1_grid_dist(grid_index, l);
         if (dist > cutoff_dist) {
             continue;
         }
