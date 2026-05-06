@@ -672,11 +672,47 @@ static __device__ __forceinline__ int gguf_cuda_iq2_find_grid_index(const uint64
 
 static __device__ __forceinline__ int gguf_cuda_iq2_grid_dist(const uint64_t * grid, int grid_index, const int8_t * l) {
     int dist = 0;
+#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+    uint16_t packed;
+    if (grid == iq2xxs_grid) {
+        packed = iq2xxs_grid_packed[grid_index];
+    } else if (grid == iq2xs_grid) {
+        packed = iq2xs_grid_packed[grid_index];
+    } else {
+        packed = iq2s_grid_packed[grid_index];
+    }
+    for (int i = 0; i < 8; ++i) {
+        const int diff = (int)(packed & 0x03u) - (int)l[i];
+        dist += diff * diff;
+        packed >>= 2;
+    }
+#else
     for (int i = 0; i < 8; ++i) {
         const int diff = (int)gguf_cuda_iq2_grid_l(grid, grid_index, i) - (int)l[i];
         dist += diff * diff;
     }
+#endif
     return dist;
+}
+
+static __device__ __forceinline__ int8_t gguf_cuda_iq2_grid_l_fast(const uint64_t * grid, int grid_index, int i) {
+#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+    uint16_t packed;
+    if (grid == iq2xxs_grid) {
+        packed = iq2xxs_grid_packed[grid_index];
+    } else if (grid == iq2xs_grid) {
+        packed = iq2xs_grid_packed[grid_index];
+    } else {
+        packed = iq2s_grid_packed[grid_index];
+    }
+    return (packed >> (2 * i)) & 0x03u;
+#else
+    return gguf_cuda_iq2_grid_l(grid, grid_index, i);
+#endif
+}
+
+static __device__ __forceinline__ int8_t gguf_cuda_iq2_grid_q_fast(const uint64_t * grid, int grid_index, int i) {
+    return 2 * gguf_cuda_iq2_grid_l_fast(grid, grid_index, i) + 1;
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq2_find_best_neighbour(
@@ -725,7 +761,7 @@ static __device__ __forceinline__ int gguf_cuda_iq2_find_best_neighbour(
         }
         float d2 = 0.0f;
         for (int i = 0; i < 8; ++i) {
-            const float q = gguf_cuda_iq2_grid_q(grid, grid_index, i);
+            const float q = gguf_cuda_iq2_grid_q_fast(grid, grid_index, i);
             const float diff = scale * q - xval[i];
             d2 += weight[i] * diff * diff;
         }
@@ -735,7 +771,7 @@ static __device__ __forceinline__ int gguf_cuda_iq2_find_best_neighbour(
         }
     }
     for (int i = 0; i < 8; ++i) {
-        l[i] = gguf_cuda_iq2_grid_l(grid, best_index, i);
+        l[i] = gguf_cuda_iq2_grid_l_fast(grid, best_index, i);
     }
     return best_index;
 }
@@ -915,11 +951,33 @@ static __device__ __forceinline__ int gguf_cuda_iq3_find_grid_index(const uint32
 
 static __device__ __forceinline__ int gguf_cuda_iq3_grid_dist(const uint32_t * grid, int grid_index, const int8_t * l) {
     int dist = 0;
+#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+    uint16_t packed = grid == iq3xxs_grid ? iq3xxs_grid_packed[grid_index] : iq3xs_grid_packed[grid_index];
+    for (int i = 0; i < 4; ++i) {
+        const int diff = (int)(packed & 0x07u) - (int)l[i];
+        dist += diff * diff;
+        packed >>= 3;
+    }
+#else
     for (int i = 0; i < 4; ++i) {
         const int diff = (int)gguf_cuda_iq3_grid_l(grid, grid_index, i) - (int)l[i];
         dist += diff * diff;
     }
+#endif
     return dist;
+}
+
+static __device__ __forceinline__ int8_t gguf_cuda_iq3_grid_l_fast(const uint32_t * grid, int grid_index, int i) {
+#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+    const uint16_t packed = grid == iq3xxs_grid ? iq3xxs_grid_packed[grid_index] : iq3xs_grid_packed[grid_index];
+    return (packed >> (3 * i)) & 0x07u;
+#else
+    return gguf_cuda_iq3_grid_l(grid, grid_index, i);
+#endif
+}
+
+static __device__ __forceinline__ int8_t gguf_cuda_iq3_grid_q_fast(const uint32_t * grid, int grid_index, int i) {
+    return 2 * gguf_cuda_iq3_grid_l_fast(grid, grid_index, i) + 1;
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq3_find_best_neighbour(
@@ -968,7 +1026,7 @@ static __device__ __forceinline__ int gguf_cuda_iq3_find_best_neighbour(
         }
         float d2 = 0.0f;
         for (int i = 0; i < 4; ++i) {
-            const float q = gguf_cuda_iq3_grid_q(grid, grid_index, i);
+            const float q = gguf_cuda_iq3_grid_q_fast(grid, grid_index, i);
             const float diff = scale * q - xval[i];
             d2 += weight[i] * diff * diff;
         }
@@ -978,7 +1036,7 @@ static __device__ __forceinline__ int gguf_cuda_iq3_find_best_neighbour(
         }
     }
     for (int i = 0; i < 4; ++i) {
-        l[i] = gguf_cuda_iq3_grid_l(grid, best_index, i);
+        l[i] = gguf_cuda_iq3_grid_l_fast(grid, best_index, i);
     }
     return best_index;
 }
