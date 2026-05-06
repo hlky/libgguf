@@ -655,6 +655,61 @@ bool matches_any(const std::string &name, const std::vector<std::string> &patter
   return false;
 }
 
+bool is_digits(const std::string &value) {
+  if (value.empty()) {
+    return false;
+  }
+  for (char ch : value) {
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<std::string> split_dot(const std::string &value) {
+  std::vector<std::string> parts;
+  size_t start = 0;
+  while (start <= value.size()) {
+    size_t pos = value.find('.', start);
+    if (pos == std::string::npos) {
+      parts.push_back(value.substr(start));
+      break;
+    }
+    parts.push_back(value.substr(start, pos - start));
+    start = pos + 1;
+  }
+  return parts;
+}
+
+int dynamic_layer_index(const std::string &key) {
+  static const std::set<std::string> block_names = {
+      "blocks", "double_blocks", "double_layers", "double_stream_blocks", "input_blocks", "joint_blocks",
+      "layers", "output_blocks", "single_blocks", "single_stream_blocks", "transformer_blocks"};
+  const std::vector<std::string> parts = split_dot(key);
+  for (size_t i = 0; i + 1 < parts.size(); ++i) {
+    if (block_names.count(parts[i]) && is_digits(parts[i + 1])) {
+      return std::stoi(parts[i + 1]);
+    }
+  }
+  for (size_t i = 0; i + 1 < parts.size(); ++i) {
+    if ((parts[i] == "context_refiner" || parts[i] == "noise_refiner") && is_digits(parts[i + 1])) {
+      return std::stoi(parts[i + 1]);
+    }
+  }
+  return -1;
+}
+
+std::string promote_k_qtype(const std::string &qtype, int steps = 1) {
+  static const std::vector<std::string> order = {"Q2_K", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "Q8_0"};
+  for (size_t i = 0; i < order.size(); ++i) {
+    if (order[i] == qtype) {
+      return order[std::min<size_t>(i + (size_t)steps, order.size() - 1)];
+    }
+  }
+  return qtype;
+}
+
 bool contains_any(const std::string &name, const std::vector<std::string> &markers) {
   for (const std::string &marker : markers) {
     if (name.find(marker) != std::string::npos) {
@@ -1021,12 +1076,12 @@ bool policy_allows_quant_shape(const std::string &key, const std::vector<int64_t
   return true;
 }
 
-std::string mixed_policy_qtype(const std::string &file_type, const std::string &base_qtype, const std::string &key, std::map<std::string, int> &counters) {
+std::string mixed_policy_qtype(const std::string &file_type, const std::string &base_qtype, const std::string &key, const model_template &model, std::map<std::string, int> &counters) {
   static const std::vector<std::string> attention_value = {
       "*attn_v.weight*", "*.to_v.weight*", "*.v.weight*", "*.attn.w1v.weight*", "*.attn.w2v.weight*", "*_attn.v_proj.weight*"};
   static const std::vector<std::string> fused_qkv = {"*attn_qkv.weight*", "*attn.qkv.weight*", "*attention.qkv.weight*"};
   static const std::vector<std::string> ffn_down = {
-      "*ffn_down*", "*experts.*.w2.weight*", "*.ffn.2.weight*", "*.ff.net.2.weight*", "*.mlp.layer2.weight*", "*.adaln_modulation_mlp.2.weight*", "*.feed_forward.w2.weight*"};
+      "*ffn_down*", "*experts.*.w2.weight*", "*shared_experts.w2.weight*", "*.ffn.2.weight*", "*.ff.net.2.weight*", "*.mlp.layer2.weight*", "*.adaln_modulation_mlp.2.weight*", "*.feed_forward.w2.weight*"};
 
   std::string qtype = base_qtype;
   if (matches_any(key, attention_value)) {
@@ -1048,8 +1103,71 @@ std::string mixed_policy_qtype(const std::string &file_type, const std::string &
     else if (file_type == "Q4_0") qtype = "Q4_1";
     else if (file_type == "Q5_0") qtype = "Q5_1";
     counters["ffn_down"] += 1;
+  } else if (model.arch == "aura" && file_type == "Q3_K_M" && fnmatch_case("double_layers.*.mlp?.c_proj.weight", key.c_str())) {
+    qtype = "Q4_K";
   }
   return qtype;
+}
+
+std::string dynamic_policy_qtype(const std::string &file_type, const std::string &comfy_qtype, const std::string &key, int max_layer) {
+  static const std::vector<std::string> attention_value = {
+      "*attn_v.weight*", "*.to_v.weight*", "*.v.weight*", "*.attn.w1v.weight*", "*.attn.w2v.weight*", "*_attn.v_proj.weight*"};
+  static const std::vector<std::string> fused_qkv = {"*attn_qkv.weight*", "*attn.qkv.weight*", "*attention.qkv.weight*"};
+  static const std::vector<std::string> attention_qko = {
+      "*.to_q.weight", "*.q_proj.weight", "*.query_proj.weight", "*_attn.q_proj.weight", "*attn_q.weight",
+      "*.to_k.weight", "*.k_proj.weight", "*.key_proj.weight", "*_attn.k_proj.weight", "*attn_k.weight",
+      "*.to_out.0.weight", "*.to_out.weight", "*.o_proj.weight", "*.out_proj.weight", "*.proj_out.weight", "*_attn.proj.weight"};
+  static const std::vector<std::string> ffn_up_down = {
+      "*ffn_down*", "*experts.*.w2.weight*", "*shared_experts.w2.weight*", "*.ffn.2.weight*", "*.ff.net.2.weight*",
+      "*.mlp.layer2.weight*", "*.adaln_modulation_mlp.2.weight*", "*.feed_forward.w2.weight*",
+      "*.mlp.linear_fc2.weight", "*.linear_fc2.weight", "*.down_proj.weight", "*.c_proj.weight", "*.out_projection.weight",
+      "*.mlp.up_proj.weight", "*.up_proj.weight", "*.w3.weight", "*.fc1.weight", "*.linear_fc1.weight", "*.mlp.layer1.weight"};
+  static const std::vector<std::string> ffn_gate = {"*.mlp.gate_proj.weight", "*.gate_proj.weight", "*.w1.weight"};
+  static const std::vector<std::string> ffn = {
+      "*ffn_down*", "*experts.*.w2.weight*", "*shared_experts.w2.weight*", "*.ffn.2.weight*", "*.ff.net.2.weight*",
+      "*.mlp.layer2.weight*", "*.adaln_modulation_mlp.2.weight*", "*.feed_forward.w2.weight*",
+      "*.mlp.linear_fc2.weight", "*.linear_fc2.weight", "*.down_proj.weight", "*.c_proj.weight", "*.out_projection.weight",
+      "*.mlp.up_proj.weight", "*.up_proj.weight", "*.w3.weight", "*.fc1.weight", "*.linear_fc1.weight", "*.mlp.layer1.weight",
+      "*.mlp.gate_proj.weight", "*.gate_proj.weight", "*.w1.weight"};
+
+  const int layer = dynamic_layer_index(key);
+  if (layer < 0) {
+    return comfy_qtype;
+  }
+  const bool early = layer <= 1;
+  const bool final_tail = max_layer >= 0 && layer >= max_layer - 1;
+  if (matches_any(key, attention_value)) {
+    if (file_type == "Q2_K" || file_type == "Q3_K_M" || file_type == "Q3_K_L") return "Q6_K";
+    if (file_type == "Q4_K_S" || file_type == "Q4_K_M" || file_type == "Q5_K_S" || file_type == "Q5_K_M") return "Q8_0";
+    return promote_k_qtype(comfy_qtype);
+  }
+  if (matches_any(key, fused_qkv)) {
+    return promote_k_qtype(comfy_qtype, early ? 2 : 1);
+  }
+  if (matches_any(key, attention_qko)) {
+    std::string qtype = promote_k_qtype(comfy_qtype, early ? 2 : 1);
+    if (matches_any(key, {"*.to_out.0.weight", "*.to_out.weight", "*.o_proj.weight", "*.out_proj.weight", "*.proj_out.weight", "*_attn.proj.weight"})) {
+      if ((file_type == "Q2_K" || file_type == "Q3_K_M" || file_type == "Q4_K_M") && ((layer >= 15 && layer <= 24) || (layer >= 28 && !final_tail))) {
+        qtype = promote_k_qtype(qtype);
+      } else if (file_type == "Q5_K_M" && (layer == 3 || layer == 24 || (layer >= 31 && !final_tail))) {
+        qtype = "Q8_0";
+      }
+    }
+    return qtype;
+  }
+  if (matches_any(key, ffn)) {
+    std::string qtype = promote_k_qtype(comfy_qtype, early && (file_type == "Q4_K_M" || file_type == "Q5_K_M") ? 2 : 1);
+    if (matches_any(key, ffn_up_down)) {
+      if ((file_type == "Q2_K" || file_type == "Q3_K_M" || file_type == "Q4_K_M") && (layer == 7 || layer == 21 || (layer >= 23 && !final_tail))) {
+        qtype = promote_k_qtype(qtype);
+      } else if (file_type == "Q5_K_M" && (layer == 7 || (layer >= 27 && !final_tail))) {
+        qtype = "Q8_0";
+      }
+    }
+    (void)ffn_gate;
+    return qtype;
+  }
+  return comfy_qtype;
 }
 
 ggml_type base_storage_type_for_meta(const tensor_meta &tensor, const model_template &model) {
@@ -1097,6 +1215,10 @@ std::vector<tensor_plan> prepare_plans(
     conversion_result &result) {
   std::vector<tensor_plan> plans;
   std::map<std::string, int> counters = {{"attention_value", 0}, {"ffn_down", 0}};
+  int max_dynamic_layer = -1;
+  for (const tensor_meta &tensor : tensors) {
+    max_dynamic_layer = std::max(max_dynamic_layer, dynamic_layer_index(tensor.key));
+  }
 
   for (const tensor_meta &tensor : tensors) {
     if (contains_any(tensor.key, model.keys_ignore)) {
@@ -1122,8 +1244,11 @@ std::vector<tensor_plan> prepare_plans(
       quantize = is_quantized_qtype(target_qtype);
     } else if (quantize) {
       std::string target_name = base_qtype_name;
-      if (options.policy == "comfy") {
-        target_name = mixed_policy_qtype(file_type_name, base_qtype_name, tensor.key, counters);
+      if (options.policy == "comfy" || options.policy == "dynamic") {
+        target_name = mixed_policy_qtype(file_type_name, base_qtype_name, tensor.key, model, counters);
+        if (options.policy == "dynamic") {
+          target_name = dynamic_policy_qtype(file_type_name, target_name, tensor.key, max_dynamic_layer);
+        }
       }
       target_qtype = qtype_from_name(target_name);
     }
@@ -1625,7 +1750,8 @@ void print_help() {
   std::puts("  --qtype QTYPE              Output file type, e.g. Q4_K_S, Q4_K_M, Q4_K, Q8_0");
   std::puts("  --dst PATH                 Output GGUF path");
   std::puts("  --overwrite                Overwrite an existing output file");
-  std::puts("  --policy comfy|uniform     Tensor selection policy (default: comfy)");
+  std::puts("  --policy comfy|dynamic|uniform");
+  std::puts("                           Tensor selection policy (default: comfy)");
   std::puts("  --imatrix PATH             Accepted for CLI parity; Q/K quantizers do not require it");
   std::puts("  --tensor-type PATTERN=TYPE Override matching tensor storage/quant type");
   std::puts("  --include PATTERN          Force matching 2D tensors into quantization when possible");
@@ -1659,8 +1785,8 @@ cli_options parse_args(int argc, char **argv) {
       options.overwrite = true;
     } else if (arg == "--policy") {
       options.policy = need_value("--policy");
-      if (options.policy != "comfy" && options.policy != "uniform") {
-        fail("--policy must be 'comfy' or 'uniform'");
+      if (options.policy != "comfy" && options.policy != "dynamic" && options.policy != "uniform") {
+        fail("--policy must be 'comfy', 'dynamic', or 'uniform'");
       }
     } else if (arg == "--imatrix") {
       options.imatrix = need_value("--imatrix");

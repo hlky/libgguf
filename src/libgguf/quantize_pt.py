@@ -6,6 +6,7 @@ from fnmatch import fnmatchcase
 import logging
 import os
 from pathlib import Path
+import re
 from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
@@ -219,12 +220,32 @@ FUSED_QKV_PATTERNS = ("*attn_qkv.weight*", "*attn.qkv.weight*", "*attention.qkv.
 FFN_DOWN_PATTERNS = (
     "*ffn_down*",
     "*experts.*.w2.weight*",
+    "*shared_experts.w2.weight*",
     "*.ffn.2.weight*",
     "*.ff.net.2.weight*",
     "*.mlp.layer2.weight*",
     "*.adaln_modulation_mlp.2.weight*",
     "*.feed_forward.w2.weight*",
 )
+DYNAMIC_ATTENTION_QUERY_PATTERNS = ("*.to_q.weight", "*.q_proj.weight", "*.query_proj.weight", "*_attn.q_proj.weight", "*attn_q.weight")
+DYNAMIC_ATTENTION_KEY_PATTERNS = ("*.to_k.weight", "*.k_proj.weight", "*.key_proj.weight", "*_attn.k_proj.weight", "*attn_k.weight")
+DYNAMIC_ATTENTION_OUTPUT_PATTERNS = ("*.to_out.0.weight", "*.to_out.weight", "*.o_proj.weight", "*.out_proj.weight", "*.proj_out.weight", "*_attn.proj.weight")
+DYNAMIC_FFN_UP_PATTERNS = ("*.mlp.up_proj.weight", "*.up_proj.weight", "*.w3.weight", "*.fc1.weight", "*.linear_fc1.weight", "*.mlp.layer1.weight")
+DYNAMIC_FFN_GATE_PATTERNS = ("*.mlp.gate_proj.weight", "*.gate_proj.weight", "*.w1.weight")
+DYNAMIC_FFN_DOWN_PATTERNS = FFN_DOWN_PATTERNS + ("*.mlp.linear_fc2.weight", "*.linear_fc2.weight", "*.down_proj.weight", "*.c_proj.weight", "*.out_projection.weight")
+DYNAMIC_BLOCK_NAMES = {
+    "blocks",
+    "double_blocks",
+    "double_layers",
+    "double_stream_blocks",
+    "input_blocks",
+    "joint_blocks",
+    "layers",
+    "output_blocks",
+    "single_blocks",
+    "single_stream_blocks",
+    "transformer_blocks",
+}
 
 
 def _lazy_imports() -> tuple[Any, Any, Any, Any, Any]:
@@ -243,6 +264,63 @@ def _lazy_imports() -> tuple[Any, Any, Any, Any, Any]:
 
 def _matches(name: str, patterns: Sequence[str] | None) -> bool:
     return bool(patterns) and any(fnmatchcase(name, pattern) for pattern in patterns)
+
+
+def _dynamic_layer_index(key: str) -> int | None:
+    parts = key.split(".")
+    for idx, part in enumerate(parts[:-1]):
+        if part in DYNAMIC_BLOCK_NAMES and parts[idx + 1].isdigit():
+            return int(parts[idx + 1])
+    if re.search(r"(?:^|\.)(?:context_refiner|noise_refiner)\.\d+\.", key):
+        return next((int(part) for part in parts if part.isdigit()), None)
+    return None
+
+
+def _promote_k_qtype(qtype: str, steps: int = 1) -> str:
+    order = ("Q2_K", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "Q8_0")
+    try:
+        idx = order.index(qtype)
+    except ValueError:
+        return qtype
+    return order[min(idx + steps, len(order) - 1)]
+
+
+def _dynamic_policy_qtype(base_file_type: str, comfy_qtype: str, key: str, max_layer_idx: int | None = None) -> str:
+    layer_idx = _dynamic_layer_index(key)
+    if layer_idx is None:
+        return comfy_qtype
+
+    early = layer_idx <= 1
+    final_tail = max_layer_idx is not None and layer_idx >= max_layer_idx - 1
+    attention_qko = DYNAMIC_ATTENTION_QUERY_PATTERNS + DYNAMIC_ATTENTION_KEY_PATTERNS + DYNAMIC_ATTENTION_OUTPUT_PATTERNS
+    ffn_up_down = DYNAMIC_FFN_UP_PATTERNS + DYNAMIC_FFN_DOWN_PATTERNS
+    ffn = ffn_up_down + DYNAMIC_FFN_GATE_PATTERNS
+    if _matches(key, ATTENTION_VALUE_PATTERNS):
+        if base_file_type in {"Q2_K", "Q3_K_M", "Q3_K_L"}:
+            return "Q6_K"
+        if base_file_type in {"Q4_K_S", "Q4_K_M", "Q5_K_S", "Q5_K_M"}:
+            return "Q8_0"
+        return _promote_k_qtype(comfy_qtype)
+
+    if _matches(key, FUSED_QKV_PATTERNS):
+        return _promote_k_qtype(comfy_qtype, 2 if early else 1)
+    if _matches(key, attention_qko):
+        qtype = _promote_k_qtype(comfy_qtype, 2 if early else 1)
+        if _matches(key, DYNAMIC_ATTENTION_OUTPUT_PATTERNS):
+            if base_file_type in {"Q2_K", "Q3_K_M", "Q4_K_M"} and (15 <= layer_idx <= 24 or (28 <= layer_idx and not final_tail)):
+                qtype = _promote_k_qtype(qtype)
+            elif base_file_type == "Q5_K_M" and (layer_idx in {3, 24} or (31 <= layer_idx and not final_tail)):
+                qtype = "Q8_0"
+        return qtype
+    if _matches(key, ffn):
+        qtype = _promote_k_qtype(comfy_qtype, 2 if early and base_file_type in {"Q4_K_M", "Q5_K_M"} else 1)
+        if _matches(key, ffn_up_down):
+            if base_file_type in {"Q2_K", "Q3_K_M", "Q4_K_M"} and (layer_idx in {7, 21} or (23 <= layer_idx and not final_tail)):
+                qtype = _promote_k_qtype(qtype)
+            elif base_file_type == "Q5_K_M" and (layer_idx == 7 or (27 <= layer_idx and not final_tail)):
+                qtype = "Q8_0"
+        return qtype
+    return comfy_qtype
 
 
 def _is_model_arch(model: type[ModelTemplate], state_dict: Mapping[str, Any]) -> bool:
@@ -423,8 +501,8 @@ def _to_numpy_for_qtype(torch: Any, gguf: Any, tensor: Any, qtype: Any) -> np.nd
 
 
 def _policy_allows_quant_shape(key: str, shape: tuple[int, ...], model_arch: ModelTemplate, policy: str) -> bool:
-    if policy not in {"comfy", "uniform"}:
-        raise ValueError("policy must be 'comfy' or 'uniform'")
+    if policy not in {"comfy", "dynamic", "uniform"}:
+        raise ValueError("policy must be 'comfy', 'dynamic', or 'uniform'")
     if len(shape) != 2:
         return False
     if not key.endswith("weight"):
@@ -625,6 +703,8 @@ def convert_to_gguf(
         tensor_counts: dict[str, int] = {}
         fallback_counts: dict[str, int] = {}
         counters = {"attention_value": 0, "ffn_down": 0}
+        dynamic_layers = [_dynamic_layer_index(key) for key in keys]
+        max_dynamic_layer = max((layer for layer in dynamic_layers if layer is not None), default=None)
         plans: list[TensorPlan] = []
 
         for key in keys:
@@ -651,8 +731,10 @@ def convert_to_gguf(
                 quantize = _is_quantized_qtype(gguf, target_qtype)
             elif quantize:
                 target_name = base_qtype_name
-                if policy == "comfy":
+                if policy in {"comfy", "dynamic"}:
                     target_name = _mixed_policy_qtype(file_type_name, base_qtype_name, key, counters)
+                    if policy == "dynamic":
+                        target_name = _dynamic_policy_qtype(file_type_name, target_name, key, max_dynamic_layer)
                 target_qtype = _tensor_qtype_enum(gguf, target_name)
 
             if quantize and _is_quantized_qtype(gguf, target_qtype):

@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--qtype", required=True, help="Output file type, e.g. Q4_K_S, Q4_K_M, Q4_K, Q8_0")
     parser.add_argument("--dst", help="Output GGUF path")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing output file")
-    parser.add_argument("--policy", choices=("comfy", "uniform"), default="comfy", help="Tensor selection policy")
+    parser.add_argument("--policy", choices=("comfy", "dynamic", "uniform"), default="comfy", help="Tensor selection policy")
     parser.add_argument("--imatrix", help="llama.cpp imatrix file")
     parser.add_argument("--tensor-type", action="append", type=_parse_tensor_type, default=[], metavar="PATTERN=QTYPE")
     parser.add_argument("--include", action="append", default=[], metavar="PATTERN", help="Force matching tensors into quantization when possible")

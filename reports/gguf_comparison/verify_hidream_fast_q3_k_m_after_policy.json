@@ -1,0 +1,30 @@
+{
+  "byte_identical": false,
+  "generated": ".cache\\gguf-compare\\hidream_i1_fast_bf16-Q3_K_M.gguf",
+  "generated_key_check": {
+    "extra_in_gguf": [],
+    "gguf": ".cache\\gguf-compare\\hidream_i1_fast_bf16-Q3_K_M.gguf",
+    "gguf_count": 1615,
+    "match": true,
+    "missing_in_gguf": [],
+    "source": ".cache\\hf\\models--Comfy-Org--HiDream-I1_ComfyUI\\snapshots\\b9161cca716699ab6d43ba0a241011cff4402484\\split_files\\diffusion_models\\hidream_i1_fast_bf16.safetensors",
+    "source_count": 1615
+  },
+  "generated_sha256": "ff915f32855d851693f0f7b2efdeff66892e322114c0d30d3d09f90420917f26",
+  "ok": false,
+  "qtype": "Q3_K_M",
+  "reference": ".cache\\hf\\models--city96--HiDream-I1-Fast-gguf\\snapshots\\35b44ecb8a958abfa3f6b17f28d8a094f133eb57\\hidream-i1-fast-Q3_K_M.gguf",
+  "reference_key_check": {
+    "extra_in_gguf": [],
+    "gguf": ".cache\\hf\\models--city96--HiDream-I1-Fast-gguf\\snapshots\\35b44ecb8a958abfa3f6b17f28d8a094f133eb57\\hidream-i1-fast-Q3_K_M.gguf",
+    "gguf_count": 1615,
+    "match": true,
+    "missing_in_gguf": [],
+    "source": ".cache\\hf\\models--Comfy-Org--HiDream-I1_ComfyUI\\snapshots\\b9161cca716699ab6d43ba0a241011cff4402484\\split_files\\diffusion_models\\hidream_i1_fast_bf16.safetensors",
+    "source_count": 1615
+  },
+  "reference_sha256": "a68cffe2b34e2b54c73e7d7ad15b6c28ccb014b8c0a7e115b6d36915be06e617",
+  "source": ".cache\\hf\\models--Comfy-Org--HiDream-I1_ComfyUI\\snapshots\\b9161cca716699ab6d43ba0a241011cff4402484\\split_files\\diffusion_models\\hidream_i1_fast_bf16.safetensors",
+  "stderr": "",
+  "stdout": "Wrote .cache\\gguf-compare\\hidream_i1_fast_bf16-Q3_K_M.gguf\nArchitecture: hidream\nFile type: MOSTLY_Q3_K_M\nTensor types: BF16=56, F32=487, Q3_K=784, Q4_K=286, Q5_K=2\n"
+}

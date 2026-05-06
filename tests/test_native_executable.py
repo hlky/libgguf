@@ -88,6 +88,35 @@ def test_native_executable_supports_q1_0_without_python_gguf_support(tmp_path: P
     assert "File type: MOSTLY_Q1_0" in result.stdout
 
 
+def test_native_executable_matches_python_native_for_dynamic_policy(tmp_path: Path) -> None:
+    exe = _native_exe()
+    rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(
+        src,
+        {
+            "double_layers.3.modX.1.weight": ("F32", rows.shape, rows.tobytes()),
+            "double_layers.0.mlpC.c_proj.weight": ("F32", rows.shape, rows.tobytes()),
+        },
+    )
+
+    convert_safetensors_to_gguf_native(src, expected, "Q5_K_M", policy="dynamic", overwrite=True)
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--dst", str(actual), "--qtype", "Q5_K_M", "--policy", "dynamic", "--overwrite"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes()[:4] == b"GGUF"
+    assert expected.read_bytes()[:4] == b"GGUF"
+    assert result.stdout.count("Q5_K=1") == 1
+    assert "Q8_0=1" in result.stdout
+
+
 def test_native_executable_threads_and_timings_flags_preserve_output(tmp_path: Path) -> None:
     exe = _native_exe()
     key = "double_layers.3.modX.1.weight"
