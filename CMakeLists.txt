@@ -179,6 +179,7 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
         ${TORCH_INCLUDE_DIRS}
     )
     target_compile_definitions(libgguf_cuda_C_gguf PRIVATE TORCH_EXTENSION_NAME=_C_gguf)
+    target_compile_options(libgguf_cuda_C_gguf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     target_compile_features(libgguf_cuda_C_gguf PRIVATE cxx_std_17)
     target_link_libraries(libgguf_cuda_C_gguf PRIVATE ${TORCH_LIBRARIES})
     install(TARGETS libgguf_cuda_C_gguf DESTINATION libgguf/libgguf_cuda)

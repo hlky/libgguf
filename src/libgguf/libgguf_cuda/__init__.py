@@ -1,5 +1,5 @@
 from __future__ import annotations
 
-from .ops import dequantize
+from .ops import dequantize, quantize
 
-__all__ = ["dequantize"]
+__all__ = ["dequantize", "quantize"]

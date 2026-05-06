@@ -7,13 +7,16 @@
 torch::Tensor dequantize(torch::Tensor W, int64_t type, int64_t m,
                               int64_t n,
                               std::optional<at::ScalarType> const &dtype);
+torch::Tensor quantize(torch::Tensor W, int64_t type, std::optional<torch::Tensor> const &imatrix);
 
 TORCH_LIBRARY(_C_gguf, ops)
 {
     ops.def(
         "dequantize(Tensor W, int type, SymInt m, SymInt n, ScalarType? "
         "dtype) -> Tensor");
+    ops.def("quantize(Tensor W, int type, Tensor? imatrix=None) -> Tensor");
     ops.impl("dequantize", torch::kCUDA, &dequantize);
+    ops.impl("quantize", torch::kCUDA, &quantize);
 }
 
 static PyModuleDef module = {
