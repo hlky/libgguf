@@ -742,81 +742,96 @@ static __device__ __forceinline__ void gguf_cuda_get_scale_min_k4(int j, const u
 }
 
 static __global__ void quantize_block_q4_K(const float * __restrict__ x, block_q4_K * __restrict__ y, int64_t n_blocks) {
-    const int64_t iblock = blockDim.x * blockIdx.x + threadIdx.x;
+    constexpr int blocks_per_warp = 4;
+    const int warps_per_cta = blockDim.x >> 5;
+    const int blocks_per_cta = warps_per_cta * blocks_per_warp;
+    const int lane = threadIdx.x & 31;
+    const int warp = threadIdx.x >> 5;
+    const int block_in_warp = lane >> 3;
+    const int subgroup = lane & 7;
+    const int block_in_cta = warp * blocks_per_warp + block_in_warp;
+    const int64_t iblock = (int64_t)blockIdx.x * blocks_per_cta + block_in_cta;
     if (iblock >= n_blocks) {
         return;
     }
 
+    extern __shared__ uint8_t q4_lane_smem[];
+    uint8_t * l_base = q4_lane_smem;
+    float * mins_base = (float *)(l_base + blocks_per_cta * QK_K);
+    float * scales_base = mins_base + blocks_per_cta * (QK_K / 32);
+    uint8_t * l = l_base + block_in_cta * QK_K;
+    float * mins = mins_base + block_in_cta * (QK_K / 32);
+    float * scales = scales_base + block_in_cta * (QK_K / 32);
     const float * xb = x + iblock * QK_K;
     block_q4_K * yb = y + iblock;
-    uint8_t l[QK_K];
+
     uint8_t laux[32];
     float weights[32];
-    float mins[QK_K / 32];
-    float scales[QK_K / 32];
+    const int base = 32 * subgroup;
+    float sum_x2 = 0.0f;
+    for (int ii = 0; ii < 32; ++ii) {
+        const float v = xb[base + ii];
+        sum_x2 += v * v;
+    }
+    const float av_x = sqrtf(sum_x2 / 32.0f);
+    for (int ii = 0; ii < 32; ++ii) {
+        weights[ii] = av_x + fabsf(xb[base + ii]);
+    }
+    scales[subgroup] = gguf_cuda_make_qkx2_quants(
+        32, 15, xb + base, weights, l + base, &mins[subgroup], laux, -1.0f, 0.1f, 20, false);
 
-    float max_scale = 0.0f;
-    float max_min = 0.0f;
-    for (int j = 0; j < QK_K / 32; ++j) {
-        float sum_x2 = 0.0f;
-        for (int ii = 0; ii < 32; ++ii) {
-            const float v = xb[32 * j + ii];
-            sum_x2 += v * v;
+    __syncthreads();
+
+    if (subgroup == 0) {
+        float max_scale = 0.0f;
+        float max_min = 0.0f;
+        for (int j = 0; j < QK_K / 32; ++j) {
+            max_scale = fmaxf(max_scale, scales[j]);
+            max_min = fmaxf(max_min, mins[j]);
         }
-        const float av_x = sqrtf(sum_x2 / 32.0f);
-        for (int ii = 0; ii < 32; ++ii) {
-            weights[ii] = av_x + fabsf(xb[32 * j + ii]);
+        const float inv_scale = max_scale > 0.0f ? 63.0f / max_scale : 0.0f;
+        const float inv_min = max_min > 0.0f ? 63.0f / max_min : 0.0f;
+        for (int j = 0; j < QK_K / 32; ++j) {
+            uint8_t ls = min(63, gguf_cuda_nearest_int(inv_scale * scales[j]));
+            uint8_t lm = min(63, gguf_cuda_nearest_int(inv_min * mins[j]));
+            if (j < 4) {
+                yb->scales[j] = ls;
+                yb->scales[j + 4] = lm;
+            } else {
+                yb->scales[j + 4] = (ls & 0x0f) | ((lm & 0x0f) << 4);
+                yb->scales[j - 4] |= (ls >> 4) << 6;
+                yb->scales[j] |= (lm >> 4) << 6;
+            }
         }
-        scales[j] = gguf_cuda_make_qkx2_quants(32, 15, xb + 32 * j, weights, l + 32 * j, &mins[j], laux, -1.0f, 0.1f, 20, false);
-        if (scales[j] > max_scale) {
-            max_scale = scales[j];
-        }
-        if (mins[j] > max_min) {
-            max_min = mins[j];
-        }
+        yb->d = gguf_cuda_compute_fp32_to_fp16(max_scale / 63.0f);
+        yb->dmin = gguf_cuda_compute_fp32_to_fp16(max_min / 63.0f);
     }
 
-    const float inv_scale = max_scale > 0.0f ? 63.0f / max_scale : 0.0f;
-    const float inv_min = max_min > 0.0f ? 63.0f / max_min : 0.0f;
-    for (int j = 0; j < QK_K / 32; ++j) {
-        uint8_t ls = min(63, gguf_cuda_nearest_int(inv_scale * scales[j]));
-        uint8_t lm = min(63, gguf_cuda_nearest_int(inv_min * mins[j]));
-        if (j < 4) {
-            yb->scales[j] = ls;
-            yb->scales[j + 4] = lm;
-        } else {
-            yb->scales[j + 4] = (ls & 0x0f) | ((lm & 0x0f) << 4);
-            yb->scales[j - 4] |= (ls >> 4) << 6;
-            yb->scales[j] |= (lm >> 4) << 6;
-        }
-    }
-    yb->d = gguf_cuda_compute_fp32_to_fp16(max_scale / 63.0f);
-    yb->dmin = gguf_cuda_compute_fp32_to_fp16(max_min / 63.0f);
+    __syncthreads();
 
     const float d_base = __half2float(gguf_cuda_load_half(yb->d));
     const float dm_base = __half2float(gguf_cuda_load_half(yb->dmin));
     uint8_t sc;
     uint8_t m;
-    for (int j = 0; j < QK_K / 32; ++j) {
-        gguf_cuda_get_scale_min_k4(j, yb->scales, &sc, &m);
-        const float d = d_base * sc;
-        if (d == 0.0f) {
-            continue;
-        }
+    gguf_cuda_get_scale_min_k4(subgroup, yb->scales, &sc, &m);
+    const float d = d_base * sc;
+    if (d != 0.0f) {
         const float dm = dm_base * m;
         for (int ii = 0; ii < 32; ++ii) {
-            int q = gguf_cuda_nearest_int((xb[32 * j + ii] + dm) / d);
+            int q = gguf_cuda_nearest_int((xb[base + ii] + dm) / d);
             q = gguf_cuda_clamp_int(q, 0, 15);
-            l[32 * j + ii] = q;
+            l[base + ii] = q;
         }
     }
 
-    uint8_t * q = yb->qs;
-    for (int j = 0; j < QK_K; j += 64) {
+    __syncthreads();
+
+    const int pack_pair = subgroup >> 1;
+    if ((subgroup & 1) == 0) {
+        const int l_pack_base = 64 * pack_pair;
         for (int ii = 0; ii < 32; ++ii) {
-            q[ii] = l[j + ii] | (l[j + ii + 32] << 4);
+            yb->qs[32 * pack_pair + ii] = l[l_pack_base + ii] | (l[l_pack_base + 32 + ii] << 4);
         }
-        q += 32;
     }
 }
 
@@ -3077,13 +3092,12 @@ static inline void quantize_row_cuda(
     const int threads = 256;
     constexpr int q_warp_threads = 128;
     constexpr int q_blocks_per_cta = q_warp_threads / 32;
-    // K-quant kernels are scalar-thread implementations with high register/stack pressure
-    // (see cuobjdump resource usage in bench/results). These launch sizes were selected
-    // empirically on SM 8.6 to improve occupancy without changing byte-exact math.
+    // K-quant launch sizes were selected empirically on SM 8.6 while preserving byte-exact math.
     const int q2_k_threads = 128;
     constexpr int q3_k_warp_threads = 128;
     constexpr int q3_k_warps_per_cta = q3_k_warp_threads / 32;
-    const int q4_k_threads = 96;
+    constexpr int q4_k_threads = 128;
+    constexpr int q4_k_blocks_per_cta = (q4_k_threads / 32) * 4;
     const int q5_k_threads = 96;
     const int q6_k_threads = 96;
     switch (type) {
@@ -3184,8 +3198,9 @@ static inline void quantize_row_cuda(
         }
         case GGML_TYPE_Q4_K: {
             const int64_t n_blocks = k / QK_K;
-            const int blocks = (int)((n_blocks + q4_k_threads - 1) / q4_k_threads);
-            quantize_block_q4_K<<<blocks, q4_k_threads, 0, stream>>>(x, (block_q4_K *)y, n_blocks);
+            const int blocks = (int)((n_blocks + q4_k_blocks_per_cta - 1) / q4_k_blocks_per_cta);
+            const size_t smem = q4_k_blocks_per_cta * (QK_K * sizeof(uint8_t) + 2 * (QK_K / 32) * sizeof(float));
+            quantize_block_q4_K<<<blocks, q4_k_threads, smem, stream>>>(x, (block_q4_K *)y, n_blocks);
             return;
         }
         case GGML_TYPE_Q4_0: {

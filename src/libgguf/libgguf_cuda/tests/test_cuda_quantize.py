@@ -95,6 +95,22 @@ def test_cuda_quantize_preserves_leading_shape() -> None:
     np.testing.assert_array_equal(actual.cpu().numpy(), expected)
 
 
+@pytest.mark.parametrize("case", ("constant", "adversarial"))
+def test_cuda_quantize_q4_k_edge_cases_match_libgguf(case: str) -> None:
+    require_cuda_quantize()
+
+    if case == "constant":
+        rows = np.full((4, 1024), 0.125, dtype=np.float32)
+    else:
+        row = np.linspace(-8.0, 8.0, 1024, dtype=np.float32)
+        row[::17] = -32.0
+        row[5::19] = 32.0
+        rows = np.ascontiguousarray(np.vstack([row, -row, row[::-1], -row[::-1]]), dtype=np.float32)
+    actual, expected = quantize_pair(rows, GGMLQuantizationType.Q4_K)
+
+    np.testing.assert_array_equal(actual.cpu().numpy(), expected)
+
+
 @pytest.mark.parametrize(
     "qtype",
     (
