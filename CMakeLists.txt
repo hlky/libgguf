@@ -6,6 +6,8 @@ option(LIBGGUF_BUILD_SHARED "Build the standalone libgguf shared library" ON)
 option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
 option(LIBGGUF_BUILD_BENCHMARKS "Build native libgguf benchmark binaries" OFF)
 option(LIBGGUF_BUILD_TOOLS "Build native libgguf command line tools" ON)
+set(LIBGGUF_BUILD_CUDA_KERNELS "AUTO" CACHE STRING "Build the optional libgguf_cuda Torch CUDA extension (AUTO, ON, or OFF)")
+set_property(CACHE LIBGGUF_BUILD_CUDA_KERNELS PROPERTY STRINGS AUTO ON OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -96,8 +98,11 @@ if(LIBGGUF_BUILD_SHARED)
   set_target_properties(libgguf PROPERTIES OUTPUT_NAME libgguf)
 endif()
 
-if(LIBGGUF_BUILD_PYTHON)
+if(LIBGGUF_BUILD_PYTHON OR NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
   find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+endif()
+
+if(LIBGGUF_BUILD_PYTHON)
   Python_add_library(
     _libgguf
     MODULE
@@ -126,6 +131,60 @@ if(LIBGGUF_BUILD_PYTHON)
     target_compile_options(_libgguf PRIVATE -O3 -pthread)
   endif()
   install(TARGETS _libgguf DESTINATION libgguf)
+endif()
+
+if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
+  execute_process(
+    COMMAND
+      "${Python_EXECUTABLE}" -c
+      "import torch; print(torch.utils.cmake_prefix_path)"
+    OUTPUT_VARIABLE LIBGGUF_TORCH_CMAKE_PREFIX_PATH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE LIBGGUF_TORCH_IMPORT_RESULT
+  )
+
+  set(LIBGGUF_CAN_BUILD_CUDA_KERNELS OFF)
+  if(LIBGGUF_TORCH_IMPORT_RESULT EQUAL 0)
+    list(APPEND CMAKE_PREFIX_PATH "${LIBGGUF_TORCH_CMAKE_PREFIX_PATH}")
+    find_package(Torch QUIET)
+    find_program(LIBGGUF_NVCC_EXECUTABLE nvcc)
+    if(Torch_FOUND AND LIBGGUF_NVCC_EXECUTABLE)
+      enable_language(CUDA)
+      set(LIBGGUF_CAN_BUILD_CUDA_KERNELS ON)
+    endif()
+  endif()
+
+  if(LIBGGUF_CAN_BUILD_CUDA_KERNELS)
+    Python_add_library(
+      libgguf_cuda_C_gguf
+      MODULE
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/torch_bindings.cpp"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/kernel.cu"
+      WITH_SOABI
+    )
+    set_target_properties(
+      libgguf_cuda_C_gguf
+      PROPERTIES
+        OUTPUT_NAME "_C_gguf"
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+    )
+    target_include_directories(
+      libgguf_cuda_C_gguf
+      PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
+        ${TORCH_INCLUDE_DIRS}
+    )
+    target_compile_definitions(libgguf_cuda_C_gguf PRIVATE TORCH_EXTENSION_NAME=_C_gguf)
+    target_compile_features(libgguf_cuda_C_gguf PRIVATE cxx_std_17)
+    target_link_libraries(libgguf_cuda_C_gguf PRIVATE ${TORCH_LIBRARIES})
+    install(TARGETS libgguf_cuda_C_gguf DESTINATION libgguf/libgguf_cuda)
+  elseif(LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "ON")
+    message(FATAL_ERROR "LIBGGUF_BUILD_CUDA_KERNELS=ON requires importable torch, Torch CMake metadata, and nvcc")
+  else()
+    message(STATUS "Skipping libgguf_cuda Torch CUDA extension; torch or nvcc was not found")
+  endif()
 endif()
 
 if(LIBGGUF_BUILD_TOOLS)

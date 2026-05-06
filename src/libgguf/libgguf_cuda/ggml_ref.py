@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import warnings
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gguf_kernels.formats import GGMLQuantizationType
+if TYPE_CHECKING:
+    from libgguf import GGMLQuantizationType
 
 
 def has_ggml_reference() -> bool:
@@ -17,7 +19,7 @@ def has_ggml_reference() -> bool:
 
 def quantize_rows_with_ggml(data: np.ndarray, qtype: GGMLQuantizationType) -> np.ndarray:
     warnings.warn(
-        "gguf_kernels.ggml_ref is deprecated; import libgguf and call "
+        "libgguf.libgguf_cuda.ggml_ref is deprecated; import libgguf and call "
         "libgguf.quantize_rows(...) instead.",
         DeprecationWarning,
         stacklevel=2,
