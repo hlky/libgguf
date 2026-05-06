@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 
 #define GGUF_CUDA_USE_IQ1_GRID_LOOKUP
+#define GGUF_CUDA_USE_IQ1_NEIGHBOURS
 #include "cuda_quantize_common.cuh"
 #include "cuda_quantize_kernels.h"
 
@@ -200,7 +201,7 @@ void gguf_cuda_quantize_launch_iq1_s(
     int64_t n_per_row,
     cudaStream_t stream
 ) {
-    const int threads = 256;
+    const int threads = 64;
         const int64_t n_blocks = k / QK_K;
         const int blocks = (int)((n_blocks + threads - 1) / threads);
         const int64_t n_blocks_per_row = n_per_row / QK_K;

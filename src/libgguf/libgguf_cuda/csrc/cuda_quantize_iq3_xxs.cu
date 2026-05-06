@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 
 #define GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+#define GGUF_CUDA_USE_IQ3_NEIGHBOURS
 #include "cuda_quantize_common.cuh"
 #include "cuda_quantize_kernels.h"
 
@@ -174,7 +175,9 @@ static __global__ void quantize_block_iq3_xxs(const float * __restrict__ x, bloc
     }
 
     if (max_scale == 0.0f) {
-        memset(yb->qs, 0, sizeof(block_iq3_xxs::qs));
+        for (int i = 0; i < 3 * (QK_K / 8); ++i) {
+            yb->qs[i] = 0;
+        }
         return;
     }
 
@@ -202,7 +205,7 @@ void gguf_cuda_quantize_launch_iq3_xxs(
 ) {
     (void)quant_weights;
     (void)n_per_row;
-    const int threads = 256;
+    const int threads = 64;
         const int64_t n_blocks = k / QK_K;
         const int blocks = (int)((n_blocks + threads - 1) / threads);
         quantize_block_iq3_xxs<<<blocks, threads, 0, stream>>>(x, (block_iq3_xxs *)y, n_blocks);

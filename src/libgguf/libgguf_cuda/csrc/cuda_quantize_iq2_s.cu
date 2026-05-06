@@ -2,6 +2,9 @@
 #include <cuda_runtime.h>
 
 #define GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+#define GGUF_CUDA_USE_IQ2_NEIGHBOURS
+#define GGUF_CUDA_USE_IQ2_S_NEIGHBOURS
+#define GGUF_CUDA_IQ2_HOIST_BEST_NEIGHBOUR
 #include "cuda_quantize_common.cuh"
 #include "cuda_quantize_kernels.h"
 
@@ -130,7 +133,7 @@ static __global__ void quantize_block_iq2_s(
                         iq2s_grid, 1024, 1, xval + 8 * k, waux + 8 * k, scale, l + 8 * k);
                 } else {
                     for (int i = 0; i < 8; ++i) {
-                        l[8 * k + i] = gguf_cuda_iq2_grid_l(iq2s_grid, grid_index, i);
+                        l[8 * k + i] = gguf_cuda_iq2_grid_l_fast(iq2s_grid, grid_index, i);
                     }
                 }
             }

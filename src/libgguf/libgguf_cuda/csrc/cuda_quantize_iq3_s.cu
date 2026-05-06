@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 
 #define GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+#define GGUF_CUDA_USE_IQ3_NEIGHBOURS
 #include "cuda_quantize_common.cuh"
 #include "cuda_quantize_kernels.h"
 
@@ -180,7 +181,7 @@ void gguf_cuda_quantize_launch_iq3_s(
 ) {
     (void)quant_weights;
     (void)n_per_row;
-    const int threads = 256;
+    const int threads = 128;
         const int64_t n_blocks = k / QK_K;
         const int blocks = (int)((n_blocks + threads - 1) / threads);
         quantize_block_iq3_s<<<blocks, threads, 0, stream>>>(x, (block_iq3_s *)y, n_blocks);
