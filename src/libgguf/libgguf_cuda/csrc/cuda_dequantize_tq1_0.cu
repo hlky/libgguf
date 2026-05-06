@@ -7,35 +7,48 @@
 
 template<typename dst_t>
 static __global__ void dequantize_block_tq1_0(const void * __restrict__ vx, dst_t * __restrict__ y, const int k) {
-    const int i = blockDim.x*blockIdx.x + threadIdx.x;
-    if (i >= k) {
+    const int packed_index = blockDim.x*blockIdx.x + threadIdx.x;
+    const int n_blocks = k / QK_K;
+    if (packed_index >= n_blocks * (int)(sizeof(block_tq1_0::qs) + sizeof(block_tq1_0::qh))) {
         return;
     }
 
     const block_tq1_0 * x = (const block_tq1_0 *) vx;
-    const int ib = i / QK_K;
-    const int j = i - ib * QK_K;
-    const uint8_t pow3[5] = {1, 3, 9, 27, 81};
+    const int ib = packed_index / (int)(sizeof(block_tq1_0::qs) + sizeof(block_tq1_0::qh));
+    const int j = packed_index - ib * (int)(sizeof(block_tq1_0::qs) + sizeof(block_tq1_0::qh));
+    const float d = __half2float(gguf_cuda_load_half(x[ib].d));
+    dst_t * yb = y + ib * QK_K;
 
-    uint8_t code;
-    if (j < 160) {
-        const int plane = j / 32;
-        const int byte = j - plane * 32;
-        code = x[ib].qs[byte] * pow3[plane];
-    } else if (j < 240) {
-        const int local = j - 160;
-        const int plane = local / 16;
-        const int byte = 32 + local - plane * 16;
-        code = x[ib].qs[byte] * pow3[plane];
+    if (j < 32) {
+        const uint8_t packed = x[ib].qs[j];
+#pragma unroll
+        for (int plane = 0; plane < 5; ++plane) {
+            const int multiplier = plane == 0 ? 1 : plane == 1 ? 3 : plane == 2 ? 9 : plane == 3 ? 27 : 81;
+            const uint8_t code = (uint8_t)(packed * multiplier);
+            const int q = (((int)code * 3) >> 8) - 1;
+            yb[j + plane * 32] = convert_from_float<dst_t>(d * q);
+        }
+    } else if (j < 48) {
+        const int byte = j - 32;
+        const uint8_t packed = x[ib].qs[j];
+#pragma unroll
+        for (int plane = 0; plane < 5; ++plane) {
+            const int multiplier = plane == 0 ? 1 : plane == 1 ? 3 : plane == 2 ? 9 : plane == 3 ? 27 : 81;
+            const uint8_t code = (uint8_t)(packed * multiplier);
+            const int q = (((int)code * 3) >> 8) - 1;
+            yb[160 + byte + plane * 16] = convert_from_float<dst_t>(d * q);
+        }
     } else {
-        const int local = j - 240;
-        const int plane = local / 4;
-        const int byte = local - plane * 4;
-        code = x[ib].qh[byte] * pow3[plane];
+        const int byte = j - 48;
+        const uint8_t packed = x[ib].qh[byte];
+#pragma unroll
+        for (int plane = 0; plane < 4; ++plane) {
+            const int multiplier = plane == 0 ? 1 : plane == 1 ? 3 : plane == 2 ? 9 : 27;
+            const uint8_t code = (uint8_t)(packed * multiplier);
+            const int q = (((int)code * 3) >> 8) - 1;
+            yb[240 + byte + plane * 4] = convert_from_float<dst_t>(d * q);
+        }
     }
-
-    const int q = (((int)code * 3) >> 8) - 1;
-    y[i] = convert_from_float<dst_t>(__half2float(gguf_cuda_load_half(x[ib].d)) * q);
 }
 
 
@@ -47,7 +60,9 @@ void gguf_cuda_dequantize_launch_tq1_0(
     cudaStream_t stream
 ) {
     VLLM_DISPATCH_FLOATING_TYPES(dtype, "dequantize_tq1_0", [&] {
-        const int nb = (k + CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / CUDA_DEQUANTIZE_BLOCK_SIZE;
+        const int n_blocks = k / QK_K;
+        const int packed_per_block = (int)(sizeof(block_tq1_0::qs) + sizeof(block_tq1_0::qh));
+        const int nb = (n_blocks * packed_per_block + CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / CUDA_DEQUANTIZE_BLOCK_SIZE;
                 dequantize_block_tq1_0<<<nb, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>(x, (scalar_t *)y, k);
     });
 }

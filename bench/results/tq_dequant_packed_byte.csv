@@ -1,0 +1,7 @@
+qtype,shape,iterations,ms,encoded_bytes,decoded_bytes,traffic_gb_s,exact,kernel_variant
+TQ1_0,64x4096,200,0.009851,55296,1048576,112.058,True,tq_packed_byte
+TQ1_0,4096x4096,20,0.089702,3538944,67108864,787.580,skip,tq_packed_byte
+TQ1_0,11008x4096,10,0.236954,9510912,180355072,801.279,skip,tq_packed_byte
+TQ2_0,64x4096,200,0.009641,67584,1048576,115.773,True,tq_packed_byte
+TQ2_0,4096x4096,20,0.090520,4325376,67108864,789.154,skip,tq_packed_byte
+TQ2_0,11008x4096,10,0.239082,11624448,180355072,802.987,skip,tq_packed_byte

@@ -7,20 +7,25 @@
 
 template<typename dst_t>
 static __global__ void dequantize_block_tq2_0(const void * __restrict__ vx, dst_t * __restrict__ y, const int k) {
-    const int i = blockDim.x*blockIdx.x + threadIdx.x;
-    if (i >= k) {
+    const int packed_index = blockDim.x*blockIdx.x + threadIdx.x;
+    const int n_blocks = k / QK_K;
+    if (packed_index >= n_blocks * (int)sizeof(block_tq2_0::qs)) {
         return;
     }
 
     const block_tq2_0 * x = (const block_tq2_0 *) vx;
-    const int ib = i / QK_K;
-    const int j = i - ib * QK_K;
-    const int group = j / 128;
-    const int local = j - group * 128;
-    const int plane = local / 32;
-    const int byte = group * 32 + local - plane * 32;
-    const int q = ((x[ib].qs[byte] >> (2 * plane)) & 3) - 1;
-    y[i] = convert_from_float<dst_t>(__half2float(gguf_cuda_load_half(x[ib].d)) * q);
+    const int ib = packed_index / (int)sizeof(block_tq2_0::qs);
+    const int byte = packed_index - ib * (int)sizeof(block_tq2_0::qs);
+    const int group = byte / 32;
+    const int local = byte - group * 32;
+    const uint8_t packed = x[ib].qs[byte];
+    const float d = __half2float(gguf_cuda_load_half(x[ib].d));
+    dst_t * yb = y + ib * QK_K + group * 128 + local;
+#pragma unroll
+    for (int plane = 0; plane < 4; ++plane) {
+        const int q = ((packed >> (2 * plane)) & 3) - 1;
+        yb[plane * 32] = convert_from_float<dst_t>(d * q);
+    }
 }
 
 
@@ -32,7 +37,8 @@ void gguf_cuda_dequantize_launch_tq2_0(
     cudaStream_t stream
 ) {
     VLLM_DISPATCH_FLOATING_TYPES(dtype, "dequantize_tq2_0", [&] {
-        const int nb = (k + CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / CUDA_DEQUANTIZE_BLOCK_SIZE;
+        const int n_blocks = k / QK_K;
+        const int nb = (n_blocks * (int)sizeof(block_tq2_0::qs) + CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / CUDA_DEQUANTIZE_BLOCK_SIZE;
                 dequantize_block_tq2_0<<<nb, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>(x, (scalar_t *)y, k);
     });
 }

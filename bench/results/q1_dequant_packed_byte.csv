@@ -1,0 +1,4 @@
+qtype,shape,iterations,ms,encoded_bytes,decoded_bytes,traffic_gb_s,exact,kernel_variant
+Q1_0,64x4096,200,0.009518,36864,1048576,114.040,True,q1_packed_byte
+Q1_0,4096x4096,20,0.249293,2359296,67108864,278.661,skip,q1_packed_byte
+Q1_0,11008x4096,10,0.651981,6340608,180355072,286.352,skip,q1_packed_byte

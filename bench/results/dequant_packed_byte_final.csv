@@ -1,0 +1,16 @@
+qtype,shape,iterations,ms,encoded_bytes,decoded_bytes,traffic_gb_s,exact,kernel_variant
+TQ1_0,64x4096,200,0.009584,55296,1048576,115.181,True,dequant_packed_byte_final
+TQ1_0,4096x4096,20,0.089702,3538944,67108864,787.580,skip,dequant_packed_byte_final
+TQ1_0,11008x4096,10,0.236624,9510912,180355072,802.395,skip,dequant_packed_byte_final
+TQ2_0,64x4096,200,0.009416,67584,1048576,118.543,True,dequant_packed_byte_final
+TQ2_0,4096x4096,20,0.090368,4325376,67108864,790.482,skip,dequant_packed_byte_final
+TQ2_0,11008x4096,10,0.239104,11624448,180355072,802.912,skip,dequant_packed_byte_final
+MXFP4,64x4096,200,0.009441,139264,1048576,125.813,True,dequant_packed_byte_final
+MXFP4,4096x4096,20,0.096195,8912896,67108864,790.286,skip,dequant_packed_byte_final
+MXFP4,11008x4096,10,0.252918,23953408,180355072,807.804,skip,dequant_packed_byte_final
+NVFP4,64x4096,200,0.011423,147456,1048576,104.706,True,dequant_packed_byte_final
+NVFP4,4096x4096,20,0.096922,9437184,67108864,789.773,skip,dequant_packed_byte_final
+NVFP4,11008x4096,10,0.254566,25362432,180355072,808.109,skip,dequant_packed_byte_final
+Q1_0,64x4096,200,0.009457,36864,1048576,114.781,True,dequant_packed_byte_final
+Q1_0,4096x4096,20,0.106598,2359296,67108864,651.681,skip,dequant_packed_byte_final
+Q1_0,11008x4096,10,0.281805,6340608,180355072,662.500,skip,dequant_packed_byte_final
