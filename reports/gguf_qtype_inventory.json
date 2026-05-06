@@ -1,0 +1,687 @@
+{
+  "repos": [
+    {
+      "qtype_variants": [
+        "F16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/AuraFlow-v0.3-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "Q2_K",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/FLUX.1-dev-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "Q2_K",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/FLUX.1-schnell-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/FLUX.2-dev-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/FastHunyuan-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/HiDream-I1-Dev-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/HiDream-I1-Fast-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/HiDream-I1-Full-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/HunyuanVideo-I2V-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/HunyuanVideo-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/LTX-Video-0.9.5-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/LTX-Video-0.9.6-dev-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "F32",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/LTX-Video-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Qwen-Image-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Wan2.1-Fun-14B-Control-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Wan2.1-Fun-14B-InP-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Wan2.1-I2V-14B-480P-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Wan2.1-I2V-14B-720P-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/Wan2.1-T2V-14B-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/flux.1-lite-8B-alpha-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "IQ4_NL",
+        "IQ4_XS",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/llava-llama-3-8b-v1_1-imat-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/stable-diffusion-3-medium-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "Q4_0",
+        "Q4_1",
+        "Q5_0",
+        "Q5_1",
+        "Q8_0"
+      ],
+      "repo_id": "city96/stable-diffusion-3.5-large-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "Q4_0",
+        "Q4_1",
+        "Q5_0",
+        "Q5_1",
+        "Q8_0"
+      ],
+      "repo_id": "city96/stable-diffusion-3.5-large-turbo-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/stable-diffusion-3.5-medium-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "F32",
+        "Q3_K_L",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/t5-v1_1-xxl-encoder-gguf"
+    },
+    {
+      "qtype_variants": [
+        "F16",
+        "F32",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "city96/umt5-xxl-encoder-gguf"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0",
+        "UD-Q2_K",
+        "UD-Q3_K_M",
+        "UD-Q4_K_M",
+        "UD-Q5_K_M"
+      ],
+      "repo_id": "unsloth/ERNIE-Image-GGUF"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0",
+        "UD-Q2_K",
+        "UD-Q3_K_M",
+        "UD-Q4_K_M",
+        "UD-Q5_K_M"
+      ],
+      "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "unsloth/Qwen-Image-2512-GGUF"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q2_K",
+        "Q3_K_L",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "unsloth/Z-Image-GGUF"
+    },
+    {
+      "qtype_variants": [
+        "BF16",
+        "F16",
+        "Q2_K",
+        "Q3_K_M",
+        "Q3_K_S",
+        "Q4_0",
+        "Q4_1",
+        "Q4_K_M",
+        "Q4_K_S",
+        "Q5_0",
+        "Q5_1",
+        "Q5_K_M",
+        "Q5_K_S",
+        "Q6_K",
+        "Q8_0"
+      ],
+      "repo_id": "unsloth/Z-Image-Turbo-GGUF"
+    }
+  ],
+  "unique_qtype_variants": [
+    "BF16",
+    "F16",
+    "F32",
+    "IQ4_NL",
+    "IQ4_XS",
+    "Q2_K",
+    "Q3_K_L",
+    "Q3_K_M",
+    "Q3_K_S",
+    "Q4_0",
+    "Q4_1",
+    "Q4_K_M",
+    "Q4_K_S",
+    "Q5_0",
+    "Q5_1",
+    "Q5_K_M",
+    "Q5_K_S",
+    "Q6_K",
+    "Q8_0",
+    "UD-Q2_K",
+    "UD-Q3_K_M",
+    "UD-Q4_K_M",
+    "UD-Q5_K_M"
+  ],
+  "unique_qtypes": [
+    "BF16",
+    "F16",
+    "F32",
+    "IQ4_NL",
+    "IQ4_XS",
+    "Q2_K",
+    "Q3_K_L",
+    "Q3_K_M",
+    "Q3_K_S",
+    "Q4_0",
+    "Q4_1",
+    "Q4_K_M",
+    "Q4_K_S",
+    "Q5_0",
+    "Q5_1",
+    "Q5_K_M",
+    "Q5_K_S",
+    "Q6_K",
+    "Q8_0"
+  ]
+}

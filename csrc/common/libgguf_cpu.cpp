@@ -44,7 +44,7 @@ static unsigned long long libgguf_xgetbv(unsigned int index)
 
 static libgguf_cpu_features libgguf_detect_cpu_features()
 {
-  libgguf_cpu_features features = {false, false, false};
+  libgguf_cpu_features features = {false, false, false, false};
 
 #if defined(_M_X64) || defined(__x86_64__)
   features.sse2 = true;
@@ -66,6 +66,7 @@ static libgguf_cpu_features libgguf_detect_cpu_features()
   const bool osxsave = (regs[2] & (1 << 27)) != 0;
   const bool avx = (regs[2] & (1 << 28)) != 0;
   const bool os_supports_ymm = osxsave && ((libgguf_xgetbv(0) & 0x6) == 0x6);
+  features.f16c = ((regs[2] & (1 << 29)) != 0) && avx && os_supports_ymm;
   if (max_leaf >= 7 && avx && os_supports_ymm)
   {
     libgguf_cpuid(7, 0, regs);

@@ -1,0 +1,2874 @@
+[
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "aura_flow_0.3-Q2_K.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 2395563296,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "aura_flow_0.3-Q3_K_M.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 3126551840,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "aura_flow_0.3-Q3_K_S.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 3047318816,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "aura_flow_0.3-Q4_0.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 3949749536,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "aura_flow_0.3-Q4_1.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 4374422816,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "aura_flow_0.3-Q4_K_M.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 4047070496,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "aura_flow_0.3-Q4_K_S.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 3954468128,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "aura_flow_0.3-Q5_0.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 4799096096,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "aura_flow_0.3-Q5_1.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 5223769376,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "aura_flow_0.3-Q5_K_M.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 4849231136,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "aura_flow_0.3-Q5_K_S.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 4799096096,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "aura_flow_0.3-Q6_K.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 5701526816,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "aura_flow_0.3-Q8_0.gguf",
+    "repo_id": "city96/AuraFlow-v0.3-gguf",
+    "size": 7347135776,
+    "source_candidate": {
+      "path": "aura_flow_0.3.safetensors",
+      "repo_id": "fal/AuraFlow-v0.3",
+      "score": 7,
+      "size": 16463323066
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q3_K_M.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 6976128832,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q3_K_S.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 6301640512,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q4_0.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 8426481472,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q4_1.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 9066440512,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q4_K_M.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 9483372352,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q4_K_S.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 8679122752,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q5_0.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 10195953472,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q5_1.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 10835912512,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q5_K_M.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 10621732672,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q5_K_S.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 9951176512,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q6_K.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 11831240512,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "cosmos-predict2-14b-text2image-Q8_0.gguf",
+    "repo_id": "city96/Cosmos-Predict2-14B-Text2Image-gguf",
+    "size": 15259592512,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "flux1-dev-Q2_K.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 4032341280,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "flux1-dev-Q3_K_S.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 5234255136,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "flux1-dev-Q4_0.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 6791167136,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "flux1-dev-Q4_1.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 7530806432,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "flux1-dev-Q4_K_S.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 6805988640,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "flux1-dev-Q5_0.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 8270445728,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "flux1-dev-Q5_1.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 9010085024,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "flux1-dev-Q5_K_S.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 8285267232,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "flux1-dev-Q6_K.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 9857000736,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "flux1-dev-Q8_0.gguf",
+    "repo_id": "city96/FLUX.1-dev-gguf",
+    "size": 12708281504,
+    "source_candidate": {
+      "path": "flux1-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.1-dev",
+      "score": 9,
+      "size": 23802932552
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "flux1-schnell-Q2_K.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 4010296352,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "flux1-schnell-Q3_K_S.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 5212210208,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "flux1-schnell-Q4_0.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 6770707360,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "flux1-schnell-Q4_1.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 7510346656,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "flux1-schnell-Q4_K_S.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 6783943712,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "flux1-schnell-Q5_0.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 8249985952,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "flux1-schnell-Q5_1.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 8989625248,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "flux1-schnell-Q5_K_S.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 8263222304,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "flux1-schnell-Q6_K.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 9834955808,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "flux1-schnell-Q8_0.gguf",
+    "repo_id": "city96/FLUX.1-schnell-gguf",
+    "size": 12687821728,
+    "source_candidate": {
+      "path": "flux1-schnell.safetensors",
+      "repo_id": "Comfy-Org/flux1-schnell",
+      "score": 5,
+      "size": 23782506688
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "flux2-dev-Q2_K.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 12858250208,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "flux2-dev-Q3_K_M.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 15960134624,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "flux2-dev-Q3_K_S.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 15779648480,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "flux2-dev-Q4_0.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 19299128288,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "flux2-dev-Q4_1.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 21262062560,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "flux2-dev-Q4_K_M.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 20082414560,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "flux2-dev-Q4_K_S.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 19299128288,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "flux2-dev-Q5_0.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 23224996832,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "flux2-dev-Q5_1.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 25187931104,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "flux2-dev-Q5_K_M.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 24057238496,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "flux2-dev-Q5_K_S.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 23224996832,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "flux2-dev-Q6_K.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 27396232160,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "flux2-dev-Q8_0.gguf",
+    "repo_id": "city96/FLUX.2-dev-gguf",
+    "size": 35002602464,
+    "source_candidate": {
+      "path": "flux2-dev.safetensors",
+      "repo_id": "black-forest-labs/FLUX.2-dev",
+      "score": 9,
+      "size": 64446596128
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "hidream-i1-dev-Q2_K.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 6567249600,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "hidream-i1-dev-Q3_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 8769996480,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "hidream-i1-dev-Q3_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 8216872640,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "hidream-i1-dev-Q4_0.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 10655712960,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "hidream-i1-dev-Q4_1.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 11450664640,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "hidream-i1-dev-Q4_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 11486381760,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "hidream-i1-dev-Q4_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 10898851520,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "hidream-i1-dev-Q5_0.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 12725339840,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "hidream-i1-dev-Q5_1.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 13520291520,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "hidream-i1-dev-Q5_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 13036963520,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "hidream-i1-dev-Q5_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 12485478080,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "hidream-i1-dev-Q6_K.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 14684456640,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "hidream-i1-dev-Q8_0.gguf",
+    "repo_id": "city96/HiDream-I1-Dev-gguf",
+    "size": 18694358720,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "hidream-i1-fast-Q2_K.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 6567249600,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "hidream-i1-fast-Q3_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 8769996480,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "hidream-i1-fast-Q3_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 8216872640,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "hidream-i1-fast-Q4_0.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 10655712960,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "hidream-i1-fast-Q4_1.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 11450664640,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "hidream-i1-fast-Q4_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 11486381760,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "hidream-i1-fast-Q4_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 10898851520,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "hidream-i1-fast-Q5_0.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 12725339840,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "hidream-i1-fast-Q5_1.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 13520291520,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "hidream-i1-fast-Q5_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 13036963520,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "hidream-i1-fast-Q5_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 12485478080,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "hidream-i1-fast-Q6_K.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 14684456640,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "hidream-i1-fast-Q8_0.gguf",
+    "repo_id": "city96/HiDream-I1-Fast-gguf",
+    "size": 18694358720,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211675392
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "hidream-i1-full-Q2_K.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 6562298432,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "hidream-i1-full-Q3_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 8765045312,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "hidream-i1-full-Q3_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 8211921472,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "hidream-i1-full-Q4_0.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 10650761792,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "hidream-i1-full-Q4_1.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 11445713472,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "hidream-i1-full-Q4_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 11481430592,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "hidream-i1-full-Q4_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 10893900352,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "hidream-i1-full-Q5_0.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 12720388672,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "hidream-i1-full-Q5_1.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 13515340352,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "hidream-i1-full-Q5_K_M.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 13032012352,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "hidream-i1-full-Q5_K_S.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 12480526912,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "hidream-i1-full-Q6_K.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 14679505472,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "hidream-i1-full-Q8_0.gguf",
+    "repo_id": "city96/HiDream-I1-Full-gguf",
+    "size": 18689407552,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "score": 8,
+      "size": 34211673776
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "hunyuan-video-i2v-720p-Q3_K_M.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 6238071552,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "hunyuan-video-i2v-720p-Q3_K_S.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 6087666432,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "hunyuan-video-i2v-720p-Q4_0.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 7742122752,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "hunyuan-video-i2v-720p-Q4_1.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 8520690432,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "hunyuan-video-i2v-720p-Q4_K_M.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 7883680512,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "hunyuan-video-i2v-720p-Q4_K_S.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 7742122752,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "hunyuan-video-i2v-720p-Q5_0.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 9299258112,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "hunyuan-video-i2v-720p-Q5_1.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 10077825792,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "hunyuan-video-i2v-720p-Q5_K_M.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 9449663232,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "hunyuan-video-i2v-720p-Q5_K_S.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 9299258112,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "hunyuan-video-i2v-720p-Q6_K.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 10953714432,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "hunyuan-video-i2v-720p-Q8_0.gguf",
+    "repo_id": "city96/HunyuanVideo-I2V-gguf",
+    "size": 13970664192,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "hunyuan-video-t2v-720p-Q3_K_M.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 6238071552,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "hunyuan-video-t2v-720p-Q3_K_S.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 6087666432,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "hunyuan-video-t2v-720p-Q4_0.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 7742122752,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "hunyuan-video-t2v-720p-Q4_1.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 8520690432,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "hunyuan-video-t2v-720p-Q4_K_M.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 7883680512,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "hunyuan-video-t2v-720p-Q4_K_S.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 7742122752,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "hunyuan-video-t2v-720p-Q5_0.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 9299258112,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "hunyuan-video-t2v-720p-Q5_1.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 10077825792,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "hunyuan-video-t2v-720p-Q5_K_M.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 9449663232,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "hunyuan-video-t2v-720p-Q5_K_S.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 9299258112,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "hunyuan-video-t2v-720p-Q6_K.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 10953714432,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "hunyuan-video-t2v-720p-Q8_0.gguf",
+    "repo_id": "city96/HunyuanVideo-gguf",
+    "size": 13970664192,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "score": 6,
+      "size": 25642131432
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q3_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 993456640,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q3_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 898822656,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q4_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1177743872,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q4_1.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1265824256,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q4_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1330049536,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q4_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1209201152,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q5_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1412624896,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q5_1.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1500705280,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q5_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1476850176,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q5_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1383264768,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q6_K.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 1632825856,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "ltx-video-2b-v0.9.5-Q8_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.5-gguf",
+    "size": 2087907840,
+    "source_candidate": {
+      "path": "ltx-video-2b-v0.9.5.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 7,
+      "size": 6340729500
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q3_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 993456640,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q3_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 898822656,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q4_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1177743872,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q4_1.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1265824256,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q4_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1330049536,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q4_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1209201152,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q5_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1412624896,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q5_1.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1500705280,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q5_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1476850176,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q5_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1383264768,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q6_K.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 1632825856,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "ltxv-2b-0.9.6-dev-04-25-Q8_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-dev-gguf",
+    "size": 2087907840,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-dev-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340743924
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q3_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 993456640,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q3_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 898822656,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q4_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1177743872,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q4_1.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1265824256,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q4_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1330049536,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q4_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1209201152,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q5_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1412624896,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q5_1.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1500705280,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q5_K_M.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1476850176,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q5_K_S.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1383264768,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q6_K.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 1632825856,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "ltxv-2b-0.9.6-distilled-04-25-Q8_0.gguf",
+    "repo_id": "city96/LTX-Video-0.9.6-distilled-gguf",
+    "size": 2087907840,
+    "source_candidate": {
+      "path": "ltxv-2b-0.9.6-distilled-04-25.safetensors",
+      "repo_id": "Lightricks/LTX-Video",
+      "score": 8,
+      "size": 6340744028
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "qwen-image-Q2_K.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 7062518304,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "qwen-image-Q3_K_M.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 9679567392,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "qwen-image-Q3_K_S.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 8952609312,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "qwen-image-Q4_0.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 11852773920,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "qwen-image-Q4_1.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 12843678240,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "qwen-image-Q4_K_M.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 13065746976,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "qwen-image-Q4_K_S.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 12140608032,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "qwen-image-Q5_0.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 14400813600,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "qwen-image-Q5_1.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 15391717920,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "qwen-image-Q5_K_M.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 14934899232,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "qwen-image-Q5_K_S.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 14117698080,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "qwen-image-Q6_K.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 16824990240,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "qwen-image-Q8_0.gguf",
+    "repo_id": "city96/Qwen-Image-gguf",
+    "size": 21761817120,
+    "source_candidate": {
+      "path": "split_files/diffusion_models/qwen_image_bf16.safetensors",
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "score": 7,
+      "size": 40861031488
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q3_K_M.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 8589665728,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q3_K_S.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 7928571328,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q4_0.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 10250184128,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q4_1.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 11082491328,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q4_K_M.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 11343816128,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q4_K_S.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 10440238528,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q5_0.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 12268692928,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q5_1.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 13101000128,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q5_K_M.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 12746286528,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q5_K_S.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 12091745728,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q6_K.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 14236411328,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "wan2.1-flf2v-14b-720p-Q8_0.gguf",
+    "repo_id": "city96/Wan2.1-FLF2V-14B-720P-gguf",
+    "size": 18147272128,
+    "source_candidate": null,
+    "status": "no_source_candidate",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "sd3_medium-Q4_0.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1283784256,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "sd3_medium-Q4_1.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1409269312,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "sd3_medium-Q4_K_M.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1326251584,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "sd3_medium-Q4_K_S.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1283784256,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "sd3_medium-Q5_0.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1534754368,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "sd3_medium-Q5_1.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1660239424,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "sd3_medium-Q5_K_M.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1579875904,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "sd3_medium-Q5_K_S.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1534754368,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "sd3_medium-Q6_K.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 1801410112,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "sd3_medium-Q8_0.gguf",
+    "repo_id": "city96/stable-diffusion-3-medium-gguf",
+    "size": 2287664704,
+    "source_candidate": {
+      "path": "sd3_medium.safetensors",
+      "repo_id": "stabilityai/stable-diffusion-3-medium",
+      "score": 8,
+      "size": 4337667306
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "ernie-image-Q2_K.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 3178545856,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "ernie-image-Q3_K_M.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 3909632704,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "ernie-image-Q3_K_S.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 3834135232,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "ernie-image-Q4_0.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 4762747584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "ernie-image-Q4_1.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 5254267584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "ernie-image-Q4_K_M.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 5019124416,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "ernie-image-Q4_K_S.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 4875993792,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "ernie-image-Q5_0.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 5745787584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "ernie-image-Q5_1.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 6237307584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "ernie-image-Q5_K_M.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 5932958400,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "ernie-image-Q5_K_S.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 5861655232,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "ernie-image-Q6_K.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 6790267584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "ernie-image-Q8_0.gguf",
+    "repo_id": "unsloth/ERNIE-Image-GGUF",
+    "size": 8694907584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 7,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  },
+  {
+    "base_qtype": "Q2_K",
+    "gguf_file": "ernie-image-turbo-Q2_K.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 3178545856,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q2_K"
+  },
+  {
+    "base_qtype": "Q3_K_M",
+    "gguf_file": "ernie-image-turbo-Q3_K_M.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 3909632704,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q3_K_M"
+  },
+  {
+    "base_qtype": "Q3_K_S",
+    "gguf_file": "ernie-image-turbo-Q3_K_S.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 3834135232,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q3_K_S"
+  },
+  {
+    "base_qtype": "Q4_0",
+    "gguf_file": "ernie-image-turbo-Q4_0.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 4762747584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_0"
+  },
+  {
+    "base_qtype": "Q4_1",
+    "gguf_file": "ernie-image-turbo-Q4_1.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 5254267584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_1"
+  },
+  {
+    "base_qtype": "Q4_K_M",
+    "gguf_file": "ernie-image-turbo-Q4_K_M.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 5019124416,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_K_M"
+  },
+  {
+    "base_qtype": "Q4_K_S",
+    "gguf_file": "ernie-image-turbo-Q4_K_S.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 4875993792,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q4_K_S"
+  },
+  {
+    "base_qtype": "Q5_0",
+    "gguf_file": "ernie-image-turbo-Q5_0.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 5745787584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_0"
+  },
+  {
+    "base_qtype": "Q5_1",
+    "gguf_file": "ernie-image-turbo-Q5_1.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 6237307584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_1"
+  },
+  {
+    "base_qtype": "Q5_K_M",
+    "gguf_file": "ernie-image-turbo-Q5_K_M.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 5932958400,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_K_M"
+  },
+  {
+    "base_qtype": "Q5_K_S",
+    "gguf_file": "ernie-image-turbo-Q5_K_S.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 5861655232,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q5_K_S"
+  },
+  {
+    "base_qtype": "Q6_K",
+    "gguf_file": "ernie-image-turbo-Q6_K.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 6790267584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q6_K"
+  },
+  {
+    "base_qtype": "Q8_0",
+    "gguf_file": "ernie-image-turbo-Q8_0.gguf",
+    "repo_id": "unsloth/ERNIE-Image-Turbo-GGUF",
+    "size": 8694907584,
+    "source_candidate": {
+      "path": "diffusion_models/ernie-image-turbo.safetensors",
+      "repo_id": "Comfy-Org/ERNIE-Image",
+      "score": 8,
+      "size": 16067025480
+    },
+    "status": "planned",
+    "variant": "Q8_0"
+  }
+]

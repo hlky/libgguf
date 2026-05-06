@@ -5,6 +5,7 @@ project(libgguf VERSION 0.1.0 LANGUAGES CXX)
 option(LIBGGUF_BUILD_SHARED "Build the standalone libgguf shared library" ON)
 option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
 option(LIBGGUF_BUILD_BENCHMARKS "Build native libgguf benchmark binaries" OFF)
+option(LIBGGUF_BUILD_TOOLS "Build native libgguf command line tools" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +18,7 @@ file(
   "${CMAKE_CURRENT_SOURCE_DIR}/csrc/*.cpp"
 )
 list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\]_libgguf_module\\.cpp$")
+list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\]quantize_gguf\\.cpp$")
 
 add_library(libgguf_objects OBJECT ${LIBGGUF_NATIVE_SOURCES})
 target_include_directories(
@@ -65,6 +67,12 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64|X86|x86|i[3-6]86)$")
         set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
       else()
         set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-mavx2")
+      endif()
+    elseif(source_name STREQUAL "quantize_gguf_f16c.cpp")
+      if(MSVC)
+        set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+      else()
+        set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-mavx" "-mf16c")
       endif()
     elseif(is_backend_source AND NOT MSVC AND source_dir_normalized MATCHES "/sse4_1$")
       set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-msse4.1")
@@ -118,6 +126,36 @@ if(LIBGGUF_BUILD_PYTHON)
     target_compile_options(_libgguf PRIVATE -O3 -pthread)
   endif()
   install(TARGETS _libgguf DESTINATION libgguf)
+endif()
+
+if(LIBGGUF_BUILD_TOOLS)
+  add_executable(
+    libgguf_quantize_gguf
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/quantize_gguf.cpp"
+    $<TARGET_OBJECTS:libgguf_objects>
+  )
+  target_include_directories(
+    libgguf_quantize_gguf
+    PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
+  )
+  target_link_libraries(libgguf_quantize_gguf PRIVATE libgguf_objects)
+  if(MSVC)
+    target_compile_options(
+      libgguf_quantize_gguf
+      PRIVATE
+        /O2
+        /EHsc
+        /std:c++17
+        /D_CRT_SECURE_NO_WARNINGS
+    )
+  else()
+    target_compile_options(libgguf_quantize_gguf PRIVATE -O3 -pthread)
+    target_link_libraries(libgguf_quantize_gguf PRIVATE m pthread)
+  endif()
+  install(TARGETS libgguf_quantize_gguf RUNTIME DESTINATION bin)
 endif()
 
 if(LIBGGUF_BUILD_BENCHMARKS)

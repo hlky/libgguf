@@ -101,6 +101,20 @@ def test_native_payload_converts_f16_to_f32(tmp_path: Path) -> None:
     np.testing.assert_array_equal(np.frombuffer(payload, dtype=np.float32), f16.astype(np.float32).reshape(-1))
 
 
+def test_native_payload_copies_scalar_f16(tmp_path: Path) -> None:
+    scalar = np.array(0.99, dtype=np.float16)
+    src = tmp_path / "scalar.safetensors"
+    data_start, header = _write_safetensors(src, {"x": ("F16", (), scalar.tobytes())})
+
+    payload = _write_native_payload(
+        src,
+        [_payload_plan(header, data_start, "x", "F16", (), GGMLQuantizationType.F16, scalar.nbytes)],
+        tmp_path,
+    )
+
+    assert payload == scalar.tobytes()
+
+
 def test_native_payload_converts_bf16_to_f32(tmp_path: Path) -> None:
     f32 = np.array([[0.0, 1.5, -2.25], [3.5, -4.0, 8.0]], dtype=np.float32)
     bf16 = (f32.view(np.uint32) >> np.uint32(16)).astype(np.uint16)
@@ -185,6 +199,27 @@ def test_native_converter_matches_python_converter_for_tiny_safetensors(tmp_path
     rows = np.linspace(-2.0, 2.0, 64, dtype=np.float32).reshape(2, 32)
     src = tmp_path / "model.safetensors"
     _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+    py_out = tmp_path / "python.gguf"
+    native_out = tmp_path / "native.gguf"
+
+    convert_to_gguf(src, py_out, "Q4_0", policy="uniform", overwrite=True)
+    convert_safetensors_to_gguf_native(src, native_out, "Q4_0", policy="uniform", overwrite=True)
+
+    assert native_out.read_bytes() == py_out.read_bytes()
+
+
+def test_native_converter_allows_scalar_tensors_outside_selected_prefix(tmp_path: Path) -> None:
+    key = "model.double_layers.3.modX.1.weight"
+    rows = np.linspace(-2.0, 2.0, 64, dtype=np.float32).reshape(2, 32)
+    scalar = np.array(1.0, dtype=np.float16)
+    src = tmp_path / "model_with_scalar.safetensors"
+    _write_safetensors(
+        src,
+        {
+            key: ("F32", rows.shape, rows.tobytes()),
+            "vae.model_ema.decay": ("F16", (), scalar.tobytes()),
+        },
+    )
     py_out = tmp_path / "python.gguf"
     native_out = tmp_path / "native.gguf"
 

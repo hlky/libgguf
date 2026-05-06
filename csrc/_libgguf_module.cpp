@@ -334,12 +334,6 @@ static bool parse_shape_product(PyObject *shape_obj, const char *field_name, std
   }
 
   const Py_ssize_t len = PySequence_Fast_GET_SIZE(seq);
-  if (len <= 0)
-  {
-    Py_DECREF(seq);
-    PyErr_Format(PyExc_ValueError, "%s must contain at least one dimension", field_name);
-    return false;
-  }
 
   shape->clear();
   shape->reserve((size_t)len);
@@ -586,7 +580,7 @@ static bool parse_native_plan(PyObject *item, native_tensor_plan *plan)
     return false;
   }
   plan->n_values = write_values;
-  plan->n_per_row = (uint64_t)write_shape.back();
+  plan->n_per_row = write_shape.empty() ? 1 : (uint64_t)write_shape.back();
   plan->n_rows = write_values / plan->n_per_row;
 
   uint64_t expected_source_bytes = 0;
