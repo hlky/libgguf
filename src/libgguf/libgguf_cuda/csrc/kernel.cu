@@ -7,7 +7,7 @@
 #include "cuda_compat.h"
 #include "dispatch_utils.h"
 
-#include "common.h"
+#include "libgguf_cuda_common.h"
 #include "dequantize.h"
 
 torch::Tensor dequantize(torch::Tensor W,  // quant weight

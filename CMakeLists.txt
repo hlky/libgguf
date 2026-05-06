@@ -174,6 +174,8 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
       libgguf_cuda_C_gguf
       PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
         ${TORCH_INCLUDE_DIRS}
     )
     target_compile_definitions(libgguf_cuda_C_gguf PRIVATE TORCH_EXTENSION_NAME=_C_gguf)
