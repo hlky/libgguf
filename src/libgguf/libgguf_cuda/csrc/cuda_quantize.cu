@@ -6,10 +6,7 @@
 #include <torch/all.h>
 #include <c10/cuda/CUDAGuard.h>
 
-#include "cuda_compat.h"
-
-#include "libgguf_cuda_common.h"
-#include "quantize.h"
+#include "cuda_quantize_kernels.h"
 
 torch::Tensor quantize(torch::Tensor W, int64_t type, std::optional<torch::Tensor> const &imatrix) {
   TORCH_CHECK(W.is_cuda(), "CUDA quantize expects a CUDA tensor");
@@ -19,8 +16,8 @@ torch::Tensor quantize(torch::Tensor W, int64_t type, std::optional<torch::Tenso
 
   const at::cuda::OptionalCUDAGuard device_guard(device_of(W));
   const int64_t n = W.size(-1);
-  const int64_t qk = gguf_cuda_quantize_block_size(type);
-  const int64_t row_size = gguf_cuda_quantize_row_size(type, n);
+  const int64_t qk = gguf_cuda_quantize_block_size_for_type(type);
+  const int64_t row_size = gguf_cuda_quantize_row_size_for_type(type, n);
   TORCH_CHECK(qk != 0 && row_size != 0, "Unsupported GGML quantization type for CUDA quantize: ", type);
   TORCH_CHECK(n % qk == 0, "CUDA quantize input width must be divisible by the quantization block size");
 
@@ -37,7 +34,7 @@ torch::Tensor quantize(torch::Tensor W, int64_t type, std::optional<torch::Tenso
   auto options = torch::TensorOptions().dtype(torch::kUInt8).device(W.device());
   at::Tensor QW = torch::empty(out_shape, options);
   const float *quant_weights_ptr = nullptr;
-  if (gguf_cuda_quantize_needs_imatrix(type)) {
+  if (gguf_cuda_quantize_type_needs_imatrix(type)) {
     TORCH_CHECK(imatrix.has_value(), "CUDA quantize requires imatrix for GGML quantization type: ", type);
     const torch::Tensor &quant_weights = imatrix.value();
     TORCH_CHECK(quant_weights.is_cuda(), "CUDA quantize imatrix must be a CUDA tensor");
@@ -49,6 +46,6 @@ torch::Tensor quantize(torch::Tensor W, int64_t type, std::optional<torch::Tenso
     quant_weights_ptr = (const float *)quant_weights.data_ptr();
   }
   cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
-  quantize_row_cuda((const float *)W.data_ptr(), quant_weights_ptr, (void *)QW.data_ptr(), type, m * n, n, stream);
+  gguf_cuda_quantize_row((const float *)W.data_ptr(), quant_weights_ptr, (void *)QW.data_ptr(), type, m * n, n, stream);
   return QW;
 }

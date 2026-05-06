@@ -4,11 +4,7 @@
 #include <torch/all.h>
 #include <c10/cuda/CUDAGuard.h>
 
-#include "cuda_compat.h"
-#include "dispatch_utils.h"
-
-#include "libgguf_cuda_common.h"
-#include "dequantize.h"
+#include "cuda_dequantize_kernels.h"
 
 torch::Tensor dequantize(torch::Tensor W, int64_t type, int64_t m, int64_t n,
                          std::optional<at::ScalarType> const &dtype) {
@@ -18,11 +14,7 @@ torch::Tensor dequantize(torch::Tensor W, int64_t type, int64_t m, int64_t n,
   at::Tensor DW = torch::empty({m, n}, options);
   cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
 
-  VLLM_DISPATCH_FLOATING_TYPES(DW.scalar_type(), "dequantize", [&] {
-    auto to_cuda = ggml_get_to_cuda<scalar_t>(type);
-    TORCH_CHECK(to_cuda != nullptr, "Unsupported GGML quantization type for CUDA dequantize: ", type);
-    to_cuda((void *)W.data_ptr(), (scalar_t *)DW.data_ptr(), m * n, stream);
-  });
+  gguf_cuda_dequantize_row((void *)W.data_ptr(), (void *)DW.data_ptr(), type, m * n, DW.scalar_type(), stream);
 
   return DW;
 }
