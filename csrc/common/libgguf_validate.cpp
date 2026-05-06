@@ -8,13 +8,13 @@
 
 static bool validate_float(float f, size_t i)
 {
-  if (isinf(f))
+  if (std::isinf(f))
   {
     fprintf(stderr, "ggml_validate_row_data: found inf value at block %zu\n", i);
     return false;
   }
 
-  if (isnan(f))
+  if (std::isnan(f))
   {
     fprintf(stderr, "ggml_validate_row_data: found nan value at block %zu\n", i);
     return false;

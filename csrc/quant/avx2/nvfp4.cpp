@@ -30,7 +30,7 @@ static inline bool nvfp4_amax_sub_avx2(const float *RESTRICT x, float *RESTRICT 
   }
 
   const float m = nvfp4_hmax_avx2(maxv);
-  if (!isfinite(m))
+  if (!std::isfinite(m))
   {
     return false;
   }
