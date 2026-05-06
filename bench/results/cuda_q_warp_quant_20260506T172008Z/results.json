@@ -1,0 +1,124 @@
+{
+  "metadata": {
+    "timestamp_utc": "20260506T172008Z",
+    "cwd": "/workspace/libgguf",
+    "python": "3.12.3",
+    "platform": "Linux-6.8.0-110-generic-x86_64-with-glibc2.39",
+    "cpu": "CPU(s):                                  256\nOn-line CPU(s) list:                     0-255\nModel name:                              AMD EPYC 7763 64-Core Processor\nThread(s) per core:                      2\nCore(s) per socket:                      64\nSocket(s):                               2\nCPU(s) scaling MHz:                      49%\nCPU max MHz:                             3530.4929\nNUMA node(s):                            2\nNUMA node0 CPU(s):                       0-63,128-191\nNUMA node1 CPU(s):                       64-127,192-255",
+    "gpu": "NVIDIA GeForce RTX 3090, 580.126.20, 8.6, 24576 MiB",
+    "torch_cuda": "12.8",
+    "torch_device": "NVIDIA GeForce RTX 3090",
+    "qtypes": [
+      "Q5_0",
+      "Q5_1",
+      "Q8_0"
+    ],
+    "shapes": [
+      "4096x4096",
+      "11008x4096"
+    ],
+    "notes": [
+      "CUDA timings use torch.cuda.Event elapsed time.",
+      "Baseline is bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv.",
+      "Only final kept warp-quant optimized qtypes are included: Q5_0, Q5_1, Q8_0."
+    ]
+  },
+  "results": [
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q5_0",
+      "shape": "4096x4096",
+      "rows": 4096,
+      "width": 4096,
+      "iterations": 30,
+      "baseline_ms": "0.296806",
+      "ms": "0.212958",
+      "delta_pct": "-28.25",
+      "input_gb_s": "315.127436",
+      "encoded_bytes": 11534336,
+      "decoded_bytes": 67108864,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    },
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q5_1",
+      "shape": "4096x4096",
+      "rows": 4096,
+      "width": 4096,
+      "iterations": 30,
+      "baseline_ms": "0.217549",
+      "ms": "0.187733",
+      "delta_pct": "-13.71",
+      "input_gb_s": "357.469093",
+      "encoded_bytes": 12582912,
+      "decoded_bytes": 67108864,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    },
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q8_0",
+      "shape": "4096x4096",
+      "rows": 4096,
+      "width": 4096,
+      "iterations": 30,
+      "baseline_ms": "0.405555",
+      "ms": "0.137567",
+      "delta_pct": "-66.08",
+      "input_gb_s": "487.827002",
+      "encoded_bytes": 17825792,
+      "decoded_bytes": 67108864,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    },
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q5_0",
+      "shape": "11008x4096",
+      "rows": 11008,
+      "width": 4096,
+      "iterations": 15,
+      "baseline_ms": "0.754432",
+      "ms": "0.566682",
+      "delta_pct": "-24.89",
+      "input_gb_s": "318.265265",
+      "encoded_bytes": 30998528,
+      "decoded_bytes": 180355072,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    },
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q5_1",
+      "shape": "11008x4096",
+      "rows": 11008,
+      "width": 4096,
+      "iterations": 15,
+      "baseline_ms": "0.548813",
+      "ms": "0.499221",
+      "delta_pct": "-9.04",
+      "input_gb_s": "361.272772",
+      "encoded_bytes": 33816576,
+      "decoded_bytes": 180355072,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    },
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q8_0",
+      "shape": "11008x4096",
+      "rows": 11008,
+      "width": 4096,
+      "iterations": 15,
+      "baseline_ms": "1.053901",
+      "ms": "0.365158",
+      "delta_pct": "-65.35",
+      "input_gb_s": "493.909143",
+      "encoded_bytes": 47906816,
+      "decoded_bytes": 180355072,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    }
+  ]
+}

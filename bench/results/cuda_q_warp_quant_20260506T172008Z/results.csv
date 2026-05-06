@@ -1,0 +1,7 @@
+backend,operation,qtype,shape,rows,width,iterations,baseline_ms,ms,delta_pct,input_gb_s,encoded_bytes,decoded_bytes,baseline_source
+cuda,quantize,Q5_0,4096x4096,4096,4096,30,0.296806,0.212958,-28.25,315.127436,11534336,67108864,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
+cuda,quantize,Q5_1,4096x4096,4096,4096,30,0.217549,0.187733,-13.71,357.469093,12582912,67108864,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
+cuda,quantize,Q8_0,4096x4096,4096,4096,30,0.405555,0.137567,-66.08,487.827002,17825792,67108864,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
+cuda,quantize,Q5_0,11008x4096,11008,4096,15,0.754432,0.566682,-24.89,318.265265,30998528,180355072,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
+cuda,quantize,Q5_1,11008x4096,11008,4096,15,0.548813,0.499221,-9.04,361.272772,33816576,180355072,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
+cuda,quantize,Q8_0,11008x4096,11008,4096,15,1.053901,0.365158,-65.35,493.909143,47906816,180355072,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
