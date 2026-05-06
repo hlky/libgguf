@@ -4,6 +4,9 @@
 #include <cuda_runtime.h>
 
 #include "libgguf_cuda_common.h"
+#ifdef GGUF_CUDA_USE_IQ1_GRID_LOOKUP
+#include "libgguf_cuda_iq1_lookup.cuh"
+#endif
 
 static __device__ __forceinline__ uint8_t gguf_cuda_min_u8(uint8_t lhs, uint8_t rhs) {
     return lhs < rhs ? lhs : rhs;
@@ -715,6 +718,32 @@ static __device__ __forceinline__ int8_t gguf_cuda_iq1_grid_l(int grid_index, in
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq1_find_grid_index(const int8_t * l) {
+#ifdef GGUF_CUDA_USE_IQ1_GRID_LOOKUP
+    int key = 0;
+    int mul = 1;
+    for (int i = 0; i < 8; ++i) {
+        if (l[i] < 0 || l[i] > 2) {
+            return -1;
+        }
+        key += l[i] * mul;
+        mul *= 3;
+    }
+    int lo = 0;
+    int hi = IQ1S_GRID_LOOKUP_SIZE - 1;
+    while (lo <= hi) {
+        const int mid = (lo + hi) >> 1;
+        const uint32_t entry = iq1s_grid_lookup[mid];
+        const int entry_key = entry >> 12;
+        if (entry_key < key) {
+            lo = mid + 1;
+        } else if (entry_key > key) {
+            hi = mid - 1;
+        } else {
+            return entry & 0x0fffu;
+        }
+    }
+    return -1;
+#else
     for (int grid_index = 0; grid_index < NGRID_IQ1S; ++grid_index) {
         bool match = true;
         for (int i = 0; i < 8; ++i) {
@@ -728,6 +757,7 @@ static __device__ __forceinline__ int gguf_cuda_iq1_find_grid_index(const int8_t
         }
     }
     return -1;
+#endif
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq1_grid_dist(int grid_index, const int8_t * l) {
