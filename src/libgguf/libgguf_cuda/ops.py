@@ -13,10 +13,10 @@ except ImportError:
     _C_gguf = None
 
 
-if hasattr(torch.ops, "_C_gguf") and hasattr(torch.ops._C_gguf, "ggml_dequantize"):
+if hasattr(torch.ops, "_C_gguf") and hasattr(torch.ops._C_gguf, "dequantize"):
 
-    @register_fake("_C_gguf::ggml_dequantize")
-    def _ggml_dequantize_fake(
+    @register_fake("_C_gguf::dequantize")
+    def _dequantize_fake(
         W: torch.Tensor,
         quant_type: int,
         m: torch.SymInt,
@@ -26,7 +26,7 @@ if hasattr(torch.ops, "_C_gguf") and hasattr(torch.ops._C_gguf, "ggml_dequantize
         return torch.empty((m, n), dtype=dtype or torch.float16, device=W.device)
 
 
-def ggml_dequantize(
+def dequantize(
     W: torch.Tensor, quant_type: int, m: int, n: int, dtype: torch.dtype | None
 ) -> torch.Tensor:
-    return torch.ops._C_gguf.ggml_dequantize(W, quant_type, m, n, dtype)
+    return torch.ops._C_gguf.dequantize(W, quant_type, m, n, dtype)

@@ -10,7 +10,7 @@
 #include "common.h"
 #include "dequantize.h"
 
-torch::Tensor ggml_dequantize(torch::Tensor W,  // quant weight
+torch::Tensor dequantize(torch::Tensor W,  // quant weight
                               int64_t type, int64_t m, int64_t n,
                               std::optional<at::ScalarType> const& dtype) {
   const at::cuda::OptionalCUDAGuard device_guard(device_of(W));
@@ -19,7 +19,7 @@ torch::Tensor ggml_dequantize(torch::Tensor W,  // quant weight
   at::Tensor DW = torch::empty({m, n}, options);
   cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
 
-  VLLM_DISPATCH_FLOATING_TYPES(DW.scalar_type(), "ggml_dequantize", [&] {
+  VLLM_DISPATCH_FLOATING_TYPES(DW.scalar_type(), "dequantize", [&] {
     auto to_cuda = ggml_get_to_cuda<scalar_t>(type);
     TORCH_CHECK(to_cuda != nullptr, "Unsupported GGML quantization type for CUDA dequantize: ", type);
     to_cuda((void*)W.data_ptr(), (scalar_t*)DW.data_ptr(), m * n, stream);

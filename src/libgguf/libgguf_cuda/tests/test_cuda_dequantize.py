@@ -58,7 +58,7 @@ def build_rows(qtype: GGMLQuantizationType, *, rows: int = 2) -> np.ndarray:
 
 
 def require_cuda_extension() -> None:
-    if not hasattr(torch.ops, "_C_gguf") or not hasattr(torch.ops._C_gguf, "ggml_dequantize"):
+    if not hasattr(torch.ops, "_C_gguf") or not hasattr(torch.ops._C_gguf, "dequantize"):
         pytest.skip("libgguf CUDA extension is not available")
 
 
@@ -69,7 +69,7 @@ def test_cuda_dequantize_matches_libgguf(qtype: GGMLQuantizationType) -> None:
     rows = build_rows(qtype)
     encoded = libgguf.quantize_rows(rows, qtype)
 
-    actual = libgguf_cuda.ggml_dequantize(
+    actual = libgguf_cuda.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         int(qtype),
         rows.shape[0],
@@ -78,7 +78,7 @@ def test_cuda_dequantize_matches_libgguf(qtype: GGMLQuantizationType) -> None:
     )
     expected = libgguf.dequantize_rows(encoded, qtype, n_per_row=rows.shape[1])
 
-    np.testing.assert_allclose(actual.cpu().numpy(), expected, rtol=0.0, atol=4.0e-3)
+    np.testing.assert_allclose(actual.cpu().numpy(), expected)
 
 
 @pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32), ids=str)
@@ -88,7 +88,7 @@ def test_cuda_dequantize_returns_requested_dtype(dtype: torch.dtype) -> None:
     rows = build_rows(GGMLQuantizationType.Q4_0, rows=1)
     encoded = libgguf.quantize_rows(rows, GGMLQuantizationType.Q4_0)
 
-    actual = libgguf_cuda.ggml_dequantize(
+    actual = libgguf_cuda.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         int(GGMLQuantizationType.Q4_0),
         rows.shape[0],

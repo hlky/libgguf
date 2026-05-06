@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from .formats import GGMLFormatInfo, GGMLQuantizationType
-from .ops import ggml_dequantize
+from .ops import dequantize
 
-__all__ = ["GGMLFormatInfo", "GGMLQuantizationType", "ggml_dequantize"]
+__all__ = ["dequantize"]
