@@ -492,6 +492,8 @@ static __global__ void quantize_block_q2_K(const float * __restrict__ x, block_q
     float weights[16];
     float mins[QK_K / 16];
     float scales[QK_K / 16];
+    uint8_t quant_scales[QK_K / 16];
+    uint8_t quant_mins[QK_K / 16];
 
     float max_scale = 0.0f;
     float max_min = 0.0f;
@@ -511,11 +513,14 @@ static __global__ void quantize_block_q2_K(const float * __restrict__ x, block_q
     if (max_scale > 0.0f) {
         const float iscale = __fdiv_rn(15.0f, max_scale);
         for (int j = 0; j < QK_K / 16; ++j) {
-            yb->scales[j] = gguf_cuda_nearest_int(__fmul_rn(iscale, scales[j]));
+            const uint8_t qscale = gguf_cuda_nearest_int(__fmul_rn(iscale, scales[j]));
+            quant_scales[j] = qscale;
+            yb->scales[j] = qscale;
         }
         yb->d = gguf_cuda_compute_fp32_to_fp16(__fdiv_rn(max_scale, 15.0f));
     } else {
         for (int j = 0; j < QK_K / 16; ++j) {
+            quant_scales[j] = 0;
             yb->scales[j] = 0;
         }
         yb->d = gguf_cuda_compute_fp32_to_fp16(0.0f);
@@ -524,21 +529,26 @@ static __global__ void quantize_block_q2_K(const float * __restrict__ x, block_q
     if (max_min > 0.0f) {
         const float iscale = __fdiv_rn(15.0f, max_min);
         for (int j = 0; j < QK_K / 16; ++j) {
-            yb->scales[j] |= gguf_cuda_nearest_int(__fmul_rn(iscale, mins[j])) << 4;
+            const uint8_t qmin = gguf_cuda_nearest_int(__fmul_rn(iscale, mins[j]));
+            quant_mins[j] = qmin;
+            yb->scales[j] |= qmin << 4;
         }
         yb->dmin = gguf_cuda_compute_fp32_to_fp16(__fdiv_rn(max_min, 15.0f));
     } else {
+        for (int j = 0; j < QK_K / 16; ++j) {
+            quant_mins[j] = 0;
+        }
         yb->dmin = gguf_cuda_compute_fp32_to_fp16(0.0f);
     }
 
     const float d_base = __half2float(gguf_cuda_load_half(yb->d));
     const float dm_base = __half2float(gguf_cuda_load_half(yb->dmin));
     for (int j = 0; j < QK_K / 16; ++j) {
-        const float d = __fmul_rn(d_base, float(yb->scales[j] & 0x0f));
+        const float d = __fmul_rn(d_base, float(quant_scales[j]));
         if (d == 0.0f) {
             continue;
         }
-        const float dm = __fmul_rn(dm_base, float(yb->scales[j] >> 4));
+        const float dm = __fmul_rn(dm_base, float(quant_mins[j]));
         for (int ii = 0; ii < 16; ++ii) {
             int q = gguf_cuda_nearest_int(__fdiv_rn(xb[16 * j + ii] + dm, d));
             q = gguf_cuda_clamp_int(q, 0, 3);
@@ -628,6 +638,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
     block_q3_K * yb = y + iblock;
     int8_t l[QK_K];
     float scales[QK_K / 16];
+    int8_t quant_scales[QK_K / 16];
 
     float max_scale = 0.0f;
     float amax = 0.0f;
@@ -646,6 +657,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
         for (int j = 0; j < QK_K / 16; ++j) {
             int q = gguf_cuda_nearest_int(iscale * scales[j]);
             q = gguf_cuda_clamp_int(q, -32, 31) + 32;
+            quant_scales[j] = q - 32;
             if (j < 8) {
                 yb->scales[j] = q & 0x0f;
             } else {
@@ -661,9 +673,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
 
     const float d_base = __half2float(gguf_cuda_load_half(yb->d));
     for (int j = 0; j < QK_K / 16; ++j) {
-        int8_t sc = j < 8 ? yb->scales[j] & 0x0f : yb->scales[j - 8] >> 4;
-        sc = (sc | (((yb->scales[8 + j % 4] >> (2 * (j / 4))) & 3) << 4)) - 32;
-        const float d = d_base * sc;
+        const float d = d_base * quant_scales[j];
         if (d == 0.0f) {
             continue;
         }
@@ -798,6 +808,8 @@ static __global__ void quantize_block_q5_K(const float * __restrict__ x, block_q
     float weights[32];
     float mins[QK_K / 32];
     float scales[QK_K / 32];
+    uint8_t quant_scales[QK_K / 32];
+    uint8_t quant_mins[QK_K / 32];
 
     float max_scale = 0.0f;
     float max_min = 0.0f;
@@ -825,6 +837,8 @@ static __global__ void quantize_block_q5_K(const float * __restrict__ x, block_q
     for (int j = 0; j < QK_K / 32; ++j) {
         uint8_t ls = min(63, gguf_cuda_nearest_int(inv_scale * scales[j]));
         uint8_t lm = min(63, gguf_cuda_nearest_int(inv_min * mins[j]));
+        quant_scales[j] = ls;
+        quant_mins[j] = lm;
         if (j < 4) {
             yb->scales[j] = ls;
             yb->scales[j + 4] = lm;
@@ -839,15 +853,12 @@ static __global__ void quantize_block_q5_K(const float * __restrict__ x, block_q
 
     const float d_base = __half2float(gguf_cuda_load_half(yb->d));
     const float dm_base = __half2float(gguf_cuda_load_half(yb->dmin));
-    uint8_t sc;
-    uint8_t m;
     for (int j = 0; j < QK_K / 32; ++j) {
-        gguf_cuda_get_scale_min_k4(j, yb->scales, &sc, &m);
-        const float d = d_base * sc;
+        const float d = d_base * quant_scales[j];
         if (d == 0.0f) {
             continue;
         }
-        const float dm = dm_base * m;
+        const float dm = dm_base * quant_mins[j];
         for (int ii = 0; ii < 32; ++ii) {
             int q = gguf_cuda_nearest_int((xb[32 * j + ii] + dm) / d);
             q = gguf_cuda_clamp_int(q, 0, 31);
@@ -1152,16 +1163,22 @@ static __device__ __forceinline__ int8_t gguf_cuda_iq2_grid_q(const uint64_t * g
     return 2 * gguf_cuda_iq2_grid_l(grid, grid_index, i) + 1;
 }
 
-static __device__ __forceinline__ int gguf_cuda_iq2_find_grid_index(const uint64_t * grid, int grid_size, const int8_t * l) {
-    for (int grid_index = 0; grid_index < grid_size; ++grid_index) {
-        bool match = true;
-        for (int i = 0; i < 8; ++i) {
-            if (gguf_cuda_iq2_grid_l(grid, grid_index, i) != l[i]) {
-                match = false;
-                break;
-            }
+static __device__ __forceinline__ uint64_t gguf_cuda_iq2_grid_key(const int8_t * l) {
+    uint64_t key = 0;
+    for (int i = 0; i < 8; ++i) {
+        if (l[i] < 0 || l[i] > 2) {
+            return UINT64_MAX;
         }
-        if (match) {
+        const uint64_t v = l[i] == 0 ? 0x08u : l[i] == 1 ? 0x19u : 0x2bu;
+        key |= v << (8 * i);
+    }
+    return key;
+}
+
+static __device__ __forceinline__ int gguf_cuda_iq2_find_grid_index(const uint64_t * grid, int grid_size, const int8_t * l) {
+    const uint64_t key = gguf_cuda_iq2_grid_key(l);
+    for (int grid_index = 0; grid_index < grid_size; ++grid_index) {
+        if (grid[grid_index] == key) {
             return grid_index;
         }
     }
@@ -1305,16 +1322,23 @@ static __device__ __forceinline__ int8_t gguf_cuda_iq3_grid_q(const uint32_t * g
     return 2 * gguf_cuda_iq3_grid_l(grid, grid_index, i) + 1;
 }
 
-static __device__ __forceinline__ int gguf_cuda_iq3_find_grid_index(const uint32_t * grid, int grid_size, const int8_t * l) {
-    for (int grid_index = 0; grid_index < grid_size; ++grid_index) {
-        bool match = true;
-        for (int i = 0; i < 4; ++i) {
-            if (gguf_cuda_iq3_grid_l(grid, grid_index, i) != l[i]) {
-                match = false;
-                break;
-            }
+static __device__ __forceinline__ uint32_t gguf_cuda_iq3_grid_key(const uint32_t * grid, const int8_t * l) {
+    const bool odd_encoding = (grid[0] & 1u) != 0;
+    uint32_t key = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (l[i] < 0 || l[i] > 7) {
+            return UINT32_MAX;
         }
-        if (match) {
+        const uint32_t v = odd_encoding ? (uint32_t)(2 * l[i] + 1) : l[i] == 7 ? 0x3eu : (uint32_t)(0x04u + 8u * l[i]);
+        key |= v << (8 * i);
+    }
+    return key;
+}
+
+static __device__ __forceinline__ int gguf_cuda_iq3_find_grid_index(const uint32_t * grid, int grid_size, const int8_t * l) {
+    const uint32_t key = gguf_cuda_iq3_grid_key(grid, l);
+    for (int grid_index = 0; grid_index < grid_size; ++grid_index) {
+        if (grid[grid_index] == key) {
             return grid_index;
         }
     }
@@ -2774,6 +2798,7 @@ static __global__ void quantize_block_q6_K(const float * __restrict__ x, block_q
     block_q6_K * yb = y + iblock;
     int8_t l[QK_K];
     float scales[QK_K / 16];
+    int8_t quant_scales[QK_K / 16];
 
     float max_scale = 0.0f;
     float max_abs_scale = 0.0f;
@@ -2797,11 +2822,13 @@ static __global__ void quantize_block_q6_K(const float * __restrict__ x, block_q
     yb->d = gguf_cuda_compute_fp32_to_fp16(__fdiv_rn(1.0f, iscale));
     const float d_super = __half2float(gguf_cuda_load_half(yb->d));
     for (int ib = 0; ib < QK_K / 16; ++ib) {
-        yb->scales[ib] = min(127, gguf_cuda_nearest_int(__fmul_rn(iscale, scales[ib])));
+        const int8_t qscale = min(127, gguf_cuda_nearest_int(__fmul_rn(iscale, scales[ib])));
+        quant_scales[ib] = qscale;
+        yb->scales[ib] = qscale;
     }
 
     for (int j = 0; j < QK_K / 16; ++j) {
-        const float d = d_super * yb->scales[j];
+        const float d = d_super * quant_scales[j];
         if (d == 0.0f) {
             continue;
         }
@@ -2960,6 +2987,11 @@ static inline void quantize_row_cuda(
     cudaStream_t stream
 ) {
     const int threads = 256;
+    const int q2_k_threads = 128;
+    const int q3_k_threads = 64;
+    const int q4_k_threads = 96;
+    const int q5_k_threads = 96;
+    const int q6_k_threads = 96;
     switch (type) {
         case GGML_TYPE_IQ4_NL: {
             const int64_t n_blocks = k / QK4_NL;
@@ -3045,20 +3077,20 @@ static inline void quantize_row_cuda(
         }
         case GGML_TYPE_Q2_K: {
             const int64_t n_blocks = k / QK_K;
-            const int blocks = (int)((n_blocks + threads - 1) / threads);
-            quantize_block_q2_K<<<blocks, threads, 0, stream>>>(x, (block_q2_K *)y, n_blocks);
+            const int blocks = (int)((n_blocks + q2_k_threads - 1) / q2_k_threads);
+            quantize_block_q2_K<<<blocks, q2_k_threads, 0, stream>>>(x, (block_q2_K *)y, n_blocks);
             return;
         }
         case GGML_TYPE_Q3_K: {
             const int64_t n_blocks = k / QK_K;
-            const int blocks = (int)((n_blocks + threads - 1) / threads);
-            quantize_block_q3_K<<<blocks, threads, 0, stream>>>(x, (block_q3_K *)y, n_blocks);
+            const int blocks = (int)((n_blocks + q3_k_threads - 1) / q3_k_threads);
+            quantize_block_q3_K<<<blocks, q3_k_threads, 0, stream>>>(x, (block_q3_K *)y, n_blocks);
             return;
         }
         case GGML_TYPE_Q4_K: {
             const int64_t n_blocks = k / QK_K;
-            const int blocks = (int)((n_blocks + threads - 1) / threads);
-            quantize_block_q4_K<<<blocks, threads, 0, stream>>>(x, (block_q4_K *)y, n_blocks);
+            const int blocks = (int)((n_blocks + q4_k_threads - 1) / q4_k_threads);
+            quantize_block_q4_K<<<blocks, q4_k_threads, 0, stream>>>(x, (block_q4_K *)y, n_blocks);
             return;
         }
         case GGML_TYPE_Q4_0: {
@@ -3087,14 +3119,14 @@ static inline void quantize_row_cuda(
         }
         case GGML_TYPE_Q5_K: {
             const int64_t n_blocks = k / QK_K;
-            const int blocks = (int)((n_blocks + threads - 1) / threads);
-            quantize_block_q5_K<<<blocks, threads, 0, stream>>>(x, (block_q5_K *)y, n_blocks);
+            const int blocks = (int)((n_blocks + q5_k_threads - 1) / q5_k_threads);
+            quantize_block_q5_K<<<blocks, q5_k_threads, 0, stream>>>(x, (block_q5_K *)y, n_blocks);
             return;
         }
         case GGML_TYPE_Q6_K: {
             const int64_t n_blocks = k / QK_K;
-            const int blocks = (int)((n_blocks + threads - 1) / threads);
-            quantize_block_q6_K<<<blocks, threads, 0, stream>>>(x, (block_q6_K *)y, n_blocks);
+            const int blocks = (int)((n_blocks + q6_k_threads - 1) / q6_k_threads);
+            quantize_block_q6_K<<<blocks, q6_k_threads, 0, stream>>>(x, (block_q6_K *)y, n_blocks);
             return;
         }
         case GGML_TYPE_Q8_0: {
