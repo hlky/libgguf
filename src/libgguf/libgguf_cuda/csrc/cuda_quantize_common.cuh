@@ -7,6 +7,12 @@
 #ifdef GGUF_CUDA_USE_IQ1_GRID_LOOKUP
 #include "libgguf_cuda_iq1_lookup.cuh"
 #endif
+#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+#include "libgguf_cuda_iq2_lookup.cuh"
+#endif
+#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+#include "libgguf_cuda_iq3_lookup.cuh"
+#endif
 
 static __device__ __forceinline__ uint8_t gguf_cuda_min_u8(uint8_t lhs, uint8_t rhs) {
     return lhs < rhs ? lhs : rhs;
@@ -625,6 +631,27 @@ static __device__ __forceinline__ uint64_t gguf_cuda_iq2_grid_key(const int8_t *
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq2_find_grid_index(const uint64_t * grid, int grid_size, const int8_t * l) {
+#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+    int key = 0;
+    int mul = 1;
+    for (int i = 0; i < 8; ++i) {
+        if (l[i] < 0 || l[i] > 2) {
+            return -1;
+        }
+        key += l[i] * mul;
+        mul *= 3;
+    }
+    if (grid_size == 256) {
+        return iq2xxs_grid_lookup[key];
+    }
+    if (grid_size == 512) {
+        return iq2xs_grid_lookup[key];
+    }
+    if (grid_size == 1024) {
+        return iq2s_grid_lookup[key];
+    }
+    return -1;
+#else
     const uint64_t key = gguf_cuda_iq2_grid_key(l);
     int lo = 0;
     int hi = grid_size - 1;
@@ -640,6 +667,7 @@ static __device__ __forceinline__ int gguf_cuda_iq2_find_grid_index(const uint64
         }
     }
     return -1;
+#endif
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq2_grid_dist(const uint64_t * grid, int grid_index, const int8_t * l) {
@@ -849,6 +877,24 @@ static __device__ __forceinline__ uint32_t gguf_cuda_iq3_grid_key(const uint32_t
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq3_find_grid_index(const uint32_t * grid, int grid_size, const int8_t * l) {
+#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+    int key = 0;
+    int mul = 1;
+    for (int i = 0; i < 4; ++i) {
+        if (l[i] < 0 || l[i] > 7) {
+            return -1;
+        }
+        key += l[i] * mul;
+        mul *= 8;
+    }
+    if (grid_size == 256) {
+        return iq3xxs_grid_lookup[key];
+    }
+    if (grid_size == 512) {
+        return iq3xs_grid_lookup[key];
+    }
+    return -1;
+#else
     const uint32_t key = gguf_cuda_iq3_grid_key(grid, l);
     int lo = 0;
     int hi = grid_size - 1;
@@ -864,6 +910,7 @@ static __device__ __forceinline__ int gguf_cuda_iq3_find_grid_index(const uint32
         }
     }
     return -1;
+#endif
 }
 
 static __device__ __forceinline__ int gguf_cuda_iq3_grid_dist(const uint32_t * grid, int grid_index, const int8_t * l) {

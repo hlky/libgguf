@@ -1,6 +1,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+#define GGUF_CUDA_USE_IQ2_GRID_LOOKUP
 #include "cuda_quantize_common.cuh"
 #include "cuda_quantize_kernels.h"
 
