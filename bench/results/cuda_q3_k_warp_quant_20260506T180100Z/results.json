@@ -1,0 +1,34 @@
+{
+  "results": [
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q3_K",
+      "shape": "4096x4096",
+      "rows": 4096,
+      "width": 4096,
+      "iterations": 30,
+      "baseline_ms": 1.11319,
+      "ms": 0.37695962625245255,
+      "delta_pct": -66.13699132650737,
+      "input_gb_s": 178.0266620782797,
+      "exact": true,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    },
+    {
+      "backend": "cuda",
+      "operation": "quantize",
+      "qtype": "Q3_K",
+      "shape": "11008x4096",
+      "rows": 11008,
+      "width": 4096,
+      "iterations": 15,
+      "baseline_ms": 2.453299,
+      "ms": 0.8846537365267674,
+      "delta_pct": -63.940239794384325,
+      "input_gb_s": 203.87080792547232,
+      "exact": true,
+      "baseline_source": "bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv"
+    }
+  ]
+}

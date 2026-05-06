@@ -1,0 +1,3 @@
+backend,operation,qtype,shape,rows,width,iterations,baseline_ms,ms,delta_pct,input_gb_s,exact,baseline_source
+cuda,quantize,Q3_K,4096x4096,4096,4096,30,1.11319,0.37695962625245255,-66.13699132650737,178.0266620782797,True,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
+cuda,quantize,Q3_K,11008x4096,11008,4096,15,2.453299,0.8846537365267674,-63.940239794384325,203.87080792547232,True,bench/results/cuda_cpu_quant_dequant_20260506T160633Z/results.csv
