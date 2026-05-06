@@ -90,11 +90,10 @@ static __global__ void quantize_block_q4_K(const float * __restrict__ x, block_q
     __syncthreads();
 
     const int pack_pair = subgroup >> 1;
-    if ((subgroup & 1) == 0) {
-        const int l_pack_base = 64 * pack_pair;
-        for (int ii = 0; ii < 32; ++ii) {
-            yb->qs[32 * pack_pair + ii] = l[l_pack_base + ii] | (l[l_pack_base + 32 + ii] << 4);
-        }
+    const int pack_offset = (subgroup & 1) * 16;
+    const int l_pack_base = 64 * pack_pair + pack_offset;
+    for (int ii = 0; ii < 16; ++ii) {
+        yb->qs[32 * pack_pair + pack_offset + ii] = l[l_pack_base + ii] | (l[l_pack_base + 32 + ii] << 4);
     }
 }
 
@@ -109,10 +108,10 @@ void gguf_cuda_quantize_launch_q4_k(
 ) {
     (void)quant_weights;
     (void)n_per_row;
-    constexpr int q4_k_threads = 128;
-        constexpr int q4_k_blocks_per_cta = (q4_k_threads / 32) * 4;
-        const int64_t n_blocks = k / QK_K;
-        const int blocks = (int)((n_blocks + q4_k_blocks_per_cta - 1) / q4_k_blocks_per_cta);
-        const size_t smem = q4_k_blocks_per_cta * (QK_K * sizeof(uint8_t) + 2 * (QK_K / 32) * sizeof(float));
-        quantize_block_q4_K<<<blocks, q4_k_threads, smem, stream>>>(x, (block_q4_K *)y, n_blocks);
+    constexpr int q4_k_threads = 64;
+    constexpr int q4_k_blocks_per_cta = (q4_k_threads / 32) * 4;
+    const int64_t n_blocks = k / QK_K;
+    const int blocks = (int)((n_blocks + q4_k_blocks_per_cta - 1) / q4_k_blocks_per_cta);
+    const size_t smem = q4_k_blocks_per_cta * (QK_K * sizeof(uint8_t) + 2 * (QK_K / 32) * sizeof(float));
+    quantize_block_q4_K<<<blocks, q4_k_threads, smem, stream>>>(x, (block_q4_K *)y, n_blocks);
 }

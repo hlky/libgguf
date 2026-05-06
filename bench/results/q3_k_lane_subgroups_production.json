@@ -1,0 +1,55 @@
+{
+  "results": [
+    {
+      "qtype": "Q3_K",
+      "shape": "64x4096",
+      "rows": 64,
+      "width": 4096,
+      "kernel_variant": "production_two_blocks_per_warp_64t",
+      "iterations": 100,
+      "old_baseline_ms": 0.14979,
+      "ms": 0.01753035932779312,
+      "delta_pct": -88.2967091743153,
+      "decoded_bytes": 1048576,
+      "encoded_bytes": 112640,
+      "traffic_gb_s": 66.24028511263747,
+      "roofline_pct": 7.075441691159738,
+      "blocks_per_s": 58412949.8347773,
+      "exact": true
+    },
+    {
+      "qtype": "Q3_K",
+      "shape": "4096x4096",
+      "rows": 4096,
+      "width": 4096,
+      "kernel_variant": "production_two_blocks_per_warp_64t",
+      "iterations": 30,
+      "old_baseline_ms": 1.11319,
+      "ms": 0.3097821647922198,
+      "delta_pct": -72.17167197044351,
+      "decoded_bytes": 67108864,
+      "encoded_bytes": 7208960,
+      "traffic_gb_s": 239.90349492795102,
+      "roofline_pct": 25.62523979149231,
+      "blocks_per_s": 211555110.16574165,
+      "exact": true
+    },
+    {
+      "qtype": "Q3_K",
+      "shape": "11008x4096",
+      "rows": 11008,
+      "width": 4096,
+      "kernel_variant": "production_two_blocks_per_warp_64t",
+      "iterations": 15,
+      "old_baseline_ms": 2.453299,
+      "ms": 0.7282328636695942,
+      "delta_pct": -70.3161798187015,
+      "decoded_bytes": 180355072,
+      "encoded_bytes": 19374080,
+      "traffic_gb_s": 274.2655020999147,
+      "roofline_pct": 29.29561013671381,
+      "blocks_per_s": 241856703.79181194,
+      "exact": "skip"
+    }
+  ]
+}

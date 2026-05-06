@@ -95,7 +95,10 @@ def test_cuda_quantize_preserves_leading_shape() -> None:
     np.testing.assert_array_equal(actual.cpu().numpy(), expected)
 
 
-@pytest.mark.parametrize("qtype", (GGMLQuantizationType.Q4_K, GGMLQuantizationType.Q5_K))
+@pytest.mark.parametrize(
+    "qtype",
+    (GGMLQuantizationType.Q2_K, GGMLQuantizationType.Q4_K, GGMLQuantizationType.Q5_K, GGMLQuantizationType.Q6_K),
+)
 @pytest.mark.parametrize("case", ("constant", "adversarial"))
 def test_cuda_quantize_k_edge_cases_match_libgguf(qtype: GGMLQuantizationType, case: str) -> None:
     require_cuda_quantize()
