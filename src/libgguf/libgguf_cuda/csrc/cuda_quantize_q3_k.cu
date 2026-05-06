@@ -14,7 +14,9 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
     const int subgroup = lane & 15;
     const int block_in_cta = warp * blocks_per_warp + block_in_warp;
     const int64_t iblock = (int64_t)blockIdx.x * blocks_per_cta + block_in_cta;
-    if (iblock >= n_blocks) {
+    const bool valid = iblock < n_blocks;
+    const unsigned warp_mask = __ballot_sync(0xffffffffu, valid);
+    if (!valid) {
         return;
     }
 
@@ -31,7 +33,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
     const float scale = gguf_cuda_make_q3_quants(16, 4, xb + 16 * subgroup, l + 16 * subgroup);
     scales[subgroup] = scale;
 
-    __syncthreads();
+    __syncwarp(warp_mask);
 
     if (subgroup == 0) {
         float max_scale = 0.0f;
@@ -69,7 +71,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
         }
     }
 
-    __syncthreads();
+    __syncwarp(warp_mask);
 
     const float d = __half2float(gguf_cuda_load_half(yb->d)) * qscales[subgroup];
     if (d != 0.0f) {
@@ -80,7 +82,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
         }
     }
 
-    __syncthreads();
+    __syncwarp(warp_mask);
 
     for (int lane_idx = subgroup; lane_idx < QK_K / 8; lane_idx += 16) {
         uint8_t hm = 0;
