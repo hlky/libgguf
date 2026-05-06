@@ -96,7 +96,6 @@ def quantize(data, qtype):
         return data.to(torch.float32)
     if qtype == GGMLQuantizationType.F16:
         return data.to(torch.float16)
-
     block_size, type_size = GGML_QUANT_SIZES[qtype]
     if data.shape[-1] % block_size != 0:
         raise ValueError(
@@ -263,78 +262,100 @@ def _make_q3_quants(x, nmax):
 def _make_qkx2_quants(x, weights, nmax, rmin, rdelta, nstep, use_mad=False):
     x = x.to(torch.float32)
     weights = weights.to(torch.float32)
+    device = x.device
+    f_nmax = torch.tensor(float(nmax), device=device, dtype=torch.float32)
+    f_rmin = torch.tensor(float(rmin), device=device, dtype=torch.float32)
+    f_rdelta = torch.tensor(float(rdelta), device=device, dtype=torch.float32)
 
     min_v = x[0].clone()
     max_v = x[0].clone()
     sum_w = weights[0].clone()
-    sum_x = sum_w * x[0]
+    sum_x = (sum_w * x[0]).clone()
     for i in range(1, x.numel()):
         if bool(x[i] < min_v):
-            min_v = x[i].clone()
+            min_v.copy_(x[i])
         if bool(x[i] > max_v):
-            max_v = x[i].clone()
+            max_v.copy_(x[i])
         w = weights[i]
-        sum_w = sum_w + w
-        sum_x = sum_x + w * x[i]
+        sum_w.add_(w)
+        sum_x.add_(w * x[i])
 
     if bool(min_v > 0):
-        min_v = torch.tensor(0.0, device=x.device, dtype=torch.float32)
+        min_v.zero_()
     if bool(max_v == min_v):
         return (
-            torch.tensor(0.0, device=x.device, dtype=torch.float32),
+            torch.tensor(0.0, device=device, dtype=torch.float32),
             -min_v,
             torch.zeros_like(x, dtype=torch.uint8),
         )
 
-    iscale = float(nmax) / (max_v - min_v)
-    scale = 1.0 / iscale
+    iscale = torch.empty((), device=device, dtype=torch.float32)
+    iscale.copy_(f_nmax / (max_v - min_v))
+    scale = torch.empty((), device=device, dtype=torch.float32)
+    scale.copy_(torch.tensor(1.0, device=device, dtype=torch.float32) / iscale)
     l_vals = torch.zeros_like(x, dtype=torch.uint8)
-    best_error = torch.tensor(0.0, device=x.device, dtype=torch.float32)
+    best_error = torch.tensor(0.0, device=device, dtype=torch.float32)
     for i in range(x.numel()):
         l = int(_nearest_int((iscale * (x[i] - min_v)).reshape(1))[0].item())
         l = max(0, min(nmax, l))
         l_vals[i] = l
-        diff = scale * float(l) + min_v - x[i]
-        diff = torch.abs(diff) if use_mad else diff * diff
-        best_error = best_error + weights[i] * diff
+        diff = torch.empty((), device=device, dtype=torch.float32)
+        diff.copy_(scale * torch.tensor(float(l), device=device, dtype=torch.float32))
+        diff.add_(min_v)
+        diff.sub_(x[i])
+        diff = torch.abs(diff) if use_mad else diff.mul_(diff)
+        best_error.add_(weights[i] * diff)
 
     for is_ in range(nstep + 1):
-        iscale = (float(rmin) + float(rdelta) * float(is_) + float(nmax)) / (
-            max_v - min_v
+        iscale.copy_(
+            (f_rmin + f_rdelta * torch.tensor(float(is_), device=device, dtype=torch.float32) + f_nmax)
+            / (max_v - min_v)
         )
         laux = torch.zeros_like(x, dtype=torch.uint8)
-        sum_l = torch.tensor(0.0, device=x.device, dtype=torch.float32)
-        sum_l2 = torch.tensor(0.0, device=x.device, dtype=torch.float32)
-        sum_xl = torch.tensor(0.0, device=x.device, dtype=torch.float32)
+        sum_l = torch.tensor(0.0, device=device, dtype=torch.float32)
+        sum_l2 = torch.tensor(0.0, device=device, dtype=torch.float32)
+        sum_xl = torch.tensor(0.0, device=device, dtype=torch.float32)
         for i in range(x.numel()):
             l = int(_nearest_int((iscale * (x[i] - min_v)).reshape(1))[0].item())
             l = max(0, min(nmax, l))
             laux[i] = l
             w = weights[i]
-            lf = torch.tensor(float(l), device=x.device, dtype=torch.float32)
-            sum_l = sum_l + w * lf
-            sum_l2 = sum_l2 + w * lf * lf
-            sum_xl = sum_xl + w * lf * x[i]
+            lf = torch.tensor(float(l), device=device, dtype=torch.float32)
+            sum_l.add_(w * lf)
+            sum_l2.add_(w * lf * lf)
+            sum_xl.add_(w * lf * x[i])
 
-        denom = sum_w * sum_l2 - sum_l * sum_l
+        denom = torch.empty((), device=device, dtype=torch.float32)
+        denom.copy_(sum_w * sum_l2)
+        denom.sub_(sum_l * sum_l)
         if bool(denom > 0):
-            this_scale = (sum_w * sum_xl - sum_x * sum_l) / denom
-            this_min = (sum_l2 * sum_x - sum_l * sum_xl) / denom
-            if bool(this_min > 0):
-                this_min = torch.tensor(0.0, device=x.device, dtype=torch.float32)
-                this_scale = sum_xl / sum_l2
+            this_scale = torch.empty((), device=device, dtype=torch.float32)
+            this_scale.copy_(sum_w * sum_xl)
+            this_scale.sub_(sum_x * sum_l)
+            this_scale.div_(denom)
 
-            cur_error = torch.tensor(0.0, device=x.device, dtype=torch.float32)
+            this_min = torch.empty((), device=device, dtype=torch.float32)
+            this_min.copy_(sum_l2 * sum_x)
+            this_min.sub_(sum_l * sum_xl)
+            this_min.div_(denom)
+            if bool(this_min > 0):
+                this_min.zero_()
+                this_scale.copy_(sum_xl / sum_l2)
+
+            cur_error = torch.tensor(0.0, device=device, dtype=torch.float32)
             for i in range(x.numel()):
-                diff = this_scale * laux[i].to(torch.float32) + this_min - x[i]
-                diff = torch.abs(diff) if use_mad else diff * diff
-                cur_error = cur_error + weights[i] * diff
+                diff = torch.empty((), device=device, dtype=torch.float32)
+                diff.copy_(this_scale * laux[i].to(torch.float32))
+                diff.add_(this_min)
+                diff.sub_(x[i])
+                diff = torch.abs(diff) if use_mad else diff.mul_(diff)
+                cur_error.add_(weights[i] * diff)
 
             if bool(cur_error < best_error):
-                l_vals = laux
-                best_error = cur_error
-                scale = this_scale
-                min_v = this_min
+                l_vals.copy_(laux)
+                best_error.copy_(cur_error)
+                scale.copy_(this_scale)
+                min_v.copy_(this_min)
 
     return scale, -min_v, l_vals
 
@@ -877,7 +898,10 @@ def quantize_blocks_Q4_K(blocks, block_size, type_size):
         for j in range(QK_K // 32):
             start = 32 * j
             sub = x[start : start + 32]
-            av_x = torch.sqrt(torch.sum(sub * sub) / 32.0)
+            sum_x2 = torch.tensor(0.0, device=blocks.device, dtype=torch.float32)
+            for value in sub:
+                sum_x2 = sum_x2 + value * value
+            av_x = torch.sqrt(sum_x2 / 32.0)
             scale, min_v, quants = _make_qkx2_quants(
                 sub, av_x + torch.abs(sub), 15, -1.0, 0.1, 20
             )

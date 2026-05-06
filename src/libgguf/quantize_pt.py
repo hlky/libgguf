@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 import re
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import numpy as np
 from tqdm import tqdm
@@ -675,6 +675,7 @@ def convert_to_gguf(
     tensor_overrides: Mapping[str, str] | Sequence[tuple[str, str]] | None = None,
     include: Sequence[str] | None = None,
     exclude: Sequence[str] | None = None,
+    quantized_tensor_data: Callable[[Any, Any, Any, Any, Any, np.ndarray | None], np.ndarray] | None = None,
 ) -> QuantResult:
     torch, gguf, libgguf, safe_open, _ = _lazy_imports()
     src_path = Path(src)
@@ -687,6 +688,7 @@ def convert_to_gguf(
 
     imatrix_data = libgguf.load_imatrix(imatrix) if isinstance(imatrix, (str, os.PathLike)) else dict(imatrix or {})
     overrides = _normalize_overrides(tensor_overrides)
+    quantized_tensor_data = quantized_tensor_data or _quantized_tensor_data
 
     with _open_tensor_source(torch, safe_open, src_path) as (_, tensor_source):
         keys = tuple(tensor_source.keys())
@@ -768,7 +770,7 @@ def convert_to_gguf(
                     tensor = torch.from_numpy(_to_numpy_for_qtype(torch, gguf, tensor, plan.target_qtype).reshape(plan.write_shape))
 
                 if plan.quantize:
-                    data = _quantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype, plan.imatrix)
+                    data = quantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype, plan.imatrix)
                 else:
                     data = _unquantized_tensor_data(gguf, libgguf, torch, tensor, plan.target_qtype)
                 writer.write_tensor_data(data)
