@@ -122,6 +122,25 @@ def test_cuda_dequantize_returns_requested_dtype(dtype: torch.dtype) -> None:
     assert tuple(actual.shape) == rows.shape
 
 
+def test_cuda_dequantize_default_dtype_is_float16() -> None:
+    require_cuda_extension()
+
+    rows = build_rows(GGMLQuantizationType.Q4_0, rows=1)
+    encoded = libgguf.quantize_rows(rows, GGMLQuantizationType.Q4_0)
+
+    actual = libgguf_cuda.dequantize(
+        torch.from_numpy(encoded).to("cuda"),
+        int(GGMLQuantizationType.Q4_0),
+        rows.shape[0],
+        rows.shape[1],
+        None,
+    )
+
+    assert actual.device.type == "cuda"
+    assert actual.dtype == torch.float16
+    assert tuple(actual.shape) == rows.shape
+
+
 @pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32), ids=str)
 def test_cuda_dequantize_bf16_storage_returns_requested_dtype(dtype: torch.dtype) -> None:
     require_cuda_extension()
@@ -164,6 +183,26 @@ def test_cuda_dequantize_rejects_short_encoded_tensor() -> None:
             rows.shape[1],
             torch.float32,
         )
+
+
+def test_cuda_dequantize_rejects_cpu_input() -> None:
+    require_cuda_extension()
+
+    row_size = GGML_QUANT_SIZES[GGMLQuantizationType.Q4_0][1]
+    encoded = torch.empty((row_size,), dtype=torch.uint8)
+
+    with pytest.raises(RuntimeError, match="CPU.*backend"):
+        libgguf_cuda.dequantize(encoded, int(GGMLQuantizationType.Q4_0), 1, 32, torch.float32)
+
+
+def test_cuda_dequantize_rejects_non_uint8_input() -> None:
+    require_cuda_extension()
+
+    row_size = GGML_QUANT_SIZES[GGMLQuantizationType.Q4_0][1]
+    encoded = torch.empty((row_size,), device="cuda", dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="uint8 input"):
+        libgguf_cuda.dequantize(encoded, int(GGMLQuantizationType.Q4_0), 1, 32, torch.float32)
 
 
 @pytest.mark.parametrize(

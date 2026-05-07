@@ -128,6 +128,24 @@ def test_cuda_quantize_rejects_bad_input_dtype() -> None:
         libgguf_cuda.quantize(rows, int(GGMLQuantizationType.Q4_0))
 
 
+def test_cuda_quantize_rejects_cpu_input() -> None:
+    require_cuda_quantize()
+
+    rows = torch.from_numpy(build_rows(GGMLQuantizationType.Q4_0, rows=1))
+
+    with pytest.raises(RuntimeError, match="CPU.*backend"):
+        libgguf_cuda.quantize(rows, int(GGMLQuantizationType.Q4_0))
+
+
+def test_cuda_quantize_rejects_scalar_input() -> None:
+    require_cuda_quantize()
+
+    scalar = torch.tensor(0.0, device="cuda", dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="at least one dimension"):
+        libgguf_cuda.quantize(scalar, int(GGMLQuantizationType.Q4_0))
+
+
 def test_cuda_quantize_rejects_non_contiguous_input() -> None:
     require_cuda_quantize()
 
