@@ -378,6 +378,20 @@ def validate_gguf(path: str | os.PathLike[str], *, max_array_values: int | None 
                 )
             )
 
+        if tensor.offset % info.alignment != 0:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="error",
+                    code="tensor_offset_alignment",
+                    message=(
+                        f"tensor {tensor.name!r} relative data offset {tensor.offset} is not "
+                        f"aligned to GGUF alignment {info.alignment}"
+                    ),
+                    tensor_name=tensor.name,
+                    details={"offset": tensor.offset, "alignment": info.alignment},
+                )
+            )
+
         qtype_spec = _qtype_spec(tensor.qtype_value)
         if qtype_spec is None:
             issues.append(

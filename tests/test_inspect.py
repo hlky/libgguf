@@ -192,6 +192,22 @@ def test_validate_gguf_errors_for_payload_range(tmp_path: Path) -> None:
     assert result.errors[0].tensor_name == "blocks.0.attn_v.weight"
 
 
+def test_validate_gguf_errors_for_unaligned_tensor_offset(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "unaligned-offset.gguf"
+    q4_0 = int(libgguf.GGMLQuantizationType.Q4_0)
+    _minimal_gguf(
+        gguf_path,
+        tensors=[("blocks.0.attn_v.weight", (256, 2), q4_0, 1)],
+    )
+
+    result = libgguf.validate_gguf(gguf_path)
+
+    assert not result.ok
+    assert [issue.code for issue in result.errors] == ["tensor_offset_alignment"]
+    assert result.errors[0].tensor_name == "blocks.0.attn_v.weight"
+    assert result.errors[0].details == {"offset": 1, "alignment": 32}
+
+
 def test_validate_gguf_errors_for_payload_overlap(tmp_path: Path) -> None:
     gguf_path = tmp_path / "overlap.gguf"
     q4_0 = int(libgguf.GGMLQuantizationType.Q4_0)
@@ -199,7 +215,7 @@ def test_validate_gguf_errors_for_payload_overlap(tmp_path: Path) -> None:
         gguf_path,
         tensors=[
             ("first.weight", (256, 2), q4_0, 0),
-            ("second.weight", (256, 2), q4_0, 100),
+            ("second.weight", (256, 2), q4_0, 32),
         ],
     )
 
