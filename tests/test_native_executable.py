@@ -54,6 +54,19 @@ def _native_exe() -> Path:
     pytest.skip("libgguf_quantize_gguf executable is not built")
 
 
+def _documented_native_cli_options() -> set[str]:
+    root = Path(__file__).resolve().parents[1]
+    docs = (root / "docs" / "cli.md").read_text(encoding="utf-8")
+    _, options_section = docs.split("Implemented native options:", 1)
+    options_section, _ = options_section.split("The native executable currently supports", 1)
+    options: set[str] = set()
+    for line in options_section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- `") and "`:" in stripped:
+            options.add(stripped.split("`:", 1)[0][3:])
+    return options
+
+
 def test_native_exe_prefers_env_then_repo_build_then_current_env_scripts_then_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -237,6 +250,39 @@ def test_native_executable_help_lists_backend_flags() -> None:
     assert "--verify-cuda-tensors N" in result.stdout
     assert "--cuda-vram-bytes N" in result.stdout
     assert "--cpu-ram-bytes N" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("flag_group", "documented_spellings"),
+    [
+        ("policy", ["--policy comfy|dynamic|uniform"]),
+        ("include/exclude", ["--include PATTERN", "--exclude PATTERN"]),
+        ("scratch", ["--scratch-bytes N", "--cpu-ram-bytes N"]),
+        ("timing", ["--threads N", "--timings"]),
+        ("backend", ["--backend cpu|cuda"]),
+        (
+            "CUDA",
+            [
+                "--cuda-fallback cpu",
+                "--verify-cuda-tensors N",
+                "--cuda-vram-bytes N",
+            ],
+        ),
+    ],
+)
+def test_native_executable_help_matches_documented_flag_groups(
+    flag_group: str, documented_spellings: list[str]
+) -> None:
+    exe = _native_exe()
+    documented_options = _documented_native_cli_options()
+
+    result = subprocess.run([str(exe), "--help"], check=False, capture_output=True, text=True)
+
+    assert result.returncode == 0
+    missing_from_docs = [spelling for spelling in documented_spellings if spelling not in documented_options]
+    missing_from_help = [spelling for spelling in documented_spellings if spelling not in result.stdout]
+    assert not missing_from_docs, f"{flag_group} options missing from docs/cli.md: {missing_from_docs}"
+    assert not missing_from_help, f"{flag_group} options missing from --help: {missing_from_help}"
 
 
 def test_native_executable_backend_cpu_preserves_default_output(tmp_path: Path) -> None:
