@@ -24,9 +24,10 @@ python bench/conversion_bench.py \
 The conversion benchmark runs `libgguf_quantize_gguf` end-to-end with `--timings`,
 writes one GGUF output per repeated run, and stores `summary.json` plus
 `summary.csv` under `bench/results/<timestamp>/`. Reports include
-native timing fields when printed by the converter, Python wall time, output
-file size, tensor qtype counts, fallback counts, stdout/stderr, and the exact
-command used for each run.
+native timing fields when printed by the converter (`read`, `cpu_convert`,
+`h2d`, `cuda_quant`, `d2h`, `write`, and `total`), Python wall time, output file
+size, tensor qtype counts, fallback counts, stdout/stderr, and the exact command
+used for each run.
 
 Use a local safetensors path for FLUX.1-dev or any other model. The benchmark
 does not download model files automatically; place the file on local storage

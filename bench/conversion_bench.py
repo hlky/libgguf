@@ -21,6 +21,17 @@ TIMING_RE = re.compile(
     re.IGNORECASE,
 )
 COUNT_RE = re.compile(r"\b([A-Z][A-Z0-9_]+)\s*=\s*([0-9]+)\b")
+TIMING_KEYS = {
+    "total",
+    "metadata",
+    "read",
+    "quant",
+    "cpu_convert",
+    "h2d",
+    "cuda_quant",
+    "d2h",
+    "write",
+}
 
 
 def utc_timestamp() -> str:
@@ -52,7 +63,7 @@ def parse_timings(stderr: str) -> dict[str, float]:
     for match in TIMING_RE.finditer(stderr):
         key = match.group("key").lower().replace("-", "_")
         value = seconds_from(match.group("value"), match.group("unit"))
-        if key in {"total", "metadata", "read", "quant", "write"}:
+        if key in TIMING_KEYS:
             timings[f"{key}_s"] = value
     return timings
 
@@ -123,6 +134,10 @@ def run_conversion(
         "metadata_s": timings.get("metadata_s"),
         "read_s": timings.get("read_s"),
         "quant_s": timings.get("quant_s"),
+        "cpu_convert_s": timings.get("cpu_convert_s"),
+        "h2d_s": timings.get("h2d_s"),
+        "cuda_quant_s": timings.get("cuda_quant_s"),
+        "d2h_s": timings.get("d2h_s"),
         "write_s": timings.get("write_s"),
         "output_size_bytes": output_size,
         "qtype_counts": parse_key_value_counts(result.stdout, "Tensor types:"),
@@ -165,6 +180,10 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "metadata_s",
         "read_s",
         "quant_s",
+        "cpu_convert_s",
+        "h2d_s",
+        "cuda_quant_s",
+        "d2h_s",
         "write_s",
         "output_size_bytes",
         "qtype_counts_json",
