@@ -39,6 +39,8 @@ CUDA_QUANT_QTYPES = (
     GGMLQuantizationType.TQ2_0,
 )
 
+CUDA_IMATRIX_QTYPES = tuple(qtype for qtype in CUDA_QUANT_QTYPES if libgguf.quantize_requires_imatrix(qtype))
+
 
 def qtype_id(qtype: GGMLQuantizationType) -> str:
     return qtype.name
@@ -176,14 +178,39 @@ def test_cuda_quantize_rejects_unsupported_qtype() -> None:
         libgguf_cuda.quantize(rows, int(GGMLQuantizationType.F32))
 
 
-def test_cuda_quantize_rejects_missing_required_imatrix() -> None:
+@pytest.mark.parametrize("qtype", CUDA_IMATRIX_QTYPES, ids=qtype_id)
+def test_cuda_quantize_rejects_missing_required_imatrix(qtype: GGMLQuantizationType) -> None:
     require_cuda_quantize()
 
-    qtype = GGMLQuantizationType.IQ2_XXS
     assert libgguf.quantize_requires_imatrix(qtype)
 
     with pytest.raises(RuntimeError, match="requires imatrix"):
         libgguf_cuda.quantize(cuda_rows(qtype), int(qtype))
+
+
+def test_cuda_quantize_rejects_cpu_imatrix() -> None:
+    require_cuda_quantize()
+
+    qtype = GGMLQuantizationType.IQ2_XXS
+    rows = cuda_rows(qtype)
+    imatrix = torch.empty((rows.shape[-1],), dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="imatrix must be a CUDA tensor"):
+        libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+def test_cuda_quantize_rejects_imatrix_on_different_cuda_device() -> None:
+    require_cuda_quantize()
+
+    if torch.cuda.device_count() < 2:
+        pytest.skip("requires at least two CUDA devices to check imatrix/input device mismatch")
+
+    qtype = GGMLQuantizationType.IQ2_XXS
+    rows = torch.from_numpy(build_rows(qtype, rows=1)).to("cuda:0")
+    imatrix = torch.empty((rows.shape[-1],), device="cuda:1", dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="same device as input"):
+        libgguf_cuda.quantize(rows, int(qtype), imatrix)
 
 
 def test_cuda_quantize_rejects_bad_imatrix_dtype() -> None:
