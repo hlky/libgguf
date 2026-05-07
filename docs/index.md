@@ -5,8 +5,8 @@ libgguf is a standalone GGUF infrastructure library and toolkit for native C++, 
 Start here:
 
 - [Installation](installation.md): editable installs, extras, CMake options, and CUDA build notes.
-- [CLI](cli.md): Python entry points, `gguf-inspect`, and the native `libgguf_quantize_gguf` executable.
-- [Python API](python-api.md): stable-ish row APIs, conversion helpers, GGUF inspection, and experimental APIs.
+- [CLI](cli.md): Python entry points, `gguf-inspect`, `gguf-validate`, and the native `libgguf_quantize_gguf` executable.
+- [Python API](python-api.md): stable-ish row APIs, conversion helpers, GGUF inspection/validation, and experimental APIs.
 - [CUDA](cuda.md): optional Torch CUDA extension, API shape, exactness goals, and limitations.
 - [Packaging](packaging.md): editable/wheel build behavior, optional CUDA builds, and current limitations.
 - [Qtypes](qtypes.md): GGUF qtype families and storage types.
@@ -15,5 +15,5 @@ Start here:
 - [Correctness](correctness.md): byte exactness, decoded-output checks, and planned golden fixtures.
 - [Support Matrix](support-matrix.md): conservative backend support overview.
 - [Ecosystem](ecosystem.md): upstream and adjacent project context.
-- [Roadmap](roadmap.md): planned reader/writer, validator, converter, CUDA, packaging, and integration work.
+- [Roadmap](roadmap.md): planned reader/writer, deeper validator, converter, CUDA, packaging, and integration work.
 - [Development](development.md): build, test, benchmark, and optimization notes.

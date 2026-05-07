@@ -356,6 +356,17 @@ def validate_gguf(path: str | os.PathLike[str], *, max_array_values: int | None 
     known_ranges: list[tuple[int, int, GGUFTensorInfo]] = []
     previous_known_offset: int | None = None
     for tensor in info.tensors:
+        if any(dim == 0 for dim in tensor.shape):
+            issues.append(
+                GGUFValidationIssue(
+                    severity="error",
+                    code="tensor_shape_invalid",
+                    message=f"tensor {tensor.name!r} shape {list(tensor.shape)} contains a zero dimension",
+                    tensor_name=tensor.name,
+                    details={"shape": list(tensor.shape)},
+                )
+            )
+
         if tensor.offset < 0:
             issues.append(
                 GGUFValidationIssue(

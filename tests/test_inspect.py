@@ -167,6 +167,20 @@ def test_validate_gguf_warns_for_unknown_qtype(tmp_path: Path) -> None:
     assert result.warnings[0].details == {"qtype_value": 9999}
 
 
+def test_validate_gguf_errors_for_zero_tensor_dimension(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "zero-dimension.gguf"
+    _minimal_gguf(gguf_path, shape=(0, 2))
+
+    result = libgguf.validate_gguf(gguf_path)
+
+    assert not result.ok
+    assert result.file is not None
+    assert result.file.tensors[0].shape == (0, 2)
+    assert [issue.code for issue in result.errors] == ["tensor_shape_invalid"]
+    assert result.errors[0].tensor_name == "blocks.0.attn_v.weight"
+    assert result.errors[0].details == {"shape": [0, 2]}
+
+
 def test_validate_gguf_errors_for_payload_range(tmp_path: Path) -> None:
     gguf_path = tmp_path / "truncated-payload.gguf"
     _minimal_gguf(gguf_path, payload_size=64 + 100)

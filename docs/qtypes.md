@@ -2,7 +2,7 @@
 
 GGUF quantized tensors are stored in fixed-size blocks. A qtype defines how many source values are encoded per block and how many bytes each encoded block uses. Row APIs require the last dimension to be divisible by the qtype block size.
 
-At the file-format level, GGUF is a single-file binary container with header metadata, key-value metadata, tensor descriptors, and a tensor data blob. libgguf's current public surface focuses on qtype metadata, row kernels, and converter paths; first-class public reader/writer/inspector APIs are planned.
+At the file-format level, GGUF is a single-file binary container with header metadata, key-value metadata, tensor descriptors, and a tensor data blob. libgguf's current public surface includes qtype metadata, row kernels, converter paths, GGUF inspection, and minimal structural validation; first-class public reader/writer APIs and deeper validator coverage are planned.
 
 Use the metadata helpers to inspect exact block and row sizes:
 
