@@ -10,7 +10,8 @@ def test_parse_timings_accepts_native_and_variant_units() -> None:
     stderr = (
         "Timings: total=1.250s metadata=10ms read: 250us "
         "cpu_convert=20ms h2d=30us cuda_quant=0.5 seconds d2h=40us "
-        "quant=0.75s write=0.125sec tensors=2\n"
+        "quant=0.75s write=0.125sec tensors=2 "
+        "cuda_vram=1073741824 cuda_max_input=264241152 cuda_max_output=37158912\n"
     )
 
     assert conversion_bench.parse_timings(stderr) == {
@@ -23,6 +24,9 @@ def test_parse_timings_accepts_native_and_variant_units() -> None:
         "d2h_s": 0.00004,
         "quant_s": 0.75,
         "write_s": 0.125,
+        "cuda_vram_bytes": 1073741824,
+        "cuda_max_input_bytes": 264241152,
+        "cuda_max_output_bytes": 37158912,
     }
 
 
@@ -50,13 +54,14 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
                 "print('Architecture: flux')",
                 "print('File type: Q4_K_M')",
                 "print('Tensor types: Q4_K=2, Q8_0=1')",
-                "print('Timings: total=1.234s metadata=0.010s read=0.020s cpu_convert=0.030s h2d=0.040s cuda_quant=0.900s d2h=0.050s write=0.200s tensors=3 threads=2 scratch=4096', file=sys.stderr)",
+                "print('Timings: total=1.234s metadata=0.010s read=0.020s cpu_convert=0.030s h2d=0.040s cuda_quant=0.900s d2h=0.050s write=0.200s tensors=3 threads=2 scratch=4096 cuda_vram=8192 cuda_max_input=4096 cuda_max_output=1024', file=sys.stderr)",
             ]
         ),
         encoding="utf-8",
     )
     fake_converter.chmod(fake_converter.stat().st_mode | 0o111)
     results_root = tmp_path / "results"
+    output_root = tmp_path / "outputs"
 
     code = conversion_bench.main(
         [
@@ -76,6 +81,9 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
             "4096",
             "--results-root",
             str(results_root),
+            "--output-root",
+            str(output_root),
+            "--delete-outputs",
             "--run-name",
             "local_fake",
         ]
@@ -88,6 +96,8 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
     assert csv_path.exists()
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["config"]["qtype"] == "Q4_K_M"
+    assert payload["config"]["output_dir"] == str(output_root / "local_fake")
+    assert payload["config"]["delete_outputs"] is True
     assert payload["summary"]["runs"] == 2
     assert payload["summary"]["successful_runs"] == 2
     assert payload["summary"]["total_s_mean"] == 1.234
@@ -95,14 +105,22 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
     assert payload["results"][0]["h2d_s"] == 0.04
     assert payload["results"][0]["cuda_quant_s"] == 0.9
     assert payload["results"][0]["d2h_s"] == 0.05
+    assert payload["results"][0]["cuda_vram_bytes"] == 8192
+    assert payload["results"][0]["cuda_max_input_bytes"] == 4096
+    assert payload["results"][0]["cuda_max_output_bytes"] == 1024
     assert payload["results"][0]["qtype_counts"] == {"Q4_K": 2, "Q8_0": 1}
     assert payload["results"][0]["output_size_bytes"] == len(b"GGUF fake output")
+    assert payload["results"][0]["output_deleted"] is True
+    assert not Path(payload["results"][0]["dst"]).exists()
+    assert Path(payload["results"][0]["dst"]).parent == output_root / "local_fake"
     assert "--timings" in payload["results"][0]["command"]
     assert "--threads" in payload["results"][0]["command"]
     csv_text = csv_path.read_text(encoding="utf-8")
     assert "Q4_K" in csv_text
     assert "cpu_convert_s" in csv_text
     assert "cuda_quant_s" in csv_text
+    assert "cuda_vram_bytes" in csv_text
+    assert "output_deleted" in csv_text
 
 
 def test_main_appends_converter_args_after_separator(tmp_path: Path) -> None:

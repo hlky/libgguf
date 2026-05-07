@@ -23,7 +23,10 @@ python bench/conversion_bench.py \
 
 The conversion benchmark runs `libgguf_quantize_gguf` end-to-end with `--timings`,
 writes one GGUF output per repeated run, and stores `summary.json` plus
-`summary.csv` under `bench/results/<timestamp>/`. Reports include
+`summary.csv` under `bench/results/<timestamp>/`. Use `--output-root /tmp` to
+put generated GGUFs on a faster scratch filesystem while keeping summaries under
+`bench/results`, and use `--delete-outputs` to remove each GGUF after its size
+and timings are recorded. Reports include
 native timing fields when printed by the converter (`read`, `cpu_convert`,
 `h2d`, `cuda_quant`, `d2h`, `write`, and `total`), Python wall time, output file
 size, tensor qtype counts, fallback counts, stdout/stderr, and the exact command

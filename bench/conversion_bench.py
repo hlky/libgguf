@@ -33,6 +33,11 @@ TIMING_KEYS = {
     "d2h",
     "write",
 }
+BYTE_KEYS = {
+    "cuda_vram",
+    "cuda_max_input",
+    "cuda_max_output",
+}
 
 
 def utc_timestamp() -> str:
@@ -63,9 +68,11 @@ def parse_timings(stderr: str) -> dict[str, float]:
     timings: dict[str, float] = {}
     for match in TIMING_RE.finditer(stderr):
         key = match.group("key").lower().replace("-", "_")
-        value = seconds_from(match.group("value"), match.group("unit"))
         if key in TIMING_KEYS:
+            value = seconds_from(match.group("value"), match.group("unit"))
             timings[f"{key}_s"] = value
+        elif key in BYTE_KEYS:
+            timings[f"{key}_bytes"] = int(float(match.group("value")))
     return timings
 
 
@@ -95,6 +102,7 @@ def run_conversion(
     threads: int | None,
     scratch_bytes: int | None,
     extra_args: list[str],
+    delete_output: bool,
 ) -> dict[str, Any]:
     command = [
         converter,
@@ -120,6 +128,10 @@ def run_conversion(
     wall_s = perf_counter() - started
     output_size = dst.stat().st_size if dst.exists() else None
     timings = parse_timings(result.stderr)
+    output_deleted = False
+    if delete_output and dst.exists():
+        dst.unlink()
+        output_deleted = True
 
     row: dict[str, Any] = {
         "run": run_index,
@@ -140,7 +152,11 @@ def run_conversion(
         "cuda_quant_s": timings.get("cuda_quant_s"),
         "d2h_s": timings.get("d2h_s"),
         "write_s": timings.get("write_s"),
+        "cuda_vram_bytes": timings.get("cuda_vram_bytes"),
+        "cuda_max_input_bytes": timings.get("cuda_max_input_bytes"),
+        "cuda_max_output_bytes": timings.get("cuda_max_output_bytes"),
         "output_size_bytes": output_size,
+        "output_deleted": output_deleted,
         "qtype_counts": parse_key_value_counts(result.stdout, "Tensor types:"),
         "fallback_counts": parse_key_value_counts(result.stdout, "Fallbacks:"),
         "stdout": result.stdout,
@@ -186,7 +202,11 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "cuda_quant_s",
         "d2h_s",
         "write_s",
+        "cuda_vram_bytes",
+        "cuda_max_input_bytes",
+        "cuda_max_output_bytes",
         "output_size_bytes",
+        "output_deleted",
         "qtype_counts_json",
         "fallback_counts_json",
         "dst",
@@ -245,6 +265,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--threads", type=positive_int, default=None)
     parser.add_argument("--scratch-bytes", type=positive_int, default=None)
     parser.add_argument("--results-root", type=Path, default=DEFAULT_RESULTS_ROOT)
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=None,
+        help="Optional root for generated GGUF outputs. Defaults to the results run directory.",
+    )
+    parser.add_argument(
+        "--delete-outputs",
+        action="store_true",
+        help="Delete each generated GGUF after recording its size and timings.",
+    )
     parser.add_argument("--run-name", default=None, help="Optional results subdirectory name.")
     parser.add_argument(
         "--converter-arg",
@@ -271,12 +302,15 @@ def main(argv: list[str] | None = None) -> int:
     run_name = args.run_name or utc_timestamp()
     run_dir = args.results_root / run_name
     run_dir.mkdir(parents=True, exist_ok=False)
+    output_dir = (args.output_root / run_name) if args.output_root is not None else run_dir
+    if output_dir != run_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     rows = [
         run_conversion(
             converter=converter,
             src=src,
-            dst=unique_output_path(run_dir, src, args.qtype, run_index),
+            dst=unique_output_path(output_dir, src, args.qtype, run_index),
             qtype=args.qtype,
             policy=args.policy,
             backend=args.backend,
@@ -284,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
             threads=args.threads,
             scratch_bytes=args.scratch_bytes,
             extra_args=extra_args,
+            delete_output=args.delete_outputs,
         )
         for run_index in range(1, args.runs + 1)
     ]
@@ -300,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
             "scratch_bytes": args.scratch_bytes,
             "extra_args": extra_args,
             "results_dir": str(run_dir),
+            "output_dir": str(output_dir),
+            "delete_outputs": args.delete_outputs,
         },
         "summary": summarize(rows),
         "results": rows,

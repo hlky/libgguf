@@ -19,6 +19,16 @@ struct libgguf_cuda_buffer {
     size_t capacity = 0;
 };
 
+struct libgguf_cuda_event {
+    cudaEvent_t event = nullptr;
+};
+
+struct libgguf_cuda_host_buffer {
+    void * data = nullptr;
+    size_t size = 0;
+    size_t capacity = 0;
+};
+
 static int set_error(libgguf_cuda_context * ctx, int status, const char * message) {
     if (ctx) {
         ctx->last_error = message ? message : "";
@@ -90,15 +100,86 @@ const char * libgguf_cuda_last_error(const libgguf_cuda_context * ctx) {
     return ctx->last_error.c_str();
 }
 
-int libgguf_cuda_synchronize(libgguf_cuda_context * ctx) {
+int libgguf_cuda_event_create(libgguf_cuda_context * ctx, libgguf_cuda_event ** out) {
+    if (!ctx || !out) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "event create requires a context and output pointer");
+    }
+    *out = nullptr;
     const int status = set_device(ctx);
     if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
         return status;
     }
-    const cudaError_t error = cudaStreamSynchronize(ctx->stream);
+    libgguf_cuda_event * event = new (std::nothrow) libgguf_cuda_event();
+    if (!event) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_ALLOCATION_FAILED, "failed to allocate CUDA event handle");
+    }
+    const cudaError_t error = cudaEventCreate(&event->event);
+    if (error != cudaSuccess) {
+        delete event;
+        return set_cuda_error(ctx, error);
+    }
+    *out = event;
+    return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
+}
+
+void libgguf_cuda_event_destroy(libgguf_cuda_context * ctx, libgguf_cuda_event * event) {
+    if (!event) {
+        return;
+    }
+    if (ctx) {
+        cudaSetDevice(ctx->device);
+    }
+    if (event->event) {
+        cudaEventDestroy(event->event);
+    }
+    delete event;
+}
+
+int libgguf_cuda_event_record(libgguf_cuda_context * ctx, libgguf_cuda_event * event) {
+    if (!ctx || !event || !event->event) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "event record requires a context and event");
+    }
+    const int status = set_device(ctx);
+    if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+        return status;
+    }
+    const cudaError_t error = cudaEventRecord(event->event, ctx->stream);
     if (error != cudaSuccess) {
         return set_cuda_error(ctx, error);
     }
+    return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
+}
+
+int libgguf_cuda_event_synchronize(libgguf_cuda_context * ctx, libgguf_cuda_event * event) {
+    if (!ctx || !event || !event->event) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "event synchronize requires a context and event");
+    }
+    const int status = set_device(ctx);
+    if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+        return status;
+    }
+    const cudaError_t error = cudaEventSynchronize(event->event);
+    if (error != cudaSuccess) {
+        return set_cuda_error(ctx, error);
+    }
+    return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
+}
+
+int libgguf_cuda_event_elapsed_ms(
+    libgguf_cuda_context * ctx,
+    const libgguf_cuda_event * start,
+    const libgguf_cuda_event * end,
+    float * out
+) {
+    if (!ctx || !start || !start->event || !end || !end->event || !out) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "event elapsed requires a context, events, and output pointer");
+    }
+    float elapsed = 0.0f;
+    const cudaError_t error = cudaEventElapsedTime(&elapsed, start->event, end->event);
+    if (error != cudaSuccess) {
+        return set_cuda_error(ctx, error);
+    }
+    *out = elapsed;
     return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
 }
 
@@ -130,7 +211,7 @@ int libgguf_cuda_buffer_create(libgguf_cuda_context * ctx, size_t size, libgguf_
     if (!buffer) {
         return set_error(ctx, LIBGGUF_CUDA_STATUS_ALLOCATION_FAILED, "failed to allocate CUDA buffer handle");
     }
-    const int status = libgguf_cuda_buffer_resize(ctx, buffer, size);
+    const int status = libgguf_cuda_buffer_resize_discard(ctx, buffer, size);
     if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
         delete buffer;
         return status;
@@ -152,56 +233,34 @@ void libgguf_cuda_buffer_destroy(libgguf_cuda_context * ctx, libgguf_cuda_buffer
     delete buffer;
 }
 
-int libgguf_cuda_buffer_resize(libgguf_cuda_context * ctx, libgguf_cuda_buffer * buffer, size_t size) {
+int libgguf_cuda_buffer_resize_discard(libgguf_cuda_context * ctx, libgguf_cuda_buffer * buffer, size_t size) {
     if (!ctx || !buffer) {
-        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "buffer resize requires a context and buffer");
-    }
-    const int status = libgguf_cuda_buffer_reserve(ctx, buffer, size);
-    if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
-        return status;
-    }
-    buffer->size = size;
-    return LIBGGUF_CUDA_STATUS_SUCCESS;
-}
-
-int libgguf_cuda_buffer_reserve(libgguf_cuda_context * ctx, libgguf_cuda_buffer * buffer, size_t size) {
-    if (!ctx || !buffer) {
-        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "buffer reserve requires a context and buffer");
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "buffer discard resize requires a context and buffer");
     }
     if (size <= buffer->capacity) {
+        buffer->size = size;
         return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
     }
     int status = set_device(ctx);
     if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
         return status;
     }
+    if (buffer->data) {
+        const cudaError_t free_error = cudaFree(buffer->data);
+        buffer->data = nullptr;
+        buffer->size = 0;
+        buffer->capacity = 0;
+        if (free_error != cudaSuccess) {
+            return set_cuda_error(ctx, free_error);
+        }
+    }
     void * data = nullptr;
     const cudaError_t alloc_error = cudaMalloc(&data, size);
     if (alloc_error != cudaSuccess) {
         return set_cuda_error(ctx, alloc_error);
     }
-    if (buffer->data && buffer->size > 0) {
-        const cudaError_t copy_error = cudaMemcpyAsync(
-            data,
-            buffer->data,
-            buffer->size,
-            cudaMemcpyDeviceToDevice,
-            ctx->stream
-        );
-        if (copy_error != cudaSuccess) {
-            cudaFree(data);
-            return set_cuda_error(ctx, copy_error);
-        }
-        const cudaError_t sync_error = cudaStreamSynchronize(ctx->stream);
-        if (sync_error != cudaSuccess) {
-            cudaFree(data);
-            return set_cuda_error(ctx, sync_error);
-        }
-    }
-    if (buffer->data) {
-        cudaFree(buffer->data);
-    }
     buffer->data = data;
+    buffer->size = size;
     buffer->capacity = size;
     return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
 }
@@ -215,6 +274,81 @@ const void * libgguf_cuda_buffer_const_data(const libgguf_cuda_buffer * buffer) 
 }
 
 size_t libgguf_cuda_buffer_size(const libgguf_cuda_buffer * buffer) {
+    return buffer ? buffer->size : 0;
+}
+
+int libgguf_cuda_host_buffer_create(libgguf_cuda_context * ctx, size_t size, libgguf_cuda_host_buffer ** out) {
+    if (!ctx || !out) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "host buffer create requires a context and output pointer");
+    }
+    *out = nullptr;
+    libgguf_cuda_host_buffer * buffer = new (std::nothrow) libgguf_cuda_host_buffer();
+    if (!buffer) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_ALLOCATION_FAILED, "failed to allocate CUDA host buffer handle");
+    }
+    const int status = libgguf_cuda_host_buffer_resize_discard(ctx, buffer, size);
+    if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+        delete buffer;
+        return status;
+    }
+    *out = buffer;
+    return LIBGGUF_CUDA_STATUS_SUCCESS;
+}
+
+void libgguf_cuda_host_buffer_destroy(libgguf_cuda_context * ctx, libgguf_cuda_host_buffer * buffer) {
+    if (!buffer) {
+        return;
+    }
+    if (ctx) {
+        cudaSetDevice(ctx->device);
+    }
+    if (buffer->data) {
+        cudaFreeHost(buffer->data);
+    }
+    delete buffer;
+}
+
+int libgguf_cuda_host_buffer_resize_discard(libgguf_cuda_context * ctx, libgguf_cuda_host_buffer * buffer, size_t size) {
+    if (!ctx || !buffer) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "host buffer discard resize requires a context and buffer");
+    }
+    if (size <= buffer->capacity) {
+        buffer->size = size;
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
+    }
+    int status = set_device(ctx);
+    if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+        return status;
+    }
+    if (buffer->data) {
+        const cudaError_t free_error = cudaFreeHost(buffer->data);
+        buffer->data = nullptr;
+        buffer->size = 0;
+        buffer->capacity = 0;
+        if (free_error != cudaSuccess) {
+            return set_cuda_error(ctx, free_error);
+        }
+    }
+    void * data = nullptr;
+    const cudaError_t alloc_error = cudaMallocHost(&data, size);
+    if (alloc_error != cudaSuccess) {
+        return set_cuda_error(ctx, alloc_error);
+    }
+    buffer->data = data;
+    buffer->size = size;
+    buffer->capacity = size;
+    return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
+}
+
+void * libgguf_cuda_host_buffer_data(libgguf_cuda_host_buffer * buffer) {
+    return buffer ? buffer->data : nullptr;
+}
+
+const void * libgguf_cuda_host_buffer_const_data(const libgguf_cuda_host_buffer * buffer) {
+    return buffer ? buffer->data : nullptr;
+}
+
+size_t libgguf_cuda_host_buffer_size(const libgguf_cuda_host_buffer * buffer) {
     return buffer ? buffer->size : 0;
 }
 

@@ -99,6 +99,7 @@ struct cli_options {
   converter_backend backend = CONVERTER_BACKEND_CPU;
   bool cuda_fallback_cpu = false;
   uint64_t verify_cuda_tensors = 0;
+  uint64_t cuda_vram_bytes = 0;
 };
 
 struct tensor_meta {
@@ -169,6 +170,8 @@ struct timing_totals {
   uint64_t tensors = 0;
   uint64_t cuda_tensors = 0;
   uint64_t cuda_verified_tensors = 0;
+  uint64_t cuda_max_input_bytes = 0;
+  uint64_t cuda_max_output_bytes = 0;
 };
 
 using steady_clock = std::chrono::steady_clock;
@@ -1708,12 +1711,40 @@ public:
     ctx_ = created;
     require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &input_), "failed to create CUDA input buffer");
     require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &output_), "failed to create CUDA output buffer");
+    for (cuda_slot &slot : slots_) {
+      require_cuda_success(ctx_, libgguf_cuda_host_buffer_create(ctx_, 0, &slot.host_input), "failed to create pinned CUDA input buffer");
+      require_cuda_success(ctx_, libgguf_cuda_host_buffer_create(ctx_, 0, &slot.host_output), "failed to create pinned CUDA output buffer");
+      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_begin), "failed to create CUDA timing event");
+      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_h2d), "failed to create CUDA timing event");
+      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_quant), "failed to create CUDA timing event");
+      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_d2h), "failed to create CUDA timing event");
+    }
   }
 
   cuda_converter_context(const cuda_converter_context &) = delete;
   cuda_converter_context &operator=(const cuda_converter_context &) = delete;
 
   ~cuda_converter_context() {
+    for (cuda_slot &slot : slots_) {
+      if (slot.event_after_d2h) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_after_d2h);
+      }
+      if (slot.event_after_quant) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_after_quant);
+      }
+      if (slot.event_after_h2d) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_after_h2d);
+      }
+      if (slot.event_begin) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_begin);
+      }
+      if (slot.host_output) {
+        libgguf_cuda_host_buffer_destroy(ctx_, slot.host_output);
+      }
+      if (slot.host_input) {
+        libgguf_cuda_host_buffer_destroy(ctx_, slot.host_input);
+      }
+    }
     if (output_) {
       libgguf_cuda_buffer_destroy(ctx_, output_);
     }
@@ -1732,6 +1763,25 @@ public:
            libgguf_cuda_row_size((int64_t)qtype, (int64_t)n_per_row) > 0;
   }
 
+  void resize_host_slot(size_t slot_index, size_t input_bytes, size_t output_bytes) {
+    cuda_slot &slot = slot_at(slot_index);
+    require_cuda_success(ctx_, libgguf_cuda_host_buffer_resize_discard(ctx_, slot.host_input, input_bytes), "failed to resize pinned CUDA input buffer");
+    require_cuda_success(ctx_, libgguf_cuda_host_buffer_resize_discard(ctx_, slot.host_output, output_bytes), "failed to resize pinned CUDA output buffer");
+  }
+
+  float *host_input_data(size_t slot_index) {
+    return (float *)libgguf_cuda_host_buffer_data(slot_at(slot_index).host_input);
+  }
+
+  uint8_t *host_output_data(size_t slot_index) {
+    return (uint8_t *)libgguf_cuda_host_buffer_data(slot_at(slot_index).host_output);
+  }
+
+  void resize_device_buffers(size_t input_bytes, size_t output_bytes) {
+    require_cuda_success(ctx_, libgguf_cuda_buffer_resize_discard(ctx_, input_, input_bytes), "failed to resize CUDA input buffer");
+    require_cuda_success(ctx_, libgguf_cuda_buffer_resize_discard(ctx_, output_, output_bytes), "failed to resize CUDA output buffer");
+  }
+
   void quantize_chunk(
       const tensor_plan &plan,
       const float *host_input,
@@ -1739,37 +1789,88 @@ public:
       uint8_t *host_output,
       size_t output_bytes,
       timing_totals *timings) {
+    enqueue_quantize_chunk(0, plan, host_input, row_count, host_output, output_bytes, timings);
+    finish_quantize_chunk(0, timings);
+  }
+
+  void enqueue_quantize_chunk(
+      size_t slot_index,
+      const tensor_plan &plan,
+      const float *host_input,
+      uint64_t row_count,
+      uint8_t *host_output,
+      size_t output_bytes,
+      timing_totals *timings) {
+    cuda_slot &slot = slot_at(slot_index);
     const size_t input_bytes = (size_t)(row_count * plan.n_per_row * sizeof(float));
-    measure_phase(timings, &timing_totals::h2d_s, [&]() {
-      require_cuda_success(ctx_, libgguf_cuda_buffer_resize(ctx_, input_, input_bytes), "failed to resize CUDA input buffer");
-      require_cuda_success(ctx_, libgguf_cuda_h2d(ctx_, input_, 0, host_input, input_bytes), "failed to copy tensor chunk to CUDA");
-      require_cuda_success(ctx_, libgguf_cuda_synchronize(ctx_), "failed to synchronize CUDA upload");
-    });
-    measure_phase(timings, &timing_totals::cuda_quant_s, [&]() {
-      require_cuda_success(ctx_, libgguf_cuda_buffer_resize(ctx_, output_, output_bytes), "failed to resize CUDA output buffer");
-      require_cuda_success(
-          ctx_,
-          libgguf_cuda_quantize_f32_rows(
-              ctx_,
-              (const float *)libgguf_cuda_buffer_const_data(input_),
-              nullptr,
-              libgguf_cuda_buffer_data(output_),
-              (int64_t)plan.qtype,
-              (int64_t)row_count,
-              (int64_t)plan.n_per_row),
-          "failed to quantize tensor chunk on CUDA");
-      require_cuda_success(ctx_, libgguf_cuda_synchronize(ctx_), "failed to synchronize CUDA quantization");
-    });
-    measure_phase(timings, &timing_totals::d2h_s, [&]() {
-      require_cuda_success(ctx_, libgguf_cuda_d2h(ctx_, host_output, output_, 0, output_bytes), "failed to copy tensor chunk from CUDA");
-      require_cuda_success(ctx_, libgguf_cuda_synchronize(ctx_), "failed to synchronize CUDA download");
-    });
+    if (timings) {
+      timings->cuda_max_input_bytes = std::max<uint64_t>(timings->cuda_max_input_bytes, (uint64_t)input_bytes);
+      timings->cuda_max_output_bytes = std::max<uint64_t>(timings->cuda_max_output_bytes, (uint64_t)output_bytes);
+    }
+    if (timings) {
+      require_cuda_success(ctx_, libgguf_cuda_event_record(ctx_, slot.event_begin), "failed to record CUDA timing event");
+    }
+    require_cuda_success(ctx_, libgguf_cuda_buffer_resize_discard(ctx_, input_, input_bytes), "failed to resize CUDA input buffer");
+    require_cuda_success(ctx_, libgguf_cuda_h2d(ctx_, input_, 0, host_input, input_bytes), "failed to copy tensor chunk to CUDA");
+    if (timings) {
+      require_cuda_success(ctx_, libgguf_cuda_event_record(ctx_, slot.event_after_h2d), "failed to record CUDA timing event");
+    }
+    require_cuda_success(ctx_, libgguf_cuda_buffer_resize_discard(ctx_, output_, output_bytes), "failed to resize CUDA output buffer");
+    require_cuda_success(
+        ctx_,
+        libgguf_cuda_quantize_f32_rows(
+            ctx_,
+            (const float *)libgguf_cuda_buffer_const_data(input_),
+            nullptr,
+            libgguf_cuda_buffer_data(output_),
+            (int64_t)plan.qtype,
+            (int64_t)row_count,
+            (int64_t)plan.n_per_row),
+        "failed to quantize tensor chunk on CUDA");
+    if (timings) {
+      require_cuda_success(ctx_, libgguf_cuda_event_record(ctx_, slot.event_after_quant), "failed to record CUDA timing event");
+    }
+    require_cuda_success(ctx_, libgguf_cuda_d2h(ctx_, host_output, output_, 0, output_bytes), "failed to copy tensor chunk from CUDA");
+    require_cuda_success(ctx_, libgguf_cuda_event_record(ctx_, slot.event_after_d2h), "failed to record CUDA completion event");
+  }
+
+  void finish_quantize_chunk(size_t slot_index, timing_totals *timings) {
+    cuda_slot &slot = slot_at(slot_index);
+    require_cuda_success(ctx_, libgguf_cuda_event_synchronize(ctx_, slot.event_after_d2h), "failed to synchronize CUDA download");
+    if (timings) {
+      add_elapsed_ms(&timing_totals::h2d_s, slot.event_begin, slot.event_after_h2d, timings);
+      add_elapsed_ms(&timing_totals::cuda_quant_s, slot.event_after_h2d, slot.event_after_quant, timings);
+      add_elapsed_ms(&timing_totals::d2h_s, slot.event_after_quant, slot.event_after_d2h, timings);
+    }
   }
 
 private:
+  struct cuda_slot {
+    libgguf_cuda_host_buffer *host_input = nullptr;
+    libgguf_cuda_host_buffer *host_output = nullptr;
+    libgguf_cuda_event *event_begin = nullptr;
+    libgguf_cuda_event *event_after_h2d = nullptr;
+    libgguf_cuda_event *event_after_quant = nullptr;
+    libgguf_cuda_event *event_after_d2h = nullptr;
+  };
+
+  cuda_slot &slot_at(size_t slot_index) {
+    if (slot_index >= 2) {
+      fail("invalid CUDA pipeline slot index");
+    }
+    return slots_[slot_index];
+  }
+
+  void add_elapsed_ms(double timing_totals::*field, libgguf_cuda_event *begin, libgguf_cuda_event *end, timing_totals *timings) {
+    float elapsed_ms = 0.0f;
+    require_cuda_success(ctx_, libgguf_cuda_event_elapsed_ms(ctx_, begin, end, &elapsed_ms), "failed to measure CUDA timing event");
+    timings->*field += (double)elapsed_ms / 1000.0;
+  }
+
   libgguf_cuda_context *ctx_ = nullptr;
   libgguf_cuda_buffer *input_ = nullptr;
   libgguf_cuda_buffer *output_ = nullptr;
+  cuda_slot slots_[2];
 };
 #endif
 
@@ -1788,7 +1889,8 @@ void write_tensor_payload(
   const uint64_t scratch_bytes = options.scratch_bytes;
   write_pre_tensor_padding(out, GGUF_DEFAULT_ALIGNMENT);
   if (qtype_matches_source(plan.source_dtype, plan.qtype)) {
-    std::vector<uint8_t> buffer((size_t)std::min<uint64_t>(scratch_bytes, 8ull * 1024ull * 1024ull));
+    const uint64_t buffer_bytes = std::max<uint64_t>(1, std::min<uint64_t>(scratch_bytes, plan.expected_nbytes));
+    std::vector<uint8_t> buffer((size_t)buffer_bytes);
     uint64_t remaining = plan.expected_nbytes;
     uint64_t offset = plan.data_begin;
     while (remaining > 0) {
@@ -1845,7 +1947,90 @@ void write_tensor_payload(
   if (rows_per_chunk == 0) {
     rows_per_chunk = 1;
   }
+  if (cuda_quant && options.cuda_vram_bytes > 0) {
+    const uint64_t device_row_bytes = plan.n_per_row * sizeof(float) + (uint64_t)row_size;
+    rows_per_chunk = device_row_bytes == 0 ? 1 : options.cuda_vram_bytes / device_row_bytes;
+    if (rows_per_chunk == 0) {
+      rows_per_chunk = 1;
+    }
+  }
   rows_per_chunk = std::min<uint64_t>(rows_per_chunk, plan.n_rows);
+
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+  if (cuda_quant && !verify_cuda) {
+    struct cuda_pipeline_slot_state {
+      uint64_t row = 0;
+      uint64_t row_count = 0;
+      size_t expected = 0;
+      std::vector<uint8_t> source_bytes;
+    };
+
+    const size_t max_input_bytes = (size_t)(rows_per_chunk * plan.n_per_row * sizeof(float));
+    const size_t max_output_bytes = (size_t)(rows_per_chunk * (uint64_t)row_size);
+    cuda_ctx->resize_device_buffers(max_input_bytes, max_output_bytes);
+    cuda_ctx->resize_host_slot(0, max_input_bytes, max_output_bytes);
+    cuda_ctx->resize_host_slot(1, max_input_bytes, max_output_bytes);
+
+    cuda_pipeline_slot_state slots[2];
+    auto prepare_and_enqueue = [&](size_t slot_index, uint64_t row) {
+      cuda_pipeline_slot_state &slot = slots[slot_index];
+      slot.row = row;
+      slot.row_count = std::min<uint64_t>(rows_per_chunk, plan.n_rows - row);
+      slot.expected = (size_t)(slot.row_count * (uint64_t)row_size);
+      float *host_f32 = cuda_ctx->host_input_data(slot_index);
+      const uint64_t value_begin = row * plan.n_per_row;
+      const uint64_t value_count = slot.row_count * plan.n_per_row;
+      if (source_f32) {
+        const uint64_t byte_count = value_count * sizeof(float);
+        std::string error;
+        bool read_ok = false;
+        measure_phase(timings, &timing_totals::read_s, [&]() {
+          read_ok = input.read_at(plan.data_begin + value_begin * sizeof(float), host_f32, byte_count, &error);
+        });
+        if (!read_ok) {
+          fail(error + " for " + plan.key);
+        }
+      } else {
+        measure_phase(timings, &timing_totals::read_s, [&]() {
+          read_source_chunk(input, plan, row, slot.row_count, slot.source_bytes);
+        });
+        measure_phase(timings, &timing_totals::cpu_convert_s, [&]() {
+          decode_source_bytes_to_f32(plan, slot.source_bytes.data(), value_count, host_f32);
+        });
+      }
+      cuda_ctx->enqueue_quantize_chunk(
+          slot_index,
+          plan,
+          host_f32,
+          slot.row_count,
+          cuda_ctx->host_output_data(slot_index),
+          slot.expected,
+          timings);
+    };
+    auto finish_and_write = [&](size_t slot_index) {
+      cuda_pipeline_slot_state &slot = slots[slot_index];
+      cuda_ctx->finish_quantize_chunk(slot_index, timings);
+      measure_phase(timings, &timing_totals::write_s, [&]() {
+        write_all_file(out, cuda_ctx->host_output_data(slot_index), slot.expected);
+      });
+    };
+
+    size_t active_slot = 0;
+    uint64_t row = 0;
+    prepare_and_enqueue(active_slot, row);
+    row += slots[active_slot].row_count;
+    while (row < plan.n_rows) {
+      const size_t next_slot = 1 - active_slot;
+      prepare_and_enqueue(next_slot, row);
+      row += slots[next_slot].row_count;
+      finish_and_write(active_slot);
+      active_slot = next_slot;
+    }
+    finish_and_write(active_slot);
+    write_post_tensor_padding(out, plan.expected_nbytes, GGUF_DEFAULT_ALIGNMENT);
+    return;
+  }
+#endif
 
   std::vector<float> scratch;
   if (!source_f32) {
@@ -1948,17 +2133,28 @@ void print_help() {
   std::puts("  --tensor-type PATTERN=TYPE Override matching tensor storage/quant type");
   std::puts("  --include PATTERN          Force matching 2D tensors into quantization when possible");
   std::puts("  --exclude PATTERN          Keep matching tensors unquantized");
-  std::puts("  --scratch-bytes N          Native scratch buffer target in bytes");
+  std::puts("  --scratch-bytes N          Native scratch and direct-copy buffer target in bytes");
+  std::puts("  --cpu-ram-bytes N          Alias for --scratch-bytes");
   std::puts("  --threads N                Worker thread count (default: hardware or LIBGGUF_NUM_THREADS)");
   std::puts("  --backend cpu|cuda         Conversion backend for quantized tensors (default: cpu)");
   std::puts("  --cuda-fallback cpu        Use CPU for tensors unsupported by the CUDA converter");
   std::puts("  --verify-cuda-tensors N    Compare the first N CUDA tensors against CPU bytes");
+  std::puts("  --cuda-vram-bytes N        CUDA device chunk budget in bytes (0 uses --scratch-bytes)");
   std::puts("  --timings                  Print conversion timing breakdown to stderr");
   std::puts("  --help                     Show this help");
 }
 
 cli_options parse_args(int argc, char **argv) {
   cli_options options;
+  auto parse_positive_bytes = [](const std::string &value, const char *name) -> uint64_t {
+    char *end = nullptr;
+    errno = 0;
+    unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+    if (errno != 0 || end == value.c_str() || *end != '\0' || parsed == 0) {
+      fail(std::string(name) + " must be positive");
+    }
+    return (uint64_t)parsed;
+  };
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     auto need_value = [&](const char *name) -> std::string {
@@ -1992,14 +2188,9 @@ cli_options parse_args(int argc, char **argv) {
     } else if (arg == "--exclude") {
       options.exclude.push_back(need_value("--exclude"));
     } else if (arg == "--scratch-bytes") {
-      std::string value = need_value("--scratch-bytes");
-      char *end = nullptr;
-      errno = 0;
-      unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
-      if (errno != 0 || end == value.c_str() || *end != '\0' || parsed == 0) {
-        fail("--scratch-bytes must be positive");
-      }
-      options.scratch_bytes = (uint64_t)parsed;
+      options.scratch_bytes = parse_positive_bytes(need_value("--scratch-bytes"), "--scratch-bytes");
+    } else if (arg == "--cpu-ram-bytes") {
+      options.scratch_bytes = parse_positive_bytes(need_value("--cpu-ram-bytes"), "--cpu-ram-bytes");
     } else if (arg == "--threads") {
       std::string value = need_value("--threads");
       const unsigned int parsed = parse_positive_thread_count(value.c_str());
@@ -2031,6 +2222,15 @@ cli_options parse_args(int argc, char **argv) {
         fail("--verify-cuda-tensors must be a non-negative integer");
       }
       options.verify_cuda_tensors = (uint64_t)parsed;
+    } else if (arg == "--cuda-vram-bytes") {
+      std::string value = need_value("--cuda-vram-bytes");
+      char *end = nullptr;
+      errno = 0;
+      unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+      if (errno != 0 || end == value.c_str() || *end != '\0') {
+        fail("--cuda-vram-bytes must be a non-negative integer");
+      }
+      options.cuda_vram_bytes = (uint64_t)parsed;
     } else if (arg == "--timings") {
       options.timings = true;
     } else {
@@ -2051,6 +2251,9 @@ cli_options parse_args(int argc, char **argv) {
   }
   if (options.verify_cuda_tensors > 0 && options.backend != CONVERTER_BACKEND_CUDA) {
     fail("--verify-cuda-tensors requires --backend cuda");
+  }
+  if (options.cuda_vram_bytes > 0 && options.backend != CONVERTER_BACKEND_CUDA) {
+    fail("--cuda-vram-bytes requires --backend cuda");
   }
   return options;
 }
@@ -2151,7 +2354,7 @@ conversion_result convert(const cli_options &options) {
     timings.total_s = elapsed_seconds(total_begin, steady_clock::now());
     std::fprintf(
         stderr,
-        "Timings: total=%.3fs metadata=%.3fs read=%.3fs cpu_convert=%.3fs h2d=%.3fs cuda_quant=%.3fs d2h=%.3fs write=%.3fs tensors=%llu cuda_tensors=%llu cuda_verified=%llu threads=%u scratch=%llu\n",
+        "Timings: total=%.3fs metadata=%.3fs read=%.3fs cpu_convert=%.3fs h2d=%.3fs cuda_quant=%.3fs d2h=%.3fs write=%.3fs tensors=%llu cuda_tensors=%llu cuda_verified=%llu threads=%u scratch=%llu cuda_vram=%llu cuda_max_input=%llu cuda_max_output=%llu\n",
         timings.total_s,
         timings.metadata_s,
         timings.read_s,
@@ -2164,7 +2367,10 @@ conversion_result convert(const cli_options &options) {
         (unsigned long long)timings.cuda_tensors,
         (unsigned long long)timings.cuda_verified_tensors,
         worker_threads,
-        (unsigned long long)options.scratch_bytes);
+        (unsigned long long)options.scratch_bytes,
+        (unsigned long long)options.cuda_vram_bytes,
+        (unsigned long long)timings.cuda_max_input_bytes,
+        (unsigned long long)timings.cuda_max_output_bytes);
   }
   return result;
 }

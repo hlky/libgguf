@@ -1,0 +1,89 @@
+{
+  "config": {
+    "src": "/workspace/models/flux1-dev/flux1-dev.safetensors",
+    "qtype": "Q2_K",
+    "policy": "dynamic",
+    "runs": 1,
+    "backend": "cuda",
+    "converter": "/workspace/libgguf/build/codex-worker-c-cuda-auto/libgguf_quantize_gguf",
+    "threads": null,
+    "scratch_bytes": null,
+    "extra_args": [
+      "--backend",
+      "cuda",
+      "--cuda-fallback",
+      "cpu",
+      "--cuda-vram-bytes",
+      "1073741824"
+    ],
+    "results_dir": "/workspace/libgguf/bench/results/flux1_dev_cuda_qtypes_20260507T1732Z/Q2_K",
+    "output_dir": "/tmp/libgguf_conversion_outputs/Q2_K",
+    "delete_outputs": true
+  },
+  "summary": {
+    "runs": 1,
+    "successful_runs": 1,
+    "failed_runs": 0,
+    "total_s_min": 71.283,
+    "total_s_mean": 71.283,
+    "wall_s_min": 71.62215914297849,
+    "wall_s_mean": 71.62215914297849,
+    "output_size_bytes": 4199458080
+  },
+  "results": [
+    {
+      "run": 1,
+      "backend": "cuda",
+      "converter": "/workspace/libgguf/build/codex-worker-c-cuda-auto/libgguf_quantize_gguf",
+      "src": "/workspace/models/flux1-dev/flux1-dev.safetensors",
+      "dst": "/tmp/libgguf_conversion_outputs/Q2_K/flux1-dev-Q2_K-run001.gguf",
+      "qtype": "Q2_K",
+      "policy": "dynamic",
+      "returncode": 0,
+      "wall_s": 71.62215914297849,
+      "total_s": 71.283,
+      "metadata_s": 0.0,
+      "read_s": 53.729,
+      "quant_s": null,
+      "cpu_convert_s": 3.82,
+      "h2d_s": 2.031,
+      "cuda_quant_s": 0.33,
+      "d2h_s": 0.191,
+      "write_s": 0.837,
+      "cuda_vram_bytes": 1073741824,
+      "cuda_max_input_bytes": 264241152,
+      "cuda_max_output_bytes": 21676032,
+      "output_size_bytes": 4199458080,
+      "output_deleted": true,
+      "qtype_counts": {
+        "BF16": 10,
+        "F32": 466,
+        "Q2_K": 228,
+        "Q3_K": 60,
+        "Q4_K": 16
+      },
+      "fallback_counts": {},
+      "stdout": "Wrote /tmp/libgguf_conversion_outputs/Q2_K/flux1-dev-Q2_K-run001.gguf\nArchitecture: flux\nFile type: MOSTLY_Q2_K\nTensor types: BF16=10, F32=466, Q2_K=228, Q3_K=60, Q4_K=16\n",
+      "stderr": "Timings: total=71.283s metadata=0.000s read=53.729s cpu_convert=3.820s h2d=2.031s cuda_quant=0.330s d2h=0.191s write=0.837s tensors=780 cuda_tensors=304 cuda_verified=0 threads=256 scratch=33554432 cuda_vram=1073741824 cuda_max_input=264241152 cuda_max_output=21676032\n",
+      "command": [
+        "/workspace/libgguf/build/codex-worker-c-cuda-auto/libgguf_quantize_gguf",
+        "--src",
+        "/workspace/models/flux1-dev/flux1-dev.safetensors",
+        "--dst",
+        "/tmp/libgguf_conversion_outputs/Q2_K/flux1-dev-Q2_K-run001.gguf",
+        "--qtype",
+        "Q2_K",
+        "--policy",
+        "dynamic",
+        "--overwrite",
+        "--timings",
+        "--backend",
+        "cuda",
+        "--cuda-fallback",
+        "cpu",
+        "--cuda-vram-bytes",
+        "1073741824"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+run,backend,qtype,policy,returncode,wall_s,total_s,metadata_s,read_s,quant_s,cpu_convert_s,h2d_s,cuda_quant_s,d2h_s,write_s,cuda_vram_bytes,cuda_max_input_bytes,cuda_max_output_bytes,output_size_bytes,output_deleted,qtype_counts_json,fallback_counts_json,dst
+1,cpu,Q2_K,dynamic,0,110.88699962384999,110.838,0.0,41.203,,61.433,0.0,0.0,0.0,1.455,0,0,0,4199458080,True,"{""BF16"": 10, ""F32"": 466, ""Q2_K"": 228, ""Q3_K"": 60, ""Q4_K"": 16}",{},/tmp/libgguf_conversion_outputs_cpu/Q2_K/flux1-dev-Q2_K-run001.gguf

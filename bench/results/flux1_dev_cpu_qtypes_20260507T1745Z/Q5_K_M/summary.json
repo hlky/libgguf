@@ -1,0 +1,76 @@
+{
+  "config": {
+    "src": "/workspace/models/flux1-dev/flux1-dev.safetensors",
+    "qtype": "Q5_K_M",
+    "policy": "dynamic",
+    "runs": 1,
+    "backend": "cpu",
+    "converter": "/workspace/libgguf/build/codex-worker-c-cpu/libgguf_quantize_gguf",
+    "threads": null,
+    "scratch_bytes": null,
+    "extra_args": [],
+    "results_dir": "/workspace/libgguf/bench/results/flux1_dev_cpu_qtypes_20260507T1745Z/Q5_K_M",
+    "output_dir": "/tmp/libgguf_conversion_outputs_cpu/Q5_K_M",
+    "delete_outputs": true
+  },
+  "summary": {
+    "runs": 1,
+    "successful_runs": 1,
+    "failed_runs": 0,
+    "total_s_min": 105.191,
+    "total_s_mean": 105.191,
+    "wall_s_min": 105.23783824010752,
+    "wall_s_mean": 105.23783824010752,
+    "output_size_bytes": 8741397792
+  },
+  "results": [
+    {
+      "run": 1,
+      "backend": "cpu",
+      "converter": "/workspace/libgguf/build/codex-worker-c-cpu/libgguf_quantize_gguf",
+      "src": "/workspace/models/flux1-dev/flux1-dev.safetensors",
+      "dst": "/tmp/libgguf_conversion_outputs_cpu/Q5_K_M/flux1-dev-Q5_K_M-run001.gguf",
+      "qtype": "Q5_K_M",
+      "policy": "dynamic",
+      "returncode": 0,
+      "wall_s": 105.23783824010752,
+      "total_s": 105.191,
+      "metadata_s": 0.0,
+      "read_s": 40.081,
+      "quant_s": null,
+      "cpu_convert_s": 56.193,
+      "h2d_s": 0.0,
+      "cuda_quant_s": 0.0,
+      "d2h_s": 0.0,
+      "write_s": 2.654,
+      "cuda_vram_bytes": 0,
+      "cuda_max_input_bytes": 0,
+      "cuda_max_output_bytes": 0,
+      "output_size_bytes": 8741397792,
+      "output_deleted": true,
+      "qtype_counts": {
+        "BF16": 10,
+        "F32": 466,
+        "Q5_K": 228,
+        "Q6_K": 32,
+        "Q8_0": 44
+      },
+      "fallback_counts": {},
+      "stdout": "Wrote /tmp/libgguf_conversion_outputs_cpu/Q5_K_M/flux1-dev-Q5_K_M-run001.gguf\nArchitecture: flux\nFile type: MOSTLY_Q5_K_M\nTensor types: BF16=10, F32=466, Q5_K=228, Q6_K=32, Q8_0=44\n",
+      "stderr": "Timings: total=105.191s metadata=0.000s read=40.081s cpu_convert=56.193s h2d=0.000s cuda_quant=0.000s d2h=0.000s write=2.654s tensors=780 cuda_tensors=0 cuda_verified=0 threads=256 scratch=33554432 cuda_vram=0 cuda_max_input=0 cuda_max_output=0\n",
+      "command": [
+        "/workspace/libgguf/build/codex-worker-c-cpu/libgguf_quantize_gguf",
+        "--src",
+        "/workspace/models/flux1-dev/flux1-dev.safetensors",
+        "--dst",
+        "/tmp/libgguf_conversion_outputs_cpu/Q5_K_M/flux1-dev-Q5_K_M-run001.gguf",
+        "--qtype",
+        "Q5_K_M",
+        "--policy",
+        "dynamic",
+        "--overwrite",
+        "--timings"
+      ]
+    }
+  ]
+}
