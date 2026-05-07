@@ -11,6 +11,7 @@ libgguf exposes Python conversion and inspection entry points plus one native ex
 | `quantize-gguf-native` | native safetensors metadata/payload path | experimental |
 | `quantize-gguf-torch` | Torch loader plus `libgguf_torch` quantization | experimental |
 | `gguf-inspect` | GGUF metadata and tensor descriptor inspection | experimental |
+| `gguf-validate` | Structural GGUF validation without tensor payload reads | experimental |
 
 Common implemented options:
 
@@ -60,6 +61,21 @@ Implemented inspection options:
 - `--max-array-values N`: maximum metadata array values to keep; use `-1` for full arrays.
 
 `gguf-inspect` reads headers, metadata, and tensor descriptors only. It does not read tensor payload bytes.
+
+## GGUF Validation
+
+```bash
+gguf-validate model.gguf
+gguf-validate model.gguf --json
+```
+
+Implemented validation options:
+
+- `PATH`: GGUF file to validate.
+- `--json`: emit JSON.
+- `--max-array-values N`: maximum metadata array values to keep while parsing; defaults to `0`, use `-1` for full arrays.
+
+`gguf-validate` checks GGUF structure using the inspector and does not read tensor payload bytes. It reports errors for invalid format structure, duplicate tensor names, tensor payload ranges outside the file, and overlapping known tensor ranges. It reports warnings for missing common metadata, unknown qtypes, invalid qtype row widths, and non-monotonic known tensor offsets. The command exits `1` when errors are present and `0` when there are no errors; warnings alone still exit `0`.
 
 ## Native Executable
 

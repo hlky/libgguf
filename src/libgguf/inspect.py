@@ -143,6 +143,59 @@ class GGUFFile:
         }
 
 
+@dataclass(frozen=True)
+class GGUFValidationIssue:
+    severity: str
+    code: str
+    message: str
+    tensor_name: str | None = None
+    metadata_key: str | None = None
+    details: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "severity": self.severity,
+            "code": self.code,
+            "message": self.message,
+        }
+        if self.tensor_name is not None:
+            data["tensor_name"] = self.tensor_name
+        if self.metadata_key is not None:
+            data["metadata_key"] = self.metadata_key
+        if self.details is not None:
+            data["details"] = self.details
+        return data
+
+
+@dataclass(frozen=True)
+class GGUFValidationResult:
+    path: Path
+    file: GGUFFile | None
+    issues: tuple[GGUFValidationIssue, ...]
+
+    @property
+    def errors(self) -> tuple[GGUFValidationIssue, ...]:
+        return tuple(issue for issue in self.issues if issue.severity == "error")
+
+    @property
+    def warnings(self) -> tuple[GGUFValidationIssue, ...]:
+        return tuple(issue for issue in self.issues if issue.severity == "warning")
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": os.fspath(self.path),
+            "valid": self.ok,
+            "error_count": len(self.errors),
+            "warning_count": len(self.warnings),
+            "issues": [issue.to_dict() for issue in self.issues],
+            "file": _validation_file_summary(self.file),
+        }
+
+
 def inspect_gguf(path: str | os.PathLike[str], *, max_array_values: int | None = None) -> GGUFFile:
     """Read GGUF metadata and tensor descriptors without reading tensor payloads.
 
@@ -226,6 +279,196 @@ def inspect_gguf(path: str | os.PathLike[str], *, max_array_values: int | None =
 read_gguf_header = inspect_gguf
 
 
+def validate_gguf(path: str | os.PathLike[str], *, max_array_values: int | None = 0) -> GGUFValidationResult:
+    """Validate GGUF structure without reading tensor payload bytes.
+
+    The validator uses :func:`inspect_gguf` for format parsing, then checks
+    descriptor-level invariants such as common metadata presence, tensor qtypes,
+    payload ranges, ordering, overlap, and duplicate tensor names.
+    """
+
+    gguf_path = Path(path)
+    try:
+        info = inspect_gguf(gguf_path, max_array_values=max_array_values)
+    except GGUFFormatError as exc:
+        return GGUFValidationResult(
+            path=gguf_path,
+            file=None,
+            issues=(
+                GGUFValidationIssue(
+                    severity="error",
+                    code=_format_error_code(str(exc)),
+                    message=str(exc),
+                ),
+            ),
+        )
+    except OSError as exc:
+        return GGUFValidationResult(
+            path=gguf_path,
+            file=None,
+            issues=(
+                GGUFValidationIssue(
+                    severity="error",
+                    code="io",
+                    message=str(exc),
+                ),
+            ),
+        )
+
+    issues: list[GGUFValidationIssue] = []
+
+    if info.alignment <= 0:
+        issues.append(
+            GGUFValidationIssue(
+                severity="error",
+                code="alignment_invalid",
+                message=f"GGUF alignment must be positive, got {info.alignment}",
+                details={"alignment": info.alignment},
+            )
+        )
+
+    for key in ("general.architecture", "general.quantization_version"):
+        if key not in info.metadata:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="warning",
+                    code="metadata_missing",
+                    message=f"common metadata key {key!r} is missing",
+                    metadata_key=key,
+                )
+            )
+
+    seen_names: dict[str, int] = {}
+    for tensor in info.tensors:
+        seen_names[tensor.name] = seen_names.get(tensor.name, 0) + 1
+    for name, count in sorted(seen_names.items()):
+        if count > 1:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="error",
+                    code="tensor_duplicate_name",
+                    message=f"tensor name {name!r} appears {count} times",
+                    tensor_name=name,
+                    details={"count": count},
+                )
+            )
+
+    known_ranges: list[tuple[int, int, GGUFTensorInfo]] = []
+    previous_known_offset: int | None = None
+    for tensor in info.tensors:
+        if tensor.offset < 0:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="error",
+                    code="tensor_offset_negative",
+                    message=f"tensor {tensor.name!r} has negative relative data offset {tensor.offset}",
+                    tensor_name=tensor.name,
+                    details={"offset": tensor.offset},
+                )
+            )
+
+        qtype_spec = _qtype_spec(tensor.qtype_value)
+        if qtype_spec is None:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="warning",
+                    code="qtype_unknown",
+                    message=f"tensor {tensor.name!r} uses unknown qtype value {tensor.qtype_value}",
+                    tensor_name=tensor.name,
+                    details={"qtype_value": tensor.qtype_value},
+                )
+            )
+            continue
+
+        block_size, _type_size = qtype_spec
+        n_per_row = tensor.shape[0] if tensor.shape else 1
+        if tensor.nbytes is None:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="warning",
+                    code="qtype_row_width",
+                    message=(
+                        f"tensor {tensor.name!r} row width {n_per_row} is not valid for "
+                        f"{tensor.qtype} block size {block_size}"
+                    ),
+                    tensor_name=tensor.name,
+                    details={
+                        "qtype": tensor.qtype,
+                        "qtype_value": tensor.qtype_value,
+                        "row_width": n_per_row,
+                        "block_size": block_size,
+                    },
+                )
+            )
+            continue
+
+        start = tensor.data_offset
+        end = start + tensor.nbytes
+        known_ranges.append((start, end, tensor))
+        if end > info.file_size:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="error",
+                    code="tensor_payload_range",
+                    message=(
+                        f"tensor {tensor.name!r} payload range [{start}, {end}) exceeds "
+                        f"file size {info.file_size}"
+                    ),
+                    tensor_name=tensor.name,
+                    details={
+                        "data_offset": start,
+                        "nbytes": tensor.nbytes,
+                        "end": end,
+                        "file_size": info.file_size,
+                    },
+                )
+            )
+        if previous_known_offset is not None and start < previous_known_offset:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="warning",
+                    code="tensor_offset_order",
+                    message=(
+                        f"tensor {tensor.name!r} data offset {start} is before the previous "
+                        f"known tensor offset {previous_known_offset}"
+                    ),
+                    tensor_name=tensor.name,
+                    details={"data_offset": start, "previous_data_offset": previous_known_offset},
+                )
+            )
+        previous_known_offset = start
+
+    previous_range: tuple[int, int, GGUFTensorInfo] | None = None
+    for start, end, tensor in sorted(known_ranges, key=lambda item: (item[0], item[1], item[2].name)):
+        if previous_range is not None:
+            previous_start, previous_end, previous_tensor = previous_range
+            if start < previous_end:
+                issues.append(
+                    GGUFValidationIssue(
+                        severity="error",
+                        code="tensor_payload_overlap",
+                        message=(
+                            f"tensor {tensor.name!r} payload range [{start}, {end}) overlaps "
+                            f"{previous_tensor.name!r} range [{previous_start}, {previous_end})"
+                        ),
+                        tensor_name=tensor.name,
+                        details={
+                            "data_offset": start,
+                            "end": end,
+                            "overlap_tensor_name": previous_tensor.name,
+                            "overlap_data_offset": previous_start,
+                            "overlap_end": previous_end,
+                        },
+                    )
+                )
+            if end > previous_end:
+                previous_range = (start, end, tensor)
+        else:
+            previous_range = (start, end, tensor)
+
+    return GGUFValidationResult(path=gguf_path, file=info, issues=tuple(issues))
+
+
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     max_array_values = None if args.max_array_values < 0 else args.max_array_values
@@ -240,6 +483,20 @@ def main(argv: list[str] | None = None) -> None:
         _print_metadata(info, limit=args.limit)
     if args.tensors:
         _print_tensors(info, limit=args.limit)
+
+
+def validate_main(argv: list[str] | None = None) -> None:
+    args = _parse_validate_args(argv)
+    max_array_values = None if args.max_array_values < 0 else args.max_array_values
+    result = validate_gguf(args.path, max_array_values=max_array_values)
+
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    else:
+        _print_validation_result(result)
+
+    if not result.ok:
+        raise SystemExit(1)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -258,6 +515,22 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.limit < 0:
         parser.error("--limit must be non-negative")
+    if args.max_array_values < -1:
+        parser.error("--max-array-values must be -1 or non-negative")
+    return args
+
+
+def _parse_validate_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Validate GGUF structure without reading tensor payload bytes")
+    parser.add_argument("path", help="GGUF file to validate")
+    parser.add_argument("--json", action="store_true", help="Emit JSON")
+    parser.add_argument(
+        "--max-array-values",
+        type=int,
+        default=0,
+        help="Maximum metadata array values to keep; use -1 for full arrays",
+    )
+    args = parser.parse_args(argv)
     if args.max_array_values < -1:
         parser.error("--max-array-values must be -1 or non-negative")
     return args
@@ -346,17 +619,24 @@ def _qtype_name(qtype_value: int) -> str:
 
 
 def _tensor_nbytes(shape: tuple[int, ...], qtype_value: int) -> int | None:
-    try:
-        qtype = GGMLQuantizationType(qtype_value)
-        block_size, type_size = GGML_QUANT_SIZES[qtype]
-    except (KeyError, ValueError):
+    qtype_spec = _qtype_spec(qtype_value)
+    if qtype_spec is None:
         return None
 
+    block_size, type_size = qtype_spec
     n_per_row = shape[0] if shape else 1
     if n_per_row % block_size != 0:
         return None
     n_rows = math.prod(shape[1:]) if len(shape) > 1 else 1
     return n_rows * (n_per_row // block_size * type_size)
+
+
+def _qtype_spec(qtype_value: int) -> tuple[int, int] | None:
+    try:
+        qtype = GGMLQuantizationType(qtype_value)
+    except ValueError:
+        return None
+    return GGML_QUANT_SIZES.get(qtype)
 
 
 def _align_offset(offset: int, alignment: int) -> int:
@@ -426,13 +706,75 @@ def _format_metadata_value(value: GGUFMetadataValue) -> str:
     return f"{value.array_type}[{value.length}] {value.value!r}{suffix}"
 
 
+def _format_error_code(message: str) -> str:
+    if message == "not a GGUF file":
+        return "magic"
+    if message.startswith("unsupported GGUF version"):
+        return "version"
+    if message.startswith("invalid GGUF alignment"):
+        return "alignment_invalid"
+    return "format"
+
+
+def _validation_file_summary(info: GGUFFile | None) -> dict[str, Any] | None:
+    if info is None:
+        return None
+    return {
+        "version": info.version,
+        "tensor_count": info.tensor_count,
+        "metadata_kv_count": info.metadata_kv_count,
+        "alignment": info.alignment,
+        "data_offset": info.data_offset,
+        "file_size": info.file_size,
+        "tensor_type_counts": info.tensor_type_counts,
+    }
+
+
+def _print_validation_result(result: GGUFValidationResult) -> None:
+    status = "VALID" if result.ok else "INVALID"
+    print(f"{status}: {result.path}")
+    if result.file is not None:
+        print(
+            f"Version: {result.file.version}  Tensors: {result.file.tensor_count}  "
+            f"Metadata: {result.file.metadata_kv_count}"
+        )
+
+    if not result.issues:
+        print("No validation issues.")
+        return
+
+    errors = result.errors
+    warnings = result.warnings
+    if errors:
+        print("Errors:")
+        for issue in errors:
+            print(f"  [{issue.code}] {_format_validation_issue(issue)}")
+    if warnings:
+        print("Warnings:")
+        for issue in warnings:
+            print(f"  [{issue.code}] {_format_validation_issue(issue)}")
+
+
+def _format_validation_issue(issue: GGUFValidationIssue) -> str:
+    prefix = ""
+    if issue.tensor_name is not None:
+        prefix = f"{issue.tensor_name}: "
+    elif issue.metadata_key is not None:
+        prefix = f"{issue.metadata_key}: "
+    return prefix + issue.message
+
+
 __all__ = [
     "GGUFFile",
     "GGUFFormatError",
     "GGUFMetadataValue",
     "GGUFTensorInfo",
+    "GGUFValidationIssue",
+    "GGUFValidationResult",
     "inspect_gguf",
     "read_gguf_header",
+    "validate_gguf",
+    "validate_main",
 ]
 
 

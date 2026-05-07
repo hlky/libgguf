@@ -234,8 +234,11 @@ _INSPECT_EXPORTS = frozenset(
         "GGUFFormatError",
         "GGUFMetadataValue",
         "GGUFTensorInfo",
+        "GGUFValidationIssue",
+        "GGUFValidationResult",
         "inspect_gguf",
         "read_gguf_header",
+        "validate_gguf",
     }
 )
 
@@ -268,8 +271,11 @@ __all__ = [
     "GGUFFormatError",
     "GGUFMetadataValue",
     "GGUFTensorInfo",
+    "GGUFValidationIssue",
+    "GGUFValidationResult",
     "inspect_gguf",
     "read_gguf_header",
+    "validate_gguf",
     "row_size",
     "type_name",
     "type_size",

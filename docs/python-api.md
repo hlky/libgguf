@@ -75,12 +75,17 @@ Public inspection APIs:
 
 - `inspect_gguf(path, *, max_array_values=None) -> GGUFFile`
 - `read_gguf_header(path, *, max_array_values=None) -> GGUFFile`
+- `validate_gguf(path, *, max_array_values=0) -> GGUFValidationResult`
 - `GGUFFile`
 - `GGUFMetadataValue`
 - `GGUFTensorInfo`
+- `GGUFValidationIssue`
+- `GGUFValidationResult`
 - `GGUFFormatError`
 
 The inspector reads GGUF metadata and tensor descriptors only. Tensor descriptors include the qtype, stored shape, relative tensor offset, absolute payload offset, and computed payload byte length when the qtype is known.
+
+The validator builds on the inspector and also avoids tensor payload reads. It checks common structural issues such as missing common metadata, unknown qtypes, invalid row widths, duplicate tensor names, payload ranges that exceed the file size, and overlapping known tensor ranges. `GGUFValidationResult.ok` is false only when errors are present; warnings alone do not make the result invalid.
 
 ## Conversion Helpers
 
