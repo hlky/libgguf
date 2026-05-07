@@ -3,7 +3,9 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+#ifndef LIBGGUF_CUDA_NO_C10
 #include <c10/util/BFloat16.h>
+#endif
 
 #include "libgguf_internal.h"
 
@@ -75,6 +77,7 @@ static __device__ __forceinline__ dst_t convert_from_half(half val) {
     return val;
 }
 
+#ifndef LIBGGUF_CUDA_NO_C10
 template<>
 __device__ __forceinline__ c10::BFloat16 convert_from_half<c10::BFloat16>(half val) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
@@ -83,6 +86,7 @@ __device__ __forceinline__ c10::BFloat16 convert_from_half<c10::BFloat16>(half v
     return __half2float(val);
 #endif
 }
+#endif
 
 template<>
 __device__ __forceinline__ float convert_from_half<float>(half val) {
@@ -99,6 +103,7 @@ __device__ __forceinline__ half convert_from_float<half>(float val) {
     return __float2half(val);
 }
 
+#ifndef LIBGGUF_CUDA_NO_C10
 template<>
 __device__ __forceinline__ c10::BFloat16 convert_from_float<c10::BFloat16>(float val) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
@@ -107,3 +112,4 @@ __device__ __forceinline__ c10::BFloat16 convert_from_float<c10::BFloat16>(float
     return val;
 #endif
 }
+#endif
