@@ -1,6 +1,6 @@
 # CLI
 
-libgguf exposes four Python entry points and one native executable. The Python tools are conversion frontends; the native executable is a low-memory C++ safetensors-to-GGUF converter.
+libgguf exposes Python conversion and inspection entry points plus one native executable. The Python conversion tools are frontends; the native executable is a low-memory C++ safetensors-to-GGUF converter.
 
 ## Python Entry Points
 
@@ -10,6 +10,7 @@ libgguf exposes four Python entry points and one native executable. The Python t
 | `quantize-gguf-pt` | Torch safetensors/ckpt loader with native bindings | experimental |
 | `quantize-gguf-native` | native safetensors metadata/payload path | experimental |
 | `quantize-gguf-torch` | Torch loader plus `libgguf_torch` quantization | experimental |
+| `gguf-inspect` | GGUF metadata and tensor descriptor inspection | experimental |
 
 Common implemented options:
 
@@ -41,6 +42,24 @@ Additional implemented options:
 - `quantize-gguf-torch --compile`: wrap `libgguf_torch` quantization with `torch.compile`.
 
 `quantize-gguf-torch --imatrix` is intentionally rejected by the CLI; use `quantize-gguf-pt` or `quantize-gguf-native` for imatrix workflows.
+
+## GGUF Inspection
+
+```bash
+gguf-inspect model.gguf --metadata --tensors
+gguf-inspect model.gguf --json
+```
+
+Implemented inspection options:
+
+- `PATH`: GGUF file to inspect.
+- `--json`: emit JSON.
+- `--metadata`: print metadata entries in text mode.
+- `--tensors`: print tensor descriptors in text mode.
+- `--limit N`: maximum metadata/tensor rows to print in text mode.
+- `--max-array-values N`: maximum metadata array values to keep; use `-1` for full arrays.
+
+`gguf-inspect` reads headers, metadata, and tensor descriptors only. It does not read tensor payload bytes.
 
 ## Native Executable
 

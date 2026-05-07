@@ -4,7 +4,7 @@ Standalone GGUF read/write, byte-exact quantization, and CUDA-accelerated conver
 
 libgguf vendors and adapts GGUF/GGML quantization kernels from llama.cpp into a reusable standalone library and toolkit. The goal is to make GGUF infrastructure available directly to conversion tools and downstream projects without requiring a two-stage route through llama.cpp binaries or partial Python/Torch-only implementations.
 
-The repository currently contains native GGUF row kernels, Python bindings, NumPy and Torch backends, an optional CUDA Torch extension, safetensors-to-GGUF conversion paths, benchmark tools, and tensor planning policy for real image-model conversion workflows. First-class public GGUF reader, writer, and inspector APIs are planned; today, GGUF read/write logic is present primarily through converter paths.
+The repository currently contains native GGUF row kernels, Python bindings, NumPy and Torch backends, an optional CUDA Torch extension, safetensors-to-GGUF conversion paths, a public GGUF inspector, benchmark tools, and tensor planning policy for real image-model conversion workflows. First-class public GGUF reader and writer APIs are planned; today, GGUF read/write logic is present primarily through converter paths.
 
 ## Status
 
@@ -25,9 +25,10 @@ The repository currently contains native GGUF row kernels, Python bindings, NumP
 - Optional CUDA quantization and dequantization kernels exposed through a Torch extension.
 - Native low-memory safetensors-to-GGUF converter.
 - Experimental Python conversion CLIs for native, NumPy-backed, Torch-loaded, and Torch-native workflows.
+- Experimental GGUF metadata and tensor descriptor inspector API/CLI.
 - Deterministic policy-based tensor planning for real image-model GGUF conversion.
 - Benchmark suite for native, Torch, and CUDA paths.
-- Planned first-class GGUF reader/writer/inspector APIs.
+- Planned first-class GGUF reader/writer APIs.
 
 ## Why libgguf
 
@@ -206,7 +207,7 @@ See [docs/ecosystem.md](docs/ecosystem.md) for the fuller reference map.
 ## Roadmap
 
 - First-class GGUF reader/writer API.
-- GGUF inspector and validator.
+- GGUF validator.
 - CUDA integration into the native converter.
 - Source dtype GPU input path for F16/BF16.
 - Support matrix automation.

@@ -18,7 +18,8 @@ def test_top_level_import_does_not_eagerly_import_conversion_module() -> None:
                 "        return None\n"
                 "sys.meta_path.insert(0, Blocker()); "
                 "import libgguf; "
-                "assert 'libgguf.quantize' not in sys.modules, 'libgguf.quantize imported'"
+                "assert 'libgguf.quantize' not in sys.modules, 'libgguf.quantize imported'; "
+                "assert 'libgguf.inspect' not in sys.modules, 'libgguf.inspect imported'"
             ),
         ],
         check=False,

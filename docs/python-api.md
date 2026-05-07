@@ -63,6 +63,25 @@ weights = libgguf.load_imatrix("imatrix.dat")
 
 `load_imatrix(path)` reads llama.cpp imatrix data for conversion and row quantization paths.
 
+## GGUF Inspection
+
+```python
+info = libgguf.inspect_gguf("model.gguf")
+print(info.metadata["general.architecture"].value)
+print(info.tensors[0].name, info.tensors[0].shape, info.tensors[0].qtype)
+```
+
+Public inspection APIs:
+
+- `inspect_gguf(path, *, max_array_values=None) -> GGUFFile`
+- `read_gguf_header(path, *, max_array_values=None) -> GGUFFile`
+- `GGUFFile`
+- `GGUFMetadataValue`
+- `GGUFTensorInfo`
+- `GGUFFormatError`
+
+The inspector reads GGUF metadata and tensor descriptors only. Tensor descriptors include the qtype, stored shape, relative tensor offset, absolute payload offset, and computed payload byte length when the qtype is known.
+
 ## Conversion Helpers
 
 ```python

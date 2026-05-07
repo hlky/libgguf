@@ -228,12 +228,27 @@ _CONVERSION_EXPORTS = frozenset(
     }
 )
 
+_INSPECT_EXPORTS = frozenset(
+    {
+        "GGUFFile",
+        "GGUFFormatError",
+        "GGUFMetadataValue",
+        "GGUFTensorInfo",
+        "inspect_gguf",
+        "read_gguf_header",
+    }
+)
+
 
 def __getattr__(name: str) -> Any:
     if name in _CONVERSION_EXPORTS:
         from . import quantize
 
         return getattr(quantize, name)
+    if name in _INSPECT_EXPORTS:
+        from . import inspect
+
+        return getattr(inspect, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
@@ -249,6 +264,12 @@ __all__ = [
     "QuantResult",
     "convert_safetensors_to_gguf_native",
     "convert_to_gguf",
+    "GGUFFile",
+    "GGUFFormatError",
+    "GGUFMetadataValue",
+    "GGUFTensorInfo",
+    "inspect_gguf",
+    "read_gguf_header",
     "row_size",
     "type_name",
     "type_size",
