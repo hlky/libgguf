@@ -67,6 +67,29 @@ def _documented_native_cli_options() -> set[str]:
     return options
 
 
+def _help_native_cli_options(help_text: str) -> set[str]:
+    option_values = {
+        "PATH",
+        "QTYPE",
+        "comfy|dynamic|uniform",
+        "PATTERN=TYPE",
+        "PATTERN",
+        "N",
+        "cpu|cuda",
+        "cpu",
+    }
+    options: set[str] = set()
+    for line in help_text.splitlines():
+        tokens = line.strip().split()
+        if not tokens or not tokens[0].startswith("--"):
+            continue
+        spelling = tokens[0]
+        if len(tokens) > 1 and tokens[1] in option_values:
+            spelling = f"{spelling} {tokens[1]}"
+        options.add(spelling)
+    return options
+
+
 def test_native_exe_prefers_env_then_repo_build_then_current_env_scripts_then_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -239,50 +262,15 @@ def test_native_executable_threads_and_timings_flags_preserve_output(tmp_path: P
     assert "d2h=" in result.stderr
 
 
-def test_native_executable_help_lists_backend_flags() -> None:
-    exe = _native_exe()
-
-    result = subprocess.run([str(exe), "--help"], check=False, capture_output=True, text=True)
-
-    assert result.returncode == 0
-    assert "--backend cpu|cuda" in result.stdout
-    assert "--cuda-fallback cpu" in result.stdout
-    assert "--verify-cuda-tensors N" in result.stdout
-    assert "--cuda-vram-bytes N" in result.stdout
-    assert "--cpu-ram-bytes N" in result.stdout
-
-
-@pytest.mark.parametrize(
-    ("flag_group", "documented_spellings"),
-    [
-        ("policy", ["--policy comfy|dynamic|uniform"]),
-        ("include/exclude", ["--include PATTERN", "--exclude PATTERN"]),
-        ("scratch", ["--scratch-bytes N", "--cpu-ram-bytes N"]),
-        ("timing", ["--threads N", "--timings"]),
-        ("backend", ["--backend cpu|cuda"]),
-        (
-            "CUDA",
-            [
-                "--cuda-fallback cpu",
-                "--verify-cuda-tensors N",
-                "--cuda-vram-bytes N",
-            ],
-        ),
-    ],
-)
-def test_native_executable_help_matches_documented_flag_groups(
-    flag_group: str, documented_spellings: list[str]
-) -> None:
+def test_native_executable_help_matches_documented_options() -> None:
     exe = _native_exe()
     documented_options = _documented_native_cli_options()
 
     result = subprocess.run([str(exe), "--help"], check=False, capture_output=True, text=True)
 
     assert result.returncode == 0
-    missing_from_docs = [spelling for spelling in documented_spellings if spelling not in documented_options]
-    missing_from_help = [spelling for spelling in documented_spellings if spelling not in result.stdout]
-    assert not missing_from_docs, f"{flag_group} options missing from docs/cli.md: {missing_from_docs}"
-    assert not missing_from_help, f"{flag_group} options missing from --help: {missing_from_help}"
+    help_options = _help_native_cli_options(result.stdout)
+    assert help_options == documented_options
 
 
 def test_native_executable_backend_cpu_preserves_default_output(tmp_path: Path) -> None:
