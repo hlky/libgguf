@@ -102,6 +102,31 @@ def test_cuda_dequantize_matches_libgguf(qtype: GGMLQuantizationType) -> None:
     np.testing.assert_allclose(actual.cpu().numpy(), expected)
 
 
+def test_cuda_dequantize_uses_current_stream() -> None:
+    require_cuda_extension()
+
+    qtype = GGMLQuantizationType.Q8_0
+    rows = build_rows(qtype, rows=2)
+    encoded = libgguf.quantize_rows(rows, qtype)
+    stream = torch.cuda.Stream()
+    event = torch.cuda.Event()
+
+    with torch.cuda.stream(stream):
+        actual = libgguf_cuda.dequantize(
+            torch.from_numpy(encoded).to("cuda"),
+            int(qtype),
+            rows.shape[0],
+            rows.shape[1],
+            torch.float32,
+        )
+        event.record()
+
+    torch.cuda.current_stream().wait_event(event)
+    expected = libgguf.dequantize_rows(encoded, qtype, n_per_row=rows.shape[1])
+
+    np.testing.assert_allclose(actual.cpu().numpy(), expected)
+
+
 @pytest.mark.parametrize("dtype", (torch.float16, torch.bfloat16, torch.float32), ids=str)
 def test_cuda_dequantize_returns_requested_dtype(dtype: torch.dtype) -> None:
     require_cuda_extension()

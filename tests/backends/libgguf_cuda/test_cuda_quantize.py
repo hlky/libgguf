@@ -88,6 +88,24 @@ def test_cuda_quantize_matches_libgguf(qtype: GGMLQuantizationType) -> None:
     np.testing.assert_array_equal(actual.cpu().numpy(), expected)
 
 
+def test_cuda_quantize_uses_current_stream() -> None:
+    require_cuda_quantize()
+
+    qtype = GGMLQuantizationType.Q8_0
+    rows = build_rows(qtype, rows=2)
+    stream = torch.cuda.Stream()
+    event = torch.cuda.Event()
+
+    with torch.cuda.stream(stream):
+        actual = libgguf_cuda.quantize(torch.from_numpy(rows).to("cuda"), int(qtype))
+        event.record()
+
+    torch.cuda.current_stream().wait_event(event)
+    expected = libgguf.quantize_rows(rows, qtype)
+
+    np.testing.assert_array_equal(actual.cpu().numpy(), expected)
+
+
 def test_cuda_quantize_preserves_leading_shape() -> None:
     require_cuda_quantize()
 
