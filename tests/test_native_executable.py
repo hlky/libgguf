@@ -327,6 +327,24 @@ def test_native_executable_verify_cuda_rejects_explicit_cpu_backend(tmp_path: Pa
     assert "--verify-cuda-tensors requires --backend cuda or auto" in result.stderr
 
 
+def test_native_executable_verify_cuda_large_rejects_explicit_cpu_backend(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.zeros((2, 256), dtype=np.float32)
+    src = tmp_path / "model.safetensors"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--backend", "cpu", "--verify-cuda-large-tensors", "1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "--verify-cuda-large-tensors requires --backend cuda or auto" in result.stderr
+
+
 def test_native_executable_verify_cuda_rejects_bad_value(tmp_path: Path) -> None:
     exe = _native_exe()
     key = "double_layers.3.modX.1.weight"
@@ -343,6 +361,25 @@ def test_native_executable_verify_cuda_rejects_bad_value(tmp_path: Path) -> None
 
     assert result.returncode != 0
     assert "--verify-cuda-tensors must be a non-negative integer or 'all'" in result.stderr
+
+
+@pytest.mark.parametrize("verify_value", ["some", "-1"])
+def test_native_executable_verify_cuda_large_rejects_bad_value(tmp_path: Path, verify_value: str) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.zeros((2, 256), dtype=np.float32)
+    src = tmp_path / "model.safetensors"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--verify-cuda-large-tensors", verify_value],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "--verify-cuda-large-tensors must be a non-negative integer" in result.stderr
 
 
 def test_native_executable_cuda_vram_bytes_rejects_explicit_cpu_backend(tmp_path: Path) -> None:
@@ -581,6 +618,114 @@ def test_native_executable_verify_cuda_all_checks_all_cuda_tensors_when_availabl
             "cuda",
             "--verify-cuda-tensors",
             "all",
+            "--timings",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    unavailable = (
+        "built without native CUDA support",
+        "failed to initialize CUDA backend",
+        "CUDA driver",
+        "CUDA-capable device",
+    )
+    if result.returncode != 0 and any(fragment in result.stderr for fragment in unavailable):
+        pytest.skip("native CUDA converter support is unavailable")
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes() == expected.read_bytes()
+    assert "cuda_tensors=2" in result.stderr
+    assert "cuda_verified=2" in result.stderr
+
+
+def test_native_executable_verify_cuda_large_checks_largest_cuda_tensor_when_available(tmp_path: Path) -> None:
+    exe = _native_exe()
+    rows_small = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    rows_large = np.linspace(2.0, -2.0, 1024, dtype=np.float32).reshape(4, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(
+        src,
+        {
+            "double_layers.3.modX.1.weight": ("F32", rows_small.shape, rows_small.tobytes()),
+            "double_layers.4.modX.1.weight": ("F32", rows_large.shape, rows_large.tobytes()),
+        },
+    )
+
+    convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
+    result = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            "Q4_0",
+            "--policy",
+            "uniform",
+            "--backend",
+            "cuda",
+            "--verify-cuda-large-tensors",
+            "1",
+            "--timings",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    unavailable = (
+        "built without native CUDA support",
+        "failed to initialize CUDA backend",
+        "CUDA driver",
+        "CUDA-capable device",
+    )
+    if result.returncode != 0 and any(fragment in result.stderr for fragment in unavailable):
+        pytest.skip("native CUDA converter support is unavailable")
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes() == expected.read_bytes()
+    assert "cuda_tensors=2" in result.stderr
+    assert "cuda_verified=1" in result.stderr
+
+
+def test_native_executable_verify_cuda_first_and_large_union_when_available(tmp_path: Path) -> None:
+    exe = _native_exe()
+    rows_small = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    rows_large = np.linspace(2.0, -2.0, 1024, dtype=np.float32).reshape(4, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(
+        src,
+        {
+            "double_layers.3.modX.1.weight": ("F32", rows_small.shape, rows_small.tobytes()),
+            "double_layers.4.modX.1.weight": ("F32", rows_large.shape, rows_large.tobytes()),
+        },
+    )
+
+    convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
+    result = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            "Q4_0",
+            "--policy",
+            "uniform",
+            "--backend",
+            "cuda",
+            "--verify-cuda-tensors",
+            "1",
+            "--verify-cuda-large-tensors",
+            "1",
             "--timings",
             "--overwrite",
         ],

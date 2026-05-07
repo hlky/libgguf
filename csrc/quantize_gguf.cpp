@@ -101,6 +101,7 @@ struct cli_options {
   converter_backend backend = CONVERTER_BACKEND_AUTO;
   bool cuda_fallback_cpu = false;
   uint64_t verify_cuda_tensors = 0;
+  uint64_t verify_cuda_large_tensors = 0;
   uint64_t cuda_vram_bytes = 0;
 };
 
@@ -1696,6 +1697,14 @@ bool conversion_plans_prefer_cuda(const std::vector<tensor_plan> &plans) {
 
 class cuda_converter_context;
 
+bool conversion_plan_requests_cuda(const tensor_plan &plan, const cli_options &options) {
+  if (!is_quantized_qtype(plan.qtype)) {
+    return false;
+  }
+  return options.backend == CONVERTER_BACKEND_CUDA ||
+         (options.backend == CONVERTER_BACKEND_AUTO && converter_auto_prefers_cuda_qtype(plan.qtype));
+}
+
 #if defined(LIBGGUF_HAS_CUDA_NATIVE)
 std::string cuda_status_message(libgguf_cuda_context *ctx, int status, const std::string &prefix) {
   std::string message = prefix;
@@ -1916,6 +1925,51 @@ private:
 };
 #endif
 
+bool conversion_plan_uses_cuda(const tensor_plan &plan, const cli_options &options, cuda_converter_context *cuda_ctx) {
+  if (!conversion_plan_requests_cuda(plan, options)) {
+    return false;
+  }
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+  return cuda_ctx && cuda_ctx->supports(plan.qtype, plan.n_per_row);
+#else
+  (void)cuda_ctx;
+  return false;
+#endif
+}
+
+std::set<std::string> select_largest_cuda_tensor_keys(
+    const std::vector<tensor_plan> &plans,
+    const cli_options &options,
+    cuda_converter_context *cuda_ctx) {
+  struct candidate {
+    uint64_t expected_nbytes = 0;
+    std::string key;
+    size_t index = 0;
+  };
+  std::vector<candidate> candidates;
+  for (size_t i = 0; i < plans.size(); ++i) {
+    if (conversion_plan_uses_cuda(plans[i], options, cuda_ctx)) {
+      candidates.push_back({plans[i].expected_nbytes, plans[i].key, i});
+    }
+  }
+  std::sort(candidates.begin(), candidates.end(), [](const candidate &a, const candidate &b) {
+    if (a.expected_nbytes != b.expected_nbytes) {
+      return a.expected_nbytes > b.expected_nbytes;
+    }
+    if (a.key != b.key) {
+      return a.key < b.key;
+    }
+    return a.index < b.index;
+  });
+  const size_t selected_count =
+      (size_t)std::min<uint64_t>(options.verify_cuda_large_tensors, (uint64_t)candidates.size());
+  std::set<std::string> selected;
+  for (size_t i = 0; i < selected_count; ++i) {
+    selected.insert(candidates[i].key);
+  }
+  return selected;
+}
+
 void write_tensor_payload(
     FILE *out,
     const input_file &input,
@@ -1924,6 +1978,7 @@ void write_tensor_payload(
     tensor_quant_worker_pool &native_pool,
     cuda_converter_context *cuda_ctx,
     uint64_t *verify_cuda_remaining,
+    const std::set<std::string> &verify_cuda_large_keys,
     timing_totals *timings) {
   if (timings) {
     timings->tensors += 1;
@@ -1961,22 +2016,19 @@ void write_tensor_payload(
   }
   const bool source_f32 = plan.source_dtype == NATIVE_DTYPE_F32;
   const bool native_quant = is_quantized_qtype(plan.qtype) && native_quantize_function(plan.qtype) != nullptr;
-  bool cuda_quant = false;
-  if (is_quantized_qtype(plan.qtype) &&
-      (options.backend == CONVERTER_BACKEND_CUDA ||
-       (options.backend == CONVERTER_BACKEND_AUTO && converter_auto_prefers_cuda_qtype(plan.qtype)))) {
-#if defined(LIBGGUF_HAS_CUDA_NATIVE)
-    cuda_quant = cuda_ctx && cuda_ctx->supports(plan.qtype, plan.n_per_row);
-#else
-    (void)cuda_ctx;
-#endif
+  const bool cuda_quant = conversion_plan_uses_cuda(plan, options, cuda_ctx);
+  if (conversion_plan_requests_cuda(plan, options)) {
     if (options.backend == CONVERTER_BACKEND_CUDA && !cuda_quant && !options.cuda_fallback_cpu) {
       fail(
           "CUDA backend does not support " + qtype_name(plan.qtype) +
           " for tensor " + plan.key + "; pass --cuda-fallback cpu to use CPU for unsupported tensors");
     }
   }
-  const bool verify_cuda = cuda_quant && verify_cuda_remaining && *verify_cuda_remaining > 0;
+  const bool verify_cuda_first =
+      cuda_quant && verify_cuda_remaining && *verify_cuda_remaining > 0;
+  const bool verify_cuda_large =
+      cuda_quant && verify_cuda_large_keys.find(plan.key) != verify_cuda_large_keys.end();
+  const bool verify_cuda = verify_cuda_first || verify_cuda_large;
   if (cuda_quant && timings) {
     timings->cuda_tensors += 1;
     if (verify_cuda) {
@@ -2147,7 +2199,7 @@ void write_tensor_payload(
       write_all_file(out, encoded.data(), expected);
     });
   }
-  if (verify_cuda && verify_cuda_remaining && *verify_cuda_remaining != VERIFY_CUDA_ALL_TENSORS) {
+  if (verify_cuda_first && verify_cuda_remaining && *verify_cuda_remaining != VERIFY_CUDA_ALL_TENSORS) {
     *verify_cuda_remaining -= 1;
   }
   write_post_tensor_padding(out, plan.expected_nbytes, GGUF_DEFAULT_ALIGNMENT);
@@ -2184,6 +2236,8 @@ void print_help() {
   std::puts("  --cuda-fallback cpu        Use CPU for tensors unsupported by the CUDA converter");
   std::puts("  --verify-cuda-tensors N|all");
   std::puts("                           Compare CUDA tensors against CPU bytes");
+  std::puts("  --verify-cuda-large-tensors N");
+  std::puts("                           Compare the N largest CUDA tensors against CPU bytes");
   std::puts("  --cuda-vram-bytes N        CUDA device chunk budget in bytes (0 uses --scratch-bytes)");
   std::puts("  --timings                  Print conversion timing breakdown to stderr");
   std::puts("  --help                     Show this help");
@@ -2197,6 +2251,15 @@ cli_options parse_args(int argc, char **argv) {
     unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
     if (errno != 0 || end == value.c_str() || *end != '\0' || parsed == 0) {
       fail(std::string(name) + " must be positive");
+    }
+    return (uint64_t)parsed;
+  };
+  auto parse_non_negative_integer = [](const std::string &value, const char *name) -> uint64_t {
+    char *end = nullptr;
+    errno = 0;
+    unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+    if (errno != 0 || end == value.c_str() || *end != '\0' || value[0] == '-') {
+      fail(std::string(name) + " must be a non-negative integer");
     }
     return (uint64_t)parsed;
   };
@@ -2265,14 +2328,15 @@ cli_options parse_args(int argc, char **argv) {
       if (value == "all") {
         options.verify_cuda_tensors = VERIFY_CUDA_ALL_TENSORS;
       } else {
-        char *end = nullptr;
-        errno = 0;
-        unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
-        if (errno != 0 || end == value.c_str() || *end != '\0' || value[0] == '-') {
+        try {
+          options.verify_cuda_tensors = parse_non_negative_integer(value, "--verify-cuda-tensors");
+        } catch (...) {
           fail("--verify-cuda-tensors must be a non-negative integer or 'all'");
         }
-        options.verify_cuda_tensors = (uint64_t)parsed;
       }
+    } else if (arg == "--verify-cuda-large-tensors") {
+      options.verify_cuda_large_tensors =
+          parse_non_negative_integer(need_value("--verify-cuda-large-tensors"), "--verify-cuda-large-tensors");
     } else if (arg == "--cuda-vram-bytes") {
       std::string value = need_value("--cuda-vram-bytes");
       char *end = nullptr;
@@ -2302,6 +2366,9 @@ cli_options parse_args(int argc, char **argv) {
   }
   if (options.verify_cuda_tensors > 0 && options.backend == CONVERTER_BACKEND_CPU) {
     fail("--verify-cuda-tensors requires --backend cuda or auto");
+  }
+  if (options.verify_cuda_large_tensors > 0 && options.backend == CONVERTER_BACKEND_CPU) {
+    fail("--verify-cuda-large-tensors requires --backend cuda or auto");
   }
   if (options.cuda_vram_bytes > 0 && options.backend == CONVERTER_BACKEND_CPU) {
     fail("--cuda-vram-bytes requires --backend cuda or auto");
@@ -2363,6 +2430,15 @@ conversion_result convert(const cli_options &options) {
 #else
   cuda_converter_context *cuda_ctx = nullptr;
 #endif
+  const std::set<std::string> verify_cuda_large_keys = select_largest_cuda_tensor_keys(
+      plans,
+      options,
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+      cuda_ctx.get()
+#else
+      cuda_ctx
+#endif
+  );
   uint64_t verify_cuda_remaining = options.verify_cuda_tensors;
 
 #if defined(_WIN32)
@@ -2394,6 +2470,7 @@ conversion_result convert(const cli_options &options) {
           cuda_ctx,
 #endif
           &verify_cuda_remaining,
+          verify_cuda_large_keys,
           timings_ptr);
     }
     if (std::fclose(out) != 0) {
