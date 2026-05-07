@@ -47,6 +47,17 @@ python bench/conversion_bench.py \
 
 When a CUDA-enabled conversion path exists, run the same command with the CUDA
 converter/flags and `--backend cuda` so the JSON/CSV rows are comparable.
+Converter-specific flags can be placed after `--`, which is easier than
+repeating `--converter-arg` for flags that also begin with `--`:
+
+```bash
+python bench/conversion_bench.py \
+  --src /models/model.safetensors \
+  --qtype Q4_K_M \
+  --backend cuda \
+  --runs 3 \
+  -- --backend cuda --verify-cuda-tensors 1
+```
 
 CUDA quantization benchmark:
 

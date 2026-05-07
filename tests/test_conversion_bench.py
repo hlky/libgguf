@@ -105,6 +105,70 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
     assert "cuda_quant_s" in csv_text
 
 
+def test_main_appends_converter_args_after_separator(tmp_path: Path) -> None:
+    src = tmp_path / "model.safetensors"
+    src.write_bytes(b"fake")
+    argv_path = tmp_path / "converter_argv.json"
+    fake_converter = tmp_path / "fake_converter.py"
+    fake_converter.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import json",
+                "import sys",
+                "from pathlib import Path",
+                f"argv_path = Path({str(argv_path)!r})",
+                "args = sys.argv[1:]",
+                "argv_path.write_text(json.dumps(args), encoding='utf-8')",
+                "dst = Path(args[args.index('--dst') + 1])",
+                "dst.write_bytes(b'GGUF fake output')",
+                "print('Timings: total=1s', file=sys.stderr)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fake_converter.chmod(fake_converter.stat().st_mode | 0o111)
+
+    code = conversion_bench.main(
+        [
+            "--src",
+            str(src),
+            "--qtype",
+            "Q4_0",
+            "--converter",
+            str(fake_converter),
+            "--backend",
+            "cuda",
+            "--converter-arg=--legacy-flag",
+            "--converter-arg=legacy-value",
+            "--results-root",
+            str(tmp_path / "results"),
+            "--run-name",
+            "passthrough",
+            "--",
+            "--backend",
+            "cuda",
+            "--verify-cuda-tensors",
+            "1",
+        ]
+    )
+
+    assert code == 0
+    converter_argv = json.loads(argv_path.read_text(encoding="utf-8"))
+    assert converter_argv[-6:] == [
+        "--legacy-flag",
+        "legacy-value",
+        "--backend",
+        "cuda",
+        "--verify-cuda-tensors",
+        "1",
+    ]
+    payload = json.loads((tmp_path / "results" / "passthrough" / "summary.json").read_text(encoding="utf-8"))
+    assert payload["config"]["backend"] == "cuda"
+    assert payload["config"]["extra_args"] == converter_argv[-6:]
+    assert payload["results"][0]["command"][-6:] == converter_argv[-6:]
+
+
 def test_main_returns_failure_for_failed_converter(tmp_path: Path) -> None:
     src = tmp_path / "model.safetensors"
     src.write_bytes(b"fake")

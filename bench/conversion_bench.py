@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
@@ -225,6 +226,14 @@ def positive_int(value: str) -> int:
     return parsed
 
 
+def split_passthrough_args(argv: list[str] | None) -> tuple[list[str], list[str]]:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if "--" not in raw_argv:
+        return raw_argv, []
+    separator_index = raw_argv.index("--")
+    return raw_argv[:separator_index], raw_argv[separator_index + 1 :]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Benchmark libgguf_quantize_gguf end-to-end conversion.")
     parser.add_argument("--src", type=Path, required=True, help="Local .safetensors input path.")
@@ -241,9 +250,14 @@ def main(argv: list[str] | None = None) -> int:
         "--converter-arg",
         action="append",
         default=[],
-        help="Extra argument passed to the converter after standard arguments; repeat as needed.",
+        help=(
+            "Extra argument passed to the converter after standard arguments; repeat as needed. "
+            "Arguments after '--' are also forwarded."
+        ),
     )
-    args = parser.parse_args(argv)
+    benchmark_argv, passthrough_args = split_passthrough_args(argv)
+    args = parser.parse_args(benchmark_argv)
+    extra_args = [*args.converter_arg, *passthrough_args]
 
     src = args.src.resolve()
     if not src.is_file():
@@ -269,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             run_index=run_index,
             threads=args.threads,
             scratch_bytes=args.scratch_bytes,
-            extra_args=args.converter_arg,
+            extra_args=extra_args,
         )
         for run_index in range(1, args.runs + 1)
     ]
@@ -284,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
             "converter": converter,
             "threads": args.threads,
             "scratch_bytes": args.scratch_bytes,
-            "extra_args": args.converter_arg,
+            "extra_args": extra_args,
             "results_dir": str(run_dir),
         },
         "summary": summarize(rows),
