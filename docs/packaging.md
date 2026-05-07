@@ -19,6 +19,9 @@ The default build is CPU-first. It builds the core Python extension and native
 tooling without requiring Torch or CUDA. Native benchmarks are disabled by
 default and are intended for explicit local builds.
 
+Backend tests live under `tests/backends/` in the source tree and are not
+packaged into wheels.
+
 ## Optional CUDA Builds
 
 The CUDA extension is optional and controlled by

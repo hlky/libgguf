@@ -21,7 +21,7 @@ gguf-inspect = "libgguf.inspect:main"
 gguf-validate = "libgguf.inspect:validate_main"
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "src/libgguf/libgguf_numpy/tests", "src/libgguf/libgguf_torch/tests", "src/libgguf/libgguf_cuda/tests"]
+testpaths = ["tests"]
 
 [tool.scikit-build]
 minimum-version = "0.12"

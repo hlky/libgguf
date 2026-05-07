@@ -39,6 +39,7 @@ cmake -S . -B build -DLIBGGUF_BUILD_CUDA_KERNELS=ON
 - `src/libgguf/`: public Python package, row APIs, conversion helpers, and inspection/validation CLIs.
 - `src/libgguf/libgguf_numpy/`, `src/libgguf/libgguf_torch/`, `src/libgguf/libgguf_cuda/`: optional backend packages.
 - `tests/`, `bench/`, `scripts/`, `docs/`: parity tests, benchmark drivers, maintenance scripts, and documentation.
+- `tests/backends/`: backend parity tests for Torch and the optional CUDA extension.
 
 Installed Python inspection CLIs are `gguf-inspect` and `gguf-validate`.
 
