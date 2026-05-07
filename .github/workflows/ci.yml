@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu:
+    name: Linux CPU
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      LIBGGUF_BUILD_CUDA_KERNELS: "OFF"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU Torch
+        run: python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch
+
+      - name: Install package
+        run: python -m pip install ".[test,quantize]" --config-settings=cmake.define.LIBGGUF_BUILD_CUDA_KERNELS=OFF
+
+      - name: Check generated support matrix
+        run: python scripts/generate_support_matrix.py --check
+
+      - name: Check exactness smoke
+        run: python bench/check_exact.py --qtypes Q4_K,Q5_K,IQ2_XS --shapes 1x256 --cases zeros,normal
+
+      - name: Run tests
+        run: python -m pytest -q

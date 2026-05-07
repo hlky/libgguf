@@ -8,6 +8,7 @@ Start here:
 - [CLI](cli.md): Python entry points and the native `libgguf_quantize_gguf` executable.
 - [Python API](python-api.md): stable-ish row APIs, conversion helpers, and experimental APIs.
 - [CUDA](cuda.md): optional Torch CUDA extension, API shape, exactness goals, and limitations.
+- [Packaging](packaging.md): editable/wheel build behavior, optional CUDA builds, and current limitations.
 - [Qtypes](qtypes.md): GGUF qtype families and storage types.
 - [Policy](policy.md): deterministic tensor planning for image-model conversion.
 - [Benchmarks](benchmarks.md): representative RTX 3090 benchmark tables and metric definitions.

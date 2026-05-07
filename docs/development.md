@@ -42,6 +42,16 @@ Check generated docs:
 python scripts/generate_support_matrix.py --check
 ```
 
+## CI
+
+The v1 GitHub Actions workflow is intentionally low-cost: Linux standard
+CPU runners only, with no GPU jobs, larger runners, schedules, artifacts,
+or caches by default.
+
+For public repositories, standard GitHub-hosted runners are free. If the
+repository is private, workflow minutes and storage draw from the repository
+owner's quota and may bill overages to that owner.
+
 ## Benchmarks
 
 Torch backend:
