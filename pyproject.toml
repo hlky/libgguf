@@ -19,6 +19,7 @@ test = ["gguf", "huggingface_hub", "pytest", "requests", "safetensors", "torch",
 [project.scripts]
 gguf-inspect = "libgguf.inspect:main"
 gguf-validate = "libgguf.inspect:validate_main"
+gguf-compare = "libgguf.compare:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

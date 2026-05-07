@@ -17,6 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
 ROOT = Path(__file__).resolve().parents[1]
 
 EXPECTED_SCRIPT_NAMES = {
+    "gguf-compare",
     "gguf-inspect",
     "gguf-validate",
 }
@@ -66,6 +67,7 @@ def test_project_scripts_include_expected_entry_points() -> None:
     scripts = _project_scripts()
 
     assert scripts.keys() == EXPECTED_SCRIPT_NAMES
+    assert scripts["gguf-compare"] == "libgguf.compare:main"
     assert scripts["gguf-inspect"] == "libgguf.inspect:main"
     assert scripts["gguf-validate"] == "libgguf.inspect:validate_main"
 
@@ -109,7 +111,7 @@ def test_inspect_entry_point_targets_resolve_without_conversion_extras() -> None
         sys.meta_path.insert(0, Blocker())
         scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
 
-        for script_name in ("gguf-inspect", "gguf-validate"):
+        for script_name in ("gguf-compare", "gguf-inspect", "gguf-validate"):
             module_name, separator, qualname = scripts[script_name].partition(":")
             assert separator, f"{script_name} target has no callable separator"
             module = importlib.import_module(module_name)
@@ -126,6 +128,7 @@ def test_inspect_entry_point_targets_resolve_without_conversion_extras() -> None
 @pytest.mark.parametrize(
     ("mode", "needle"),
     [
+        ("compare-main", "Compare GGUF tensor descriptors and optional exact content"),
         ("inspect-module", "Inspect GGUF metadata and tensor descriptors"),
         ("validate-main", "Validate GGUF structure without reading tensor payload bytes"),
     ],
@@ -151,6 +154,10 @@ def test_inspect_help_paths_work_without_conversion_extras(mode: str, needle: st
         if sys.argv[1] == "inspect-module":
             sys.argv = ["python -m libgguf.inspect", "--help"]
             runpy.run_module("libgguf.inspect", run_name="__main__", alter_sys=True)
+        elif sys.argv[1] == "compare-main":
+            from libgguf.compare import main
+
+            main(["--help"])
         elif sys.argv[1] == "validate-main":
             from libgguf.inspect import validate_main
 

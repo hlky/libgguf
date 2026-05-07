@@ -41,7 +41,7 @@ cmake -S . -B build -DLIBGGUF_BUILD_CUDA_KERNELS=ON
 - `tests/`, `bench/`, `scripts/`, `docs/`: parity tests, benchmark drivers, maintenance scripts, and documentation.
 - `tests/backends/`: backend parity tests for Torch and the optional CUDA extension.
 
-Installed Python inspection CLIs are `gguf-inspect` and `gguf-validate`.
+Installed Python inspection/comparison CLIs are `gguf-inspect`, `gguf-validate`, and `gguf-compare`.
 
 ## CPU SIMD and Backend Selection
 

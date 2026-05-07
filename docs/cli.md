@@ -1,6 +1,6 @@
 # CLI
 
-libgguf exposes two Python inspection entry points plus one native conversion executable. The documented conversion CLI is the low-memory C++ `libgguf_quantize_gguf` executable.
+libgguf exposes Python inspection/comparison entry points plus one native conversion executable. The documented conversion CLI is the low-memory C++ `libgguf_quantize_gguf` executable.
 
 ## Python Entry Points
 
@@ -8,6 +8,7 @@ libgguf exposes two Python inspection entry points plus one native conversion ex
 | --- | --- | --- |
 | `gguf-inspect` | GGUF metadata and tensor descriptor inspection | experimental |
 | `gguf-validate` | Structural GGUF validation without tensor payload reads | experimental |
+| `gguf-compare` | Exact GGUF descriptor comparison with optional metadata and payload bytes | experimental |
 
 The Python conversion helper API remains experimental/internal. The old Python conversion wrapper modules are retired; use `libgguf_quantize_gguf` for command-line conversion.
 
@@ -84,3 +85,20 @@ Implemented validation options:
 - `--max-array-values N`: maximum metadata array values to keep while parsing; defaults to `0`, use `-1` for full arrays.
 
 `gguf-validate` checks GGUF structure using the inspector and does not read tensor payload bytes. It reports errors for invalid format structure, duplicate tensor names, tensor payload ranges outside the file, and overlapping known tensor ranges. It reports warnings for missing common metadata, unknown qtypes, invalid qtype row widths, and non-monotonic known tensor offsets. The command exits `1` when errors are present and `0` when there are no errors; warnings alone still exit `0`.
+
+## GGUF Comparison
+
+```bash
+gguf-compare left.gguf right.gguf
+gguf-compare left.gguf right.gguf --metadata --tensor-bytes --json
+```
+
+Implemented comparison options:
+
+- `LEFT RIGHT`: GGUF files to compare.
+- `--metadata`: compare metadata dictionaries from inspector output plus duplicate key counts.
+- `--tensor-bytes`: compare raw payload bytes for common tensors when shape, qtype, qtype value, and byte length match.
+- `--json`: emit stable JSON with paths, enabled modes, and difference records.
+- `--max-array-values N`: maximum metadata array values to keep while parsing; descriptor-only comparisons default to `0`, metadata comparisons default to full arrays, and `-1` always means full arrays.
+
+By default, `gguf-compare` compares tensor names/order and descriptor fields that matter for conversion equivalence: shape, qtype, qtype value, and tensor byte length. It ignores tensor payload offsets because equivalent files can differ in metadata layout. The command exits `1` when differences are found and `0` when all requested comparisons match.

@@ -120,6 +120,7 @@ Python entry points:
 
 - `gguf-inspect`: GGUF metadata and tensor descriptor inspection.
 - `gguf-validate`: structural GGUF validation without reading tensor payload bytes.
+- `gguf-compare`: GGUF tensor descriptor comparison with optional metadata and payload byte checks.
 
 Native executable:
 

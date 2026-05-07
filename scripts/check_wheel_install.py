@@ -83,6 +83,7 @@ def _check_wheel_archive(wheel: Path) -> None:
         required_package_files = (
             "libgguf/__init__.py",
             "libgguf/_metadata.py",
+            "libgguf/compare.py",
             "libgguf/imatrix.py",
             "libgguf/inspect.py",
             "libgguf/quantize.py",
@@ -165,6 +166,7 @@ def _check_wheel_archive(wheel: Path) -> None:
                 parser.read_string(archive.read(entry_points_name).decode("utf-8"))
                 console_scripts = parser["console_scripts"] if parser.has_section("console_scripts") else {}
                 expected_console_scripts = {
+                    "gguf-compare": "libgguf.compare:main",
                     "gguf-inspect": "libgguf.inspect:main",
                     "gguf-validate": "libgguf.inspect:validate_main",
                 }
@@ -230,7 +232,7 @@ def _smoke_entry_points(venv_dir: Path, smoke_dir: Path) -> None:
     path = os.pathsep.join([str(scripts_dir), os.environ.get("PATH", "")])
     env = {**os.environ, "PATH": path}
 
-    for command_name in ("gguf-inspect", "gguf-validate"):
+    for command_name in ("gguf-compare", "gguf-inspect", "gguf-validate"):
         _run([command_name, "--help"], cwd=smoke_dir, env=env)
 
     native_name = "libgguf_quantize_gguf"
