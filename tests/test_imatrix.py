@@ -13,6 +13,7 @@ GGUF_MAGIC = b"GGUF"
 GGUF_DEFAULT_ALIGNMENT = 32
 GGML_TYPE_F32 = 0
 GGML_TYPE_F16 = 1
+GGUF_TYPE_UINT32 = 4
 
 
 def _write_legacy_imatrix(path: Path, entries: list[tuple[str, int, list[float]]]) -> None:
@@ -34,6 +35,10 @@ def _gguf_string(value: str) -> bytes:
 def _write_gguf_imatrix(
     path: Path,
     tensors: list[tuple[str, tuple[int, ...], int, list[float]]],
+    *,
+    version: int = 3,
+    alignment: int | None = None,
+    truncate_bytes: int = 0,
 ) -> None:
     offset = 0
     infos = bytearray()
@@ -53,11 +58,19 @@ def _write_gguf_imatrix(
         offset += len(tensor_payload)
 
     header = bytearray(GGUF_MAGIC)
-    header += struct.pack("<IQQ", 3, len(tensors), 0)
+    kv_count = 1 if alignment is not None else 0
+    header += struct.pack("<IQQ", version, len(tensors), kv_count)
+    if alignment is not None:
+        header += _gguf_string("general.alignment")
+        header += struct.pack("<II", GGUF_TYPE_UINT32, alignment)
     header += infos
 
-    padding = (-len(header)) % GGUF_DEFAULT_ALIGNMENT
-    path.write_bytes(bytes(header) + (b"\0" * padding) + bytes(payload))
+    file_alignment = GGUF_DEFAULT_ALIGNMENT if alignment is None or alignment < 1 else alignment
+    padding = (-len(header)) % file_alignment
+    data = bytes(header) + (b"\0" * padding) + bytes(payload)
+    if truncate_bytes:
+        data = data[:-truncate_bytes]
+    path.write_bytes(data)
 
 
 def test_load_imatrix_legacy_divides_ncall_and_returns_contiguous_float32(tmp_path: Path) -> None:
@@ -149,4 +162,95 @@ def test_load_imatrix_gguf_raises_for_no_usable_entries(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="contains no usable entries"):
+        libgguf.load_imatrix(path)
+
+
+def test_load_imatrix_gguf_raises_for_unsupported_version(tmp_path: Path) -> None:
+    path = tmp_path / "unsupported-version.gguf"
+    _write_gguf_imatrix(
+        path,
+        [("blk.0.ffn_gate.weight.counts", (1,), GGML_TYPE_F32, [1.0])],
+        version=4,
+    )
+
+    with pytest.raises(ValueError, match="unsupported GGUF version 4"):
+        libgguf.load_imatrix(path)
+
+
+def test_load_imatrix_gguf_raises_for_zero_alignment(tmp_path: Path) -> None:
+    path = tmp_path / "zero-alignment.gguf"
+    _write_gguf_imatrix(
+        path,
+        [
+            ("blk.0.ffn_gate.weight.in_sum2", (1,), GGML_TYPE_F32, [2.0]),
+            ("blk.0.ffn_gate.weight.counts", (1,), GGML_TYPE_F32, [1.0]),
+        ],
+        alignment=0,
+    )
+
+    with pytest.raises(ValueError, match="invalid GGUF alignment 0"):
+        libgguf.load_imatrix(path)
+
+
+def test_load_imatrix_gguf_raises_for_truncated_header(tmp_path: Path) -> None:
+    path = tmp_path / "truncated-header.gguf"
+    path.write_bytes(GGUF_MAGIC + struct.pack("<I", 3))
+
+    with pytest.raises(ValueError, match="unexpected end of imatrix file"):
+        libgguf.load_imatrix(path)
+
+
+def test_load_imatrix_gguf_raises_for_truncated_metadata_payload(tmp_path: Path) -> None:
+    path = tmp_path / "truncated-metadata.gguf"
+    data = bytearray(GGUF_MAGIC)
+    data += struct.pack("<IQQ", 3, 0, 1)
+    data += _gguf_string("general.alignment")
+    data += struct.pack("<I", GGUF_TYPE_UINT32)
+    data += b"\x20\x00"
+    path.write_bytes(data)
+
+    with pytest.raises(ValueError, match="unexpected end of imatrix file"):
+        libgguf.load_imatrix(path)
+
+
+def test_load_imatrix_gguf_raises_for_truncated_tensor_values(tmp_path: Path) -> None:
+    path = tmp_path / "truncated-values.gguf"
+    _write_gguf_imatrix(
+        path,
+        [
+            ("blk.0.ffn_gate.weight.in_sum2", (2,), GGML_TYPE_F32, [2.0, 4.0]),
+            ("blk.0.ffn_gate.weight.counts", (1,), GGML_TYPE_F32, [1.0]),
+        ],
+        truncate_bytes=1,
+    )
+
+    with pytest.raises(ValueError, match="unexpected end of imatrix file"):
+        libgguf.load_imatrix(path)
+
+
+def test_load_imatrix_gguf_raises_for_malformed_sums_counts_shapes(tmp_path: Path) -> None:
+    path = tmp_path / "shape-mismatch.gguf"
+    _write_gguf_imatrix(
+        path,
+        [
+            ("blk.0.ffn_gate.weight.in_sum2", (3,), GGML_TYPE_F32, [2.0, 4.0, 6.0]),
+            ("blk.0.ffn_gate.weight.counts", (2,), GGML_TYPE_F32, [1.0, 2.0]),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="sums/counts shape mismatch.*blk\\.0\\.ffn_gate\\.weight"):
+        libgguf.load_imatrix(path)
+
+
+def test_load_imatrix_gguf_raises_for_empty_counts(tmp_path: Path) -> None:
+    path = tmp_path / "empty-counts.gguf"
+    _write_gguf_imatrix(
+        path,
+        [
+            ("blk.0.ffn_gate.weight.in_sum2", (2,), GGML_TYPE_F32, [2.0, 4.0]),
+            ("blk.0.ffn_gate.weight.counts", (0,), GGML_TYPE_F32, []),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="counts tensor.*contains no values"):
         libgguf.load_imatrix(path)

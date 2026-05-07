@@ -122,6 +122,8 @@ def _load_gguf_imatrix(f: BinaryIO) -> dict[str, np.ndarray]:
             (alignment,) = _read_struct(f, "I")
         else:
             _skip_value(f, int(value_type))
+    if alignment < 1:
+        raise ValueError(f"invalid GGUF alignment {alignment}")
 
     tensors = []
     for _ in range(int(tensor_count)):
@@ -154,6 +156,8 @@ def _load_gguf_imatrix(f: BinaryIO) -> dict[str, np.ndarray]:
         count_values = counts.get(name)
         if count_values is None:
             raise ValueError(f"missing counts tensor for imatrix entry {name!r}")
+        if count_values.size < 1:
+            raise ValueError(f"imatrix counts tensor for {name!r} contains no values")
         if sum_values.size % count_values.size != 0:
             raise ValueError(f"imatrix sums/counts shape mismatch for {name!r}")
 
