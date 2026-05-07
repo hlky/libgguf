@@ -11,6 +11,7 @@
 #include <map>
 #include <mutex>
 #include <memory>
+#include <random>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -102,6 +103,8 @@ struct cli_options {
   bool cuda_fallback_cpu = false;
   uint64_t verify_cuda_tensors = 0;
   uint64_t verify_cuda_large_tensors = 0;
+  uint64_t verify_cuda_random_tensors = 0;
+  uint64_t seed = 0;
   uint64_t cuda_vram_bytes = 0;
 };
 
@@ -1939,22 +1942,25 @@ bool conversion_plan_uses_cuda(const tensor_plan &plan, const cli_options &optio
 #endif
 }
 
-std::set<std::string> select_largest_cuda_tensor_keys(
+std::set<std::string> select_cuda_verification_tensor_keys(
     const std::vector<tensor_plan> &plans,
     const cli_options &options,
     cuda_converter_context *cuda_ctx) {
-  struct candidate {
+  struct largest_candidate {
     uint64_t expected_nbytes = 0;
     std::string key;
     size_t index = 0;
   };
-  std::vector<candidate> candidates;
+  std::set<std::string> selected;
+  std::vector<largest_candidate> largest_candidates;
+  std::vector<std::string> random_candidates;
   for (size_t i = 0; i < plans.size(); ++i) {
     if (conversion_plan_uses_cuda(plans[i], options, cuda_ctx)) {
-      candidates.push_back({plans[i].expected_nbytes, plans[i].key, i});
+      largest_candidates.push_back({plans[i].expected_nbytes, plans[i].key, i});
+      random_candidates.push_back(plans[i].key);
     }
   }
-  std::sort(candidates.begin(), candidates.end(), [](const candidate &a, const candidate &b) {
+  std::sort(largest_candidates.begin(), largest_candidates.end(), [](const largest_candidate &a, const largest_candidate &b) {
     if (a.expected_nbytes != b.expected_nbytes) {
       return a.expected_nbytes > b.expected_nbytes;
     }
@@ -1964,10 +1970,18 @@ std::set<std::string> select_largest_cuda_tensor_keys(
     return a.index < b.index;
   });
   const size_t selected_count =
-      (size_t)std::min<uint64_t>(options.verify_cuda_large_tensors, (uint64_t)candidates.size());
-  std::set<std::string> selected;
+      (size_t)std::min<uint64_t>(options.verify_cuda_large_tensors, (uint64_t)largest_candidates.size());
   for (size_t i = 0; i < selected_count; ++i) {
-    selected.insert(candidates[i].key);
+    selected.insert(largest_candidates[i].key);
+  }
+  if (options.verify_cuda_random_tensors > 0 && !random_candidates.empty()) {
+    std::mt19937_64 rng(options.seed);
+    std::shuffle(random_candidates.begin(), random_candidates.end(), rng);
+    const size_t random_selected_count =
+        (size_t)std::min<uint64_t>(options.verify_cuda_random_tensors, (uint64_t)random_candidates.size());
+    for (size_t i = 0; i < random_selected_count; ++i) {
+      selected.insert(random_candidates[i]);
+    }
   }
   return selected;
 }
@@ -1980,7 +1994,7 @@ void write_tensor_payload(
     tensor_quant_worker_pool &native_pool,
     cuda_converter_context *cuda_ctx,
     uint64_t *verify_cuda_remaining,
-    const std::set<std::string> &verify_cuda_large_keys,
+    const std::set<std::string> &verify_cuda_selected_keys,
     timing_totals *timings) {
   if (timings) {
     timings->tensors += 1;
@@ -2028,9 +2042,9 @@ void write_tensor_payload(
   }
   const bool verify_cuda_first =
       cuda_quant && verify_cuda_remaining && *verify_cuda_remaining > 0;
-  const bool verify_cuda_large =
-      cuda_quant && verify_cuda_large_keys.find(plan.key) != verify_cuda_large_keys.end();
-  const bool verify_cuda = verify_cuda_first || verify_cuda_large;
+  const bool verify_cuda_selected =
+      cuda_quant && verify_cuda_selected_keys.find(plan.key) != verify_cuda_selected_keys.end();
+  const bool verify_cuda = verify_cuda_first || verify_cuda_selected;
   if (cuda_quant && timings) {
     timings->cuda_tensors += 1;
     if (verify_cuda) {
@@ -2240,6 +2254,9 @@ void print_help() {
   std::puts("                           Compare CUDA tensors against CPU bytes");
   std::puts("  --verify-cuda-large-tensors N");
   std::puts("                           Compare the N largest CUDA tensors against CPU bytes");
+  std::puts("  --verify-cuda-random-tensors N");
+  std::puts("                           Compare N seeded random CUDA tensors against CPU bytes");
+  std::puts("  --seed N                  Seed for random CUDA tensor verification (default: 0)");
   std::puts("  --cuda-vram-bytes N        CUDA device chunk budget in bytes (0 uses --scratch-bytes)");
   std::puts("  --cuda-batch-mb N          CUDA device chunk budget in MiB (alias for --cuda-vram-bytes)");
   std::puts("  --timings                  Print conversion timing breakdown to stderr");
@@ -2340,6 +2357,11 @@ cli_options parse_args(int argc, char **argv) {
     } else if (arg == "--verify-cuda-large-tensors") {
       options.verify_cuda_large_tensors =
           parse_non_negative_integer(need_value("--verify-cuda-large-tensors"), "--verify-cuda-large-tensors");
+    } else if (arg == "--verify-cuda-random-tensors") {
+      options.verify_cuda_random_tensors =
+          parse_non_negative_integer(need_value("--verify-cuda-random-tensors"), "--verify-cuda-random-tensors");
+    } else if (arg == "--seed") {
+      options.seed = parse_non_negative_integer(need_value("--seed"), "--seed");
     } else if (arg == "--cuda-vram-bytes") {
       options.cuda_vram_bytes = parse_non_negative_integer(need_value("--cuda-vram-bytes"), "--cuda-vram-bytes");
     } else if (arg == "--cuda-batch-mb") {
@@ -2371,6 +2393,9 @@ cli_options parse_args(int argc, char **argv) {
   }
   if (options.verify_cuda_large_tensors > 0 && options.backend == CONVERTER_BACKEND_CPU) {
     fail("--verify-cuda-large-tensors requires --backend cuda or auto");
+  }
+  if (options.verify_cuda_random_tensors > 0 && options.backend == CONVERTER_BACKEND_CPU) {
+    fail("--verify-cuda-random-tensors requires --backend cuda or auto");
   }
   if (options.cuda_vram_bytes > 0 && options.backend == CONVERTER_BACKEND_CPU) {
     fail("--cuda-vram-bytes requires --backend cuda or auto");
@@ -2432,7 +2457,7 @@ conversion_result convert(const cli_options &options) {
 #else
   cuda_converter_context *cuda_ctx = nullptr;
 #endif
-  const std::set<std::string> verify_cuda_large_keys = select_largest_cuda_tensor_keys(
+  const std::set<std::string> verify_cuda_selected_keys = select_cuda_verification_tensor_keys(
       plans,
       options,
 #if defined(LIBGGUF_HAS_CUDA_NATIVE)
@@ -2472,7 +2497,7 @@ conversion_result convert(const cli_options &options) {
           cuda_ctx,
 #endif
           &verify_cuda_remaining,
-          verify_cuda_large_keys,
+          verify_cuda_selected_keys,
           timings_ptr);
     }
     if (std::fclose(out) != 0) {

@@ -43,7 +43,9 @@ Implemented native options:
 - `--backend cpu|cuda|auto`: backend for quantized tensor encoding. The default is `auto`; safetensors reads and GGUF writes remain CPU-side for all backends.
 - `--cuda-fallback cpu`: when `--backend cuda` is selected, encode unsupported CUDA qtypes on CPU instead of failing.
 - `--verify-cuda-tensors N|all`: for the first `N` tensors encoded on CUDA, or all CUDA-routed tensors, also encode with CPU and compare the encoded bytes.
-- `--verify-cuda-large-tensors N`: for the `N` largest CUDA-routed tensors by encoded byte size, also encode with CPU and compare the encoded bytes. Combines with `--verify-cuda-tensors` as a union.
+- `--verify-cuda-large-tensors N`: for the `N` largest CUDA-routed tensors by encoded byte size, also encode with CPU and compare the encoded bytes. Combines with other CUDA verification selectors as a union.
+- `--verify-cuda-random-tensors N`: for `N` seeded random CUDA-routed tensors, also encode with CPU and compare the encoded bytes. `0` disables the random selector; values above the CUDA-routed tensor count verify all available candidates.
+- `--seed N`: non-negative integer seed for `--verify-cuda-random-tensors`; defaults to `0`.
 - `--cuda-vram-bytes N`: when `--backend cuda` or `--backend auto` routes tensors to CUDA, use `N` bytes as the CUDA device input/output chunk budget. The default `0` keeps the existing `--scratch-bytes` chunk sizing. Normal CUDA conversion uses two pinned host staging slots, so host RAM can temporarily use up to about `2 * N` in addition to source read buffers.
 - `--cuda-batch-mb N`: MiB alias for `--cuda-vram-bytes`, using `1024*1024` bytes per MiB. Both flags set the same CUDA device chunk budget; when both are present, the later option wins.
 - `--timings`: print conversion timing breakdown to stderr.
