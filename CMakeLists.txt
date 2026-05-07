@@ -273,6 +273,11 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
 endif()
 
 if(LIBGGUF_BUILD_TOOLS)
+  set(LIBGGUF_TOOLS_RUNTIME_DESTINATION "bin")
+  if(DEFINED SKBUILD_SCRIPTS_DIR)
+    set(LIBGGUF_TOOLS_RUNTIME_DESTINATION "${SKBUILD_SCRIPTS_DIR}")
+  endif()
+
   add_executable(
     libgguf_quantize_gguf
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc/quantize_gguf.cpp"
@@ -299,7 +304,7 @@ if(LIBGGUF_BUILD_TOOLS)
     target_compile_options(libgguf_quantize_gguf PRIVATE -O3 -pthread)
     target_link_libraries(libgguf_quantize_gguf PRIVATE m pthread)
   endif()
-  install(TARGETS libgguf_quantize_gguf RUNTIME DESTINATION bin)
+  install(TARGETS libgguf_quantize_gguf RUNTIME DESTINATION "${LIBGGUF_TOOLS_RUNTIME_DESTINATION}")
 endif()
 
 if(LIBGGUF_BUILD_BENCHMARKS)

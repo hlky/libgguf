@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import textwrap
+import venv
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _scripts_dir(venv_dir: Path) -> Path:
+    return venv_dir / ("Scripts" if os.name == "nt" else "bin")
+
+
+def _python(venv_dir: Path) -> Path:
+    return _scripts_dir(venv_dir) / ("python.exe" if os.name == "nt" else "python")
+
+
+def _run(command: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
+    print(f"+ cd {cwd}")
+    print("+ " + " ".join(command))
+    subprocess.run(command, cwd=cwd, env=env, check=True)
+
+
+def _build_wheel(python: str, tmp_dir: Path, no_build_isolation: bool) -> Path:
+    wheelhouse = tmp_dir / "wheelhouse"
+    wheelhouse.mkdir()
+    command = [
+        python,
+        "-m",
+        "pip",
+        "wheel",
+        str(ROOT),
+        "--wheel-dir",
+        str(wheelhouse),
+        "--config-settings=cmake.define.LIBGGUF_BUILD_CUDA_KERNELS=OFF",
+    ]
+    if no_build_isolation:
+        command.append("--no-build-isolation")
+    _run(command, cwd=tmp_dir)
+
+    wheels = sorted(wheelhouse.glob("libgguf-*.whl"))
+    if len(wheels) != 1:
+        names = ", ".join(wheel.name for wheel in wheels) or "none"
+        raise RuntimeError(f"expected one libgguf wheel in {wheelhouse}, found: {names}")
+    return wheels[0]
+
+
+def _create_venv(venv_dir: Path) -> Path:
+    print(f"+ create venv {venv_dir}")
+    venv.EnvBuilder(with_pip=True).create(venv_dir)
+    return _python(venv_dir)
+
+
+def _smoke_python(venv_python: Path, smoke_dir: Path) -> None:
+    code = r"""
+    import numpy as np
+    import libgguf
+    from libgguf import GGMLQuantizationType
+
+    rows = np.arange(64, dtype=np.float32).reshape(2, 32) / np.float32(16.0)
+    encoded = libgguf.quantize_rows(rows, GGMLQuantizationType.Q8_0)
+    decoded = libgguf.dequantize_rows(encoded, GGMLQuantizationType.Q8_0, n_per_row=32)
+
+    assert encoded.dtype == np.uint8
+    assert encoded.shape == (2, libgguf.row_size(GGMLQuantizationType.Q8_0, 32))
+    assert decoded.dtype == np.float32
+    assert decoded.shape == rows.shape
+    assert np.all(np.isfinite(decoded))
+    print("python smoke ok")
+    """
+    _run([str(venv_python), "-c", textwrap.dedent(code)], cwd=smoke_dir)
+
+
+def _smoke_entry_points(venv_dir: Path, smoke_dir: Path) -> None:
+    scripts_dir = _scripts_dir(venv_dir)
+    path = os.pathsep.join([str(scripts_dir), os.environ.get("PATH", "")])
+    env = {**os.environ, "PATH": path}
+
+    for command_name in ("gguf-inspect", "gguf-validate"):
+        _run([command_name, "--help"], cwd=smoke_dir, env=env)
+
+    native_name = "libgguf_quantize_gguf"
+    native_path = shutil.which(native_name, path=path)
+    if native_path is None and os.name == "nt":
+        native_path = shutil.which(f"{native_name}.exe", path=path)
+    if native_path is None:
+        raise RuntimeError(f"{native_name} was not installed on PATH")
+    _run([native_path, "--help"], cwd=smoke_dir, env=env)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build a CPU-only wheel, install it into a fresh venv, and run out-of-repo smoke checks."
+    )
+    parser.add_argument(
+        "--python",
+        default=sys.executable,
+        help="Python interpreter used to build the wheel. Defaults to the current interpreter.",
+    )
+    parser.add_argument(
+        "--no-build-isolation",
+        action="store_true",
+        help="Pass --no-build-isolation to pip wheel for local toolchain debugging.",
+    )
+    parser.add_argument(
+        "--preserve-temp",
+        action="store_true",
+        help="Keep the temporary wheelhouse, venv, and smoke directory after the run.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    temp_parent = Path(tempfile.mkdtemp(prefix="libgguf-wheel-smoke-"))
+    remove_temp = not args.preserve_temp
+    print(f"Temporary workspace: {temp_parent}")
+    if args.preserve_temp:
+        print("Preserving temporary workspace after the run.")
+
+    try:
+        wheel = _build_wheel(args.python, temp_parent, args.no_build_isolation)
+        venv_python = _create_venv(temp_parent / "venv")
+        _run([str(venv_python), "-m", "pip", "install", str(wheel)], cwd=temp_parent)
+        smoke_dir = temp_parent / "smoke"
+        smoke_dir.mkdir()
+        _smoke_python(venv_python, smoke_dir)
+        _smoke_entry_points(temp_parent / "venv", smoke_dir)
+        print(f"Wheel install smoke passed: {wheel}")
+        return 0
+    finally:
+        if remove_temp:
+            shutil.rmtree(temp_parent, ignore_errors=True)
+        else:
+            print(f"Temporary workspace preserved at: {temp_parent}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

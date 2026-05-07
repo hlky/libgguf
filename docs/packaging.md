@@ -22,6 +22,24 @@ default and are intended for explicit local builds.
 Backend tests live under `tests/backends/` in the source tree and are not
 packaged into wheels.
 
+## Manual Wheel Smoke
+
+Use the opt-in wheel install helper before packaging-sensitive changes:
+
+```bash
+python scripts/check_wheel_install.py
+```
+
+The helper builds a CPU-only wheel with
+`LIBGGUF_BUILD_CUDA_KERNELS=OFF`, installs it into a fresh temporary virtual
+environment, and runs import, row API, Python CLI, and native executable
+`--help` smoke checks from outside the source tree. Temporary files are removed
+by default; pass `--preserve-temp` to keep the wheelhouse, venv, and smoke
+directory for debugging.
+
+This remains manual and is intentionally not wired into CI, avoiding extra CI
+minutes until wheel smoke coverage is explicitly enabled.
+
 ## Optional CUDA Builds
 
 The CUDA extension is optional and controlled by
