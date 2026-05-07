@@ -1,7 +1,5 @@
 #include "libgguf_common.h"
-#include "common/libgguf_cpu.h"
-
-#include <cstring>
+#include "common/libgguf_backend.h"
 
 typedef void (*libgguf_tq1_0_kernel_fn)(const float *RESTRICT, block_tq1_0 *RESTRICT, int64_t);
 
@@ -11,9 +9,9 @@ struct libgguf_tq1_0_selection
   libgguf_tq1_0_kernel_fn kernel;
 };
 
-extern "C" void quantize_row_tq1_0_sse2(const float *RESTRICT x, block_tq1_0 *RESTRICT y, int64_t k);
-extern "C" void quantize_row_tq1_0_sse4_1(const float *RESTRICT x, block_tq1_0 *RESTRICT y, int64_t k);
-extern "C" void quantize_row_tq1_0_avx2(const float *RESTRICT x, block_tq1_0 *RESTRICT y, int64_t k);
+#if !LIBGGUF_CPU_BACKEND_REF
+extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_tq1_0)(const float *RESTRICT x, block_tq1_0 *RESTRICT y, int64_t k);
+#endif
 
 void quantize_row_tq1_0(const float *RESTRICT x, block_tq1_0 *RESTRICT y, int64_t k)
 {
@@ -94,13 +92,11 @@ void quantize_row_tq1_0(const float *RESTRICT x, block_tq1_0 *RESTRICT y, int64_
 
 static libgguf_tq1_0_selection libgguf_tq1_0_select_kernel()
 {
-  const libgguf_cpu_features &features = libgguf_get_cpu_features();
-
-  if (features.sse2)
-  {
-    return {"sse2", quantize_row_tq1_0_sse2};
-  }
-  return {"ref", quantize_row_tq1_0};
+#if LIBGGUF_CPU_BACKEND_REF
+  return {LIBGGUF_CPU_BACKEND_NAME, quantize_row_tq1_0};
+#else
+  return {LIBGGUF_CPU_BACKEND_NAME, LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_tq1_0)};
+#endif
 }
 
 static const libgguf_tq1_0_selection &libgguf_tq1_0_selected()
@@ -121,48 +117,21 @@ extern "C" const char *libgguf_tq1_0_backend(void)
 
 extern "C" int libgguf_tq1_0_cpu_supports_backend(const char *backend)
 {
-  const libgguf_cpu_features &features = libgguf_get_cpu_features();
-  if (backend == nullptr)
-  {
-    return 0;
-  }
-  if (std::strcmp(backend, "ref") == 0)
-  {
-    return 1;
-  }
-  if (std::strcmp(backend, "sse2") == 0)
-  {
-    return features.sse2 ? 1 : 0;
-  }
-  if (std::strcmp(backend, "sse4_1") == 0)
-  {
-    return features.sse4_1 ? 1 : 0;
-  }
-  if (std::strcmp(backend, "avx2") == 0)
-  {
-    return features.avx2 ? 1 : 0;
-  }
-  return 0;
+  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
 }
 
 static libgguf_tq1_0_kernel_fn libgguf_tq1_0_kernel_for_backend(const char *backend)
 {
-  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
+  if (libgguf_cpu_backend_is_ref_request(backend))
   {
     return quantize_row_tq1_0;
   }
-  if (std::strcmp(backend, "sse2") == 0 && libgguf_get_cpu_features().sse2)
+#if !LIBGGUF_CPU_BACKEND_REF
+  if (libgguf_cpu_backend_is_compiled_request(backend))
   {
-    return quantize_row_tq1_0_sse2;
+    return LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_tq1_0);
   }
-  if (std::strcmp(backend, "sse4_1") == 0 && libgguf_get_cpu_features().sse4_1)
-  {
-    return quantize_row_tq1_0_sse4_1;
-  }
-  if (std::strcmp(backend, "avx2") == 0 && libgguf_get_cpu_features().avx2)
-  {
-    return quantize_row_tq1_0_avx2;
-  }
+#endif
   return nullptr;
 }
 

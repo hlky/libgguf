@@ -84,7 +84,7 @@ Q/K/TQ/MX/NV kernels are already fast. IQ quant kernels have improved significan
 | `traffic_gb_s` | Estimated decoded plus encoded byte traffic per second for CUDA quant benchmarks. |
 | `roofline_pct` | `traffic_gb_s / 936.2 GB/s * 100` for the RTX 3090 roofline used by the benchmark. |
 | `blocks_per_s` | GGUF quantization blocks processed per second. |
-| CPU default speedup | Ratio versus the default native CPU backend in the benchmark run. |
+| CPU default speedup | Ratio versus the build-configured native CPU backend in the benchmark run. |
 | reg/stack | Register and local stack usage from compiler/disassembly tooling, when collected. |
 
 Resource data such as register count and stack usage is typically collected from `ptxas`/CUDA binary inspection rather than from the Python benchmark itself.

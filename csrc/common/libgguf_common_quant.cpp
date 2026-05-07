@@ -1,5 +1,5 @@
 #include "libgguf_common.h"
-#include "common/libgguf_cpu.h"
+#include "common/libgguf_backend.h"
 
 #include <cstdint>
 #include <cstring>
@@ -26,69 +26,51 @@ struct libgguf_common_quant_backend_fns
   libgguf_make_qp_quants_fn make_qp;
 };
 
-#define LIBGGUF_COMMON_SMALL_BACKEND_DECLS(backend)                                                                 \
-  extern "C" float libgguf_fp16_to_fp32_##backend(ggml_fp16_t h);                                                   \
-  extern "C" ggml_fp16_t libgguf_fp32_to_fp16_##backend(float f);                                                   \
-  extern "C" float libgguf_bf16_to_fp32_##backend(ggml_bf16_t h);                                                   \
-  extern "C" ggml_bf16_t libgguf_fp32_to_bf16_##backend(float f);                                                   \
-  extern "C" float libgguf_e8m0_to_fp32_##backend(uint8_t x);                                                       \
-  extern "C" float libgguf_e8m0_to_fp32_half_##backend(uint8_t x);                                                  \
-  extern "C" float libgguf_ue4m3_to_fp32_##backend(uint8_t x);                                                      \
-  extern "C" uint8_t libgguf_fp32_to_ue4m3_##backend(float x);                                                      \
-  extern "C" int libgguf_best_index_int8_##backend(int n, const int8_t *val, float x);                              \
-  extern "C" int libgguf_best_index_mxfp4_##backend(float x, float e);                                              \
-  extern "C" int libgguf_nearest_int_##backend(float fval);                                                         \
-  extern "C" void libgguf_get_scale_min_k4_##backend(int j, const uint8_t *RESTRICT q, uint8_t *RESTRICT d,         \
-                                                       uint8_t *RESTRICT m);
-
-LIBGGUF_COMMON_SMALL_BACKEND_DECLS(sse2)
-LIBGGUF_COMMON_SMALL_BACKEND_DECLS(sse4_1)
-LIBGGUF_COMMON_SMALL_BACKEND_DECLS(avx2)
-
-extern "C" float libgguf_make_qx_quants_sse2(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
-                                              int rmse_type, const float *RESTRICT qw);
-extern "C" float libgguf_make_q3_quants_sse2(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
-                                              bool do_rmse);
-extern "C" float libgguf_make_qkx2_quants_sse2(int n, int nmax, const float *RESTRICT x,
-                                                const float *RESTRICT weights, uint8_t *RESTRICT L,
-                                                float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                                                float rmin, float rdelta, int nstep, bool use_mad);
-extern "C" float libgguf_make_qkx3_quants_sse2(int n, int nmax, const float *RESTRICT x,
-                                                const float *RESTRICT weights, uint8_t *RESTRICT L,
-                                                float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                                                float rmin, float rdelta, int nstep, bool use_mad);
-extern "C" float libgguf_make_qp_quants_sse2(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L,
-                                              const float *quant_weights);
-
-extern "C" float libgguf_make_qx_quants_sse4_1(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
-                                                int rmse_type, const float *RESTRICT qw);
-extern "C" float libgguf_make_q3_quants_sse4_1(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
-                                                bool do_rmse);
-extern "C" float libgguf_make_qkx2_quants_sse4_1(int n, int nmax, const float *RESTRICT x,
-                                                  const float *RESTRICT weights, uint8_t *RESTRICT L,
-                                                  float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                                                  float rmin, float rdelta, int nstep, bool use_mad);
-extern "C" float libgguf_make_qkx3_quants_sse4_1(int n, int nmax, const float *RESTRICT x,
-                                                  const float *RESTRICT weights, uint8_t *RESTRICT L,
-                                                  float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                                                  float rmin, float rdelta, int nstep, bool use_mad);
-extern "C" float libgguf_make_qp_quants_sse4_1(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L,
-                                                const float *quant_weights);
-
-extern "C" float libgguf_make_qx_quants_avx2(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
-                                              int rmse_type, const float *RESTRICT qw);
-extern "C" float libgguf_make_q3_quants_avx2(int n, int nmax, const float *RESTRICT x, int8_t *RESTRICT L,
-                                              bool do_rmse);
-extern "C" float libgguf_make_qkx2_quants_avx2(int n, int nmax, const float *RESTRICT x,
-                                                const float *RESTRICT weights, uint8_t *RESTRICT L,
-                                                float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                                                float rmin, float rdelta, int nstep, bool use_mad);
-extern "C" float libgguf_make_qkx3_quants_avx2(int n, int nmax, const float *RESTRICT x,
-                                                const float *RESTRICT weights, uint8_t *RESTRICT L,
-                                                float *RESTRICT the_min, uint8_t *RESTRICT Laux,
-                                                float rmin, float rdelta, int nstep, bool use_mad);
-extern "C" float libgguf_make_qp_quants_avx2(int n, int nmax, const float *RESTRICT x, uint8_t *RESTRICT L,
-                                              const float *quant_weights);
+#if !LIBGGUF_CPU_BACKEND_REF
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp16_to_fp32)(ggml_fp16_t h);
+extern "C" ggml_fp16_t LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp32_to_fp16)(float f);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_bf16_to_fp32)(ggml_bf16_t h);
+extern "C" ggml_bf16_t LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp32_to_bf16)(float f);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_e8m0_to_fp32)(uint8_t x);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_e8m0_to_fp32_half)(uint8_t x);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_ue4m3_to_fp32)(uint8_t x);
+extern "C" uint8_t LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp32_to_ue4m3)(float x);
+extern "C" int LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_best_index_int8)(int n, const int8_t *val, float x);
+extern "C" int LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_best_index_mxfp4)(float x, float e);
+extern "C" int LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_nearest_int)(float fval);
+extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_get_scale_min_k4)(int j, const uint8_t *RESTRICT q,
+                                                                     uint8_t *RESTRICT d,
+                                                                     uint8_t *RESTRICT m);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qx_quants)(int n, int nmax,
+                                                                    const float *RESTRICT x,
+                                                                    int8_t *RESTRICT L,
+                                                                    int rmse_type,
+                                                                    const float *RESTRICT qw);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_q3_quants)(int n, int nmax,
+                                                                    const float *RESTRICT x,
+                                                                    int8_t *RESTRICT L,
+                                                                    bool do_rmse);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qkx2_quants)(int n, int nmax,
+                                                                      const float *RESTRICT x,
+                                                                      const float *RESTRICT weights,
+                                                                      uint8_t *RESTRICT L,
+                                                                      float *RESTRICT the_min,
+                                                                      uint8_t *RESTRICT Laux,
+                                                                      float rmin, float rdelta,
+                                                                      int nstep, bool use_mad);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qkx3_quants)(int n, int nmax,
+                                                                      const float *RESTRICT x,
+                                                                      const float *RESTRICT weights,
+                                                                      uint8_t *RESTRICT L,
+                                                                      float *RESTRICT the_min,
+                                                                      uint8_t *RESTRICT Laux,
+                                                                      float rmin, float rdelta,
+                                                                      int nstep, bool use_mad);
+extern "C" float LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qp_quants)(int n, int nmax,
+                                                                    const float *RESTRICT x,
+                                                                    uint8_t *RESTRICT L,
+                                                                    const float *quant_weights);
+#endif
 
 static const libgguf_common_quant_backend_fns REF_BACKEND = {
     "ref",
@@ -111,92 +93,56 @@ static const libgguf_common_quant_backend_fns REF_BACKEND = {
     libgguf_make_qp_quants,
 };
 
+#if !LIBGGUF_CPU_BACKEND_REF
+static const libgguf_common_quant_backend_fns COMPILED_BACKEND = {
+    LIBGGUF_CPU_BACKEND_NAME,
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp16_to_fp32),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp32_to_fp16),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_bf16_to_fp32),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp32_to_bf16),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_e8m0_to_fp32),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_e8m0_to_fp32_half),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_ue4m3_to_fp32),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_fp32_to_ue4m3),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_best_index_int8),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_best_index_mxfp4),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_nearest_int),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_get_scale_min_k4),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qx_quants),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_q3_quants),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qkx2_quants),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qkx3_quants),
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_make_qp_quants),
+};
+#endif
+
+static const libgguf_common_quant_backend_fns &libgguf_common_quant_default_backend()
+{
+#if LIBGGUF_CPU_BACKEND_REF
+  return REF_BACKEND;
+#else
+  return COMPILED_BACKEND;
+#endif
+}
+
 static const libgguf_common_quant_backend_fns *libgguf_common_quant_backend_for_name(const char *backend)
 {
-  const libgguf_cpu_features &features = libgguf_get_cpu_features();
-  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
+  if (libgguf_cpu_backend_is_ref_request(backend))
   {
     return &REF_BACKEND;
   }
-  static const libgguf_common_quant_backend_fns SSE2_BACKEND = {
-      "sse2",
-      libgguf_fp16_to_fp32_sse2,
-      libgguf_fp32_to_fp16_sse2,
-      libgguf_bf16_to_fp32_sse2,
-      libgguf_fp32_to_bf16_sse2,
-      libgguf_e8m0_to_fp32_sse2,
-      libgguf_e8m0_to_fp32_half_sse2,
-      libgguf_ue4m3_to_fp32_sse2,
-      libgguf_fp32_to_ue4m3_sse2,
-      libgguf_best_index_int8_sse2,
-      libgguf_best_index_mxfp4_sse2,
-      libgguf_nearest_int_sse2,
-      libgguf_get_scale_min_k4_sse2,
-      libgguf_make_qx_quants_sse2,
-      libgguf_make_q3_quants_sse2,
-      libgguf_make_qkx2_quants_sse2,
-      libgguf_make_qkx3_quants_sse2,
-      libgguf_make_qp_quants_sse2,
-  };
-  static const libgguf_common_quant_backend_fns SSE4_1_BACKEND = {
-      "sse4_1",
-      libgguf_fp16_to_fp32_sse4_1,
-      libgguf_fp32_to_fp16_sse4_1,
-      libgguf_bf16_to_fp32_sse4_1,
-      libgguf_fp32_to_bf16_sse4_1,
-      libgguf_e8m0_to_fp32_sse4_1,
-      libgguf_e8m0_to_fp32_half_sse4_1,
-      libgguf_ue4m3_to_fp32_sse4_1,
-      libgguf_fp32_to_ue4m3_sse4_1,
-      libgguf_best_index_int8_sse4_1,
-      libgguf_best_index_mxfp4_sse4_1,
-      libgguf_nearest_int_sse4_1,
-      libgguf_get_scale_min_k4_sse4_1,
-      libgguf_make_qx_quants_sse4_1,
-      libgguf_make_q3_quants_sse4_1,
-      libgguf_make_qkx2_quants_sse4_1,
-      libgguf_make_qkx3_quants_sse4_1,
-      libgguf_make_qp_quants_sse4_1,
-  };
-  static const libgguf_common_quant_backend_fns AVX2_BACKEND = {
-      "avx2",
-      libgguf_fp16_to_fp32_avx2,
-      libgguf_fp32_to_fp16_avx2,
-      libgguf_bf16_to_fp32_avx2,
-      libgguf_fp32_to_bf16_avx2,
-      libgguf_e8m0_to_fp32_avx2,
-      libgguf_e8m0_to_fp32_half_avx2,
-      libgguf_ue4m3_to_fp32_avx2,
-      libgguf_fp32_to_ue4m3_avx2,
-      libgguf_best_index_int8_avx2,
-      libgguf_best_index_mxfp4_avx2,
-      libgguf_nearest_int_avx2,
-      libgguf_get_scale_min_k4_avx2,
-      libgguf_make_qx_quants_avx2,
-      libgguf_make_q3_quants_avx2,
-      libgguf_make_qkx2_quants_avx2,
-      libgguf_make_qkx3_quants_avx2,
-      libgguf_make_qp_quants_avx2,
-  };
-
-  if (std::strcmp(backend, "sse2") == 0 && features.sse2)
+#if !LIBGGUF_CPU_BACKEND_REF
+  if (libgguf_cpu_backend_is_compiled_request(backend))
   {
-    return &SSE2_BACKEND;
+    return &COMPILED_BACKEND;
   }
-  if (std::strcmp(backend, "sse4_1") == 0 && features.sse4_1)
-  {
-    return &SSE4_1_BACKEND;
-  }
-  if (std::strcmp(backend, "avx2") == 0 && features.avx2)
-  {
-    return &AVX2_BACKEND;
-  }
+#endif
   return nullptr;
 }
 
 static const libgguf_common_quant_backend_fns *&libgguf_common_quant_selected_slot()
 {
-  static const libgguf_common_quant_backend_fns *selected = &REF_BACKEND;
+  static const libgguf_common_quant_backend_fns *selected = &libgguf_common_quant_default_backend();
   return selected;
 }
 
@@ -212,11 +158,16 @@ extern "C" const char *libgguf_common_quant_backend(void)
 
 extern "C" int libgguf_common_quant_cpu_supports_backend(const char *backend)
 {
-  return libgguf_common_quant_backend_for_name(backend) ? 1 : 0;
+  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
 }
 
 extern "C" int libgguf_common_quant_set_backend(const char *backend)
 {
+  if (backend != nullptr && std::strcmp(backend, "auto") == 0)
+  {
+    libgguf_common_quant_selected_slot() = &libgguf_common_quant_default_backend();
+    return 1;
+  }
   const libgguf_common_quant_backend_fns *selected = libgguf_common_quant_backend_for_name(backend);
   if (!selected)
   {

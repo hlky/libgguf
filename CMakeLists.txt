@@ -8,11 +8,31 @@ option(LIBGGUF_BUILD_BENCHMARKS "Build native libgguf benchmark binaries" OFF)
 option(LIBGGUF_BUILD_TOOLS "Build native libgguf command line tools" ON)
 set(LIBGGUF_BUILD_CUDA_KERNELS "AUTO" CACHE STRING "Build the optional libgguf_cuda Torch CUDA extension (AUTO, ON, or OFF)")
 set_property(CACHE LIBGGUF_BUILD_CUDA_KERNELS PROPERTY STRINGS AUTO ON OFF)
+set(LIBGGUF_CPU_BACKEND "REF" CACHE STRING "CPU row backend to compile (REF, SSE2, SSE4_1, or AVX2)")
+set_property(CACHE LIBGGUF_CPU_BACKEND PROPERTY STRINGS REF SSE2 SSE4_1 AVX2)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+string(TOUPPER "${LIBGGUF_CPU_BACKEND}" LIBGGUF_CPU_BACKEND_UPPER)
+set(LIBGGUF_VALID_CPU_BACKENDS REF SSE2 SSE4_1 AVX2)
+if(NOT LIBGGUF_CPU_BACKEND_UPPER IN_LIST LIBGGUF_VALID_CPU_BACKENDS)
+  message(FATAL_ERROR "LIBGGUF_CPU_BACKEND must be one of: REF, SSE2, SSE4_1, AVX2")
+endif()
+
+set(LIBGGUF_X86_PROCESSOR OFF)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64|X86|x86|i[3-6]86)$")
+  set(LIBGGUF_X86_PROCESSOR ON)
+endif()
+
+if(NOT LIBGGUF_CPU_BACKEND_UPPER STREQUAL "REF" AND NOT LIBGGUF_X86_PROCESSOR)
+  message(FATAL_ERROR "LIBGGUF_CPU_BACKEND=${LIBGGUF_CPU_BACKEND_UPPER} requires an x86/x86_64 target")
+endif()
+
+string(TOLOWER "${LIBGGUF_CPU_BACKEND_UPPER}" LIBGGUF_CPU_BACKEND_LOWER)
+message(STATUS "libgguf CPU backend: ${LIBGGUF_CPU_BACKEND_UPPER}")
 
 file(
   GLOB_RECURSE LIBGGUF_NATIVE_SOURCES
@@ -21,6 +41,11 @@ file(
 )
 list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\]_libgguf_module\\.cpp$")
 list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\]quantize_gguf\\.cpp$")
+foreach(backend_dir IN ITEMS sse2 sse4_1 avx2)
+  if(NOT LIBGGUF_CPU_BACKEND_LOWER STREQUAL backend_dir)
+    list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\](common|dequant|quant)[/\\\\]${backend_dir}[/\\\\].*\\.cpp$")
+  endif()
+endforeach()
 
 add_library(libgguf_objects OBJECT ${LIBGGUF_NATIVE_SOURCES})
 target_include_directories(
@@ -31,7 +56,12 @@ target_include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
 )
-target_compile_definitions(libgguf_objects PRIVATE NDEBUG=1)
+target_compile_definitions(
+  libgguf_objects
+  PRIVATE
+    NDEBUG=1
+    LIBGGUF_CPU_BACKEND_${LIBGGUF_CPU_BACKEND_UPPER}=1
+)
 
 if(MSVC)
   target_compile_options(
@@ -52,7 +82,7 @@ else()
   target_link_libraries(libgguf_objects PUBLIC m pthread)
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64|X86|x86|i[3-6]86)$")
+if(LIBGGUF_X86_PROCESSOR)
   foreach(source IN LISTS LIBGGUF_NATIVE_SOURCES)
     get_filename_component(source_name "${source}" NAME)
     get_filename_component(source_dir "${source}" DIRECTORY)

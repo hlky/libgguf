@@ -1,14 +1,14 @@
 #include "libgguf_common.h"
-#include "common/libgguf_cpu.h"
+#include "common/libgguf_backend.h"
 #include "libgguf_tables.h"
 
 #include <cstring>
 
 typedef void (*libgguf_iq4_xs_kernel_fn)(const float *RESTRICT, block_iq4_xs *RESTRICT, int64_t);
 
-extern "C" void quantize_row_iq4_xs_sse2(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
-extern "C" void quantize_row_iq4_xs_sse4_1(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
-extern "C" void quantize_row_iq4_xs_avx2(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
+#if !LIBGGUF_CPU_BACKEND_REF
+extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_iq4_xs)(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
+#endif
 
 static void quantize_row_iq4_nl_impl(const int super_block_size, const int block_size, const float *RESTRICT x,
                                      ggml_fp16_t *dh, uint8_t *q4, uint16_t *scales_h, uint8_t *scales_l,
@@ -153,29 +153,22 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
 
 static libgguf_iq4_xs_kernel_fn libgguf_iq4_xs_kernel_for_backend(const char *backend)
 {
-  const libgguf_cpu_features &features = libgguf_get_cpu_features();
-  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
+  if (libgguf_cpu_backend_is_ref_request(backend))
   {
     return quantize_row_iq4_xs;
   }
-  if (std::strcmp(backend, "sse2") == 0 && features.sse2)
+#if !LIBGGUF_CPU_BACKEND_REF
+  if (libgguf_cpu_backend_is_compiled_request(backend))
   {
-    return quantize_row_iq4_xs_sse2;
+    return LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_iq4_xs);
   }
-  if (std::strcmp(backend, "sse4_1") == 0 && features.sse4_1)
-  {
-    return quantize_row_iq4_xs_sse4_1;
-  }
-  if (std::strcmp(backend, "avx2") == 0 && features.avx2)
-  {
-    return quantize_row_iq4_xs_avx2;
-  }
+#endif
   return nullptr;
 }
 
 extern "C" int libgguf_iq4_xs_cpu_supports_backend(const char *backend)
 {
-  return libgguf_iq4_xs_kernel_for_backend(backend) ? 1 : 0;
+  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
 }
 
 extern "C" size_t libgguf_quantize_iq4_xs_for_backend(

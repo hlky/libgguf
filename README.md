@@ -78,6 +78,7 @@ The build backend is `scikit-build-core`. Native builds require CMake >=3.18 and
 
 Useful CMake options:
 
+- `LIBGGUF_CPU_BACKEND=REF|SSE2|SSE4_1|AVX2`: native CPU row backend to compile, default `REF`.
 - `LIBGGUF_BUILD_CUDA_KERNELS=AUTO|ON|OFF`: optional CUDA Torch extension build, default `AUTO`.
 - `LIBGGUF_BUILD_TOOLS=ON`: build native command-line tools, default `ON`.
 - `LIBGGUF_BUILD_BENCHMARKS=OFF`: build native benchmark binaries, default `OFF`.

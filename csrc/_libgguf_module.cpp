@@ -2205,7 +2205,7 @@ static PyObject *py_dequantize_for_backend(PyObject *, PyObject *args)
   if (written == 0 && values != 0)
   {
     Py_DECREF(out);
-    PyErr_SetString(PyExc_ValueError, "unsupported dequant backend for this CPU");
+    PyErr_SetString(PyExc_ValueError, "unsupported dequant backend for this build");
     return nullptr;
   }
   if (written != values * sizeof(float))
@@ -2234,7 +2234,7 @@ static PyObject *py_q4_0_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q4_0_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q4_0, "unsupported Q4_0 backend for this CPU", libgguf_quantize_q4_0_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q4_0, "unsupported Q4_0 backend for this build", libgguf_quantize_q4_0_for_backend);
 }
 
 static PyObject *py_q8_0_backend(PyObject *, PyObject *)
@@ -2258,7 +2258,7 @@ static PyObject *py_q8_0_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q8_0_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q8_0, "unsupported Q8_0 backend for this CPU", libgguf_quantize_q8_0_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q8_0, "unsupported Q8_0 backend for this build", libgguf_quantize_q8_0_for_backend);
 }
 
 static PyObject *py_cpu_supports_quant_backend(PyObject *args, int (*supports_backend)(const char *))
@@ -2287,7 +2287,7 @@ static PyObject *py_q1_0_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q1_0_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q1_0, "unsupported Q1_0 backend for this CPU", libgguf_quantize_q1_0_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q1_0, "unsupported Q1_0 backend for this build", libgguf_quantize_q1_0_for_backend);
 }
 
 static PyObject *py_q4_1_backend(PyObject *, PyObject *)
@@ -2302,7 +2302,7 @@ static PyObject *py_q4_1_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q4_1_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q4_1, "unsupported Q4_1 backend for this CPU", libgguf_quantize_q4_1_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q4_1, "unsupported Q4_1 backend for this build", libgguf_quantize_q4_1_for_backend);
 }
 
 static PyObject *py_q5_0_backend(PyObject *, PyObject *)
@@ -2317,7 +2317,7 @@ static PyObject *py_q5_0_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q5_0_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q5_0, "unsupported Q5_0 backend for this CPU", libgguf_quantize_q5_0_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q5_0, "unsupported Q5_0 backend for this build", libgguf_quantize_q5_0_for_backend);
 }
 
 static PyObject *py_q5_1_backend(PyObject *, PyObject *)
@@ -2332,7 +2332,7 @@ static PyObject *py_q5_1_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q5_1_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q5_1, "unsupported Q5_1 backend for this CPU", libgguf_quantize_q5_1_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q5_1, "unsupported Q5_1 backend for this build", libgguf_quantize_q5_1_for_backend);
 }
 
 static PyObject *py_mxfp4_backend(PyObject *, PyObject *)
@@ -2347,7 +2347,7 @@ static PyObject *py_mxfp4_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_mxfp4_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_MXFP4, "unsupported MXFP4 backend for this CPU", libgguf_quantize_mxfp4_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_MXFP4, "unsupported MXFP4 backend for this build", libgguf_quantize_mxfp4_for_backend);
 }
 
 static PyObject *py_nvfp4_backend(PyObject *, PyObject *)
@@ -2362,7 +2362,7 @@ static PyObject *py_nvfp4_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_nvfp4_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_NVFP4, "unsupported NVFP4 backend for this CPU", libgguf_quantize_nvfp4_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_NVFP4, "unsupported NVFP4 backend for this build", libgguf_quantize_nvfp4_for_backend);
 }
 
 static PyObject *py_q2_k_backend(PyObject *, PyObject *)
@@ -2377,7 +2377,7 @@ static PyObject *py_q2_k_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q2_k_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q2_K, "unsupported Q2_K backend for this CPU", libgguf_quantize_q2_k_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q2_K, "unsupported Q2_K backend for this build", libgguf_quantize_q2_k_for_backend);
 }
 
 static PyObject *py_q3_k_backend(PyObject *, PyObject *)
@@ -2392,7 +2392,7 @@ static PyObject *py_q3_k_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q3_k_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q3_K, "unsupported Q3_K backend for this CPU", libgguf_quantize_q3_k_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q3_K, "unsupported Q3_K backend for this build", libgguf_quantize_q3_k_for_backend);
 }
 
 static PyObject *py_q4_k_backend(PyObject *, PyObject *)
@@ -2416,7 +2416,7 @@ static PyObject *py_q4_k_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q4_k_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q4_K, "unsupported Q4_K backend for this CPU", libgguf_quantize_q4_k_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q4_K, "unsupported Q4_K backend for this build", libgguf_quantize_q4_k_for_backend);
 }
 
 static PyObject *py_q5_k_backend(PyObject *, PyObject *)
@@ -2431,7 +2431,7 @@ static PyObject *py_q5_k_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q5_k_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q5_K, "unsupported Q5_K backend for this CPU", libgguf_quantize_q5_k_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q5_K, "unsupported Q5_K backend for this build", libgguf_quantize_q5_k_for_backend);
 }
 
 static PyObject *py_q6_k_backend(PyObject *, PyObject *)
@@ -2446,7 +2446,7 @@ static PyObject *py_q6_k_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_q6_k_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_Q6_K, "unsupported Q6_K backend for this CPU", libgguf_quantize_q6_k_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_Q6_K, "unsupported Q6_K backend for this build", libgguf_quantize_q6_k_for_backend);
 }
 
 static PyObject *py_iq4_nl_cpu_supports_backend(PyObject *, PyObject *args)
@@ -2465,7 +2465,7 @@ static PyObject *py_iq4_nl_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_iq4_nl_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_IQ4_NL, "unsupported IQ4_NL backend for this CPU", libgguf_quantize_iq4_nl_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_IQ4_NL, "unsupported IQ4_NL backend for this build", libgguf_quantize_iq4_nl_for_backend);
 }
 
 static PyObject *py_iq4_xs_cpu_supports_backend(PyObject *, PyObject *args)
@@ -2475,7 +2475,7 @@ static PyObject *py_iq4_xs_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_iq4_xs_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_IQ4_XS, "unsupported IQ4_XS backend for this CPU", libgguf_quantize_iq4_xs_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_IQ4_XS, "unsupported IQ4_XS backend for this build", libgguf_quantize_iq4_xs_for_backend);
 }
 
 static PyObject *py_tq1_0_backend(PyObject *, PyObject *)
@@ -2490,7 +2490,7 @@ static PyObject *py_tq1_0_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_tq1_0_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_TQ1_0, "unsupported TQ1_0 backend for this CPU", libgguf_quantize_tq1_0_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_TQ1_0, "unsupported TQ1_0 backend for this build", libgguf_quantize_tq1_0_for_backend);
 }
 
 static PyObject *py_tq2_0_backend(PyObject *, PyObject *)
@@ -2514,7 +2514,7 @@ static PyObject *py_tq2_0_cpu_supports_backend(PyObject *, PyObject *args)
 
 static PyObject *py_quantize_tq2_0_for_backend(PyObject *, PyObject *args)
 {
-  return py_quantize_for_backend(args, GGML_TYPE_TQ2_0, "unsupported TQ2_0 backend for this CPU", libgguf_quantize_tq2_0_for_backend);
+  return py_quantize_for_backend(args, GGML_TYPE_TQ2_0, "unsupported TQ2_0 backend for this build", libgguf_quantize_tq2_0_for_backend);
 }
 
 static PyObject *py_common_quant_backend(PyObject *, PyObject *)
@@ -2545,7 +2545,7 @@ static PyObject *py_common_quant_set_backend(PyObject *, PyObject *args)
   }
   if (!libgguf_common_quant_set_backend(backend))
   {
-    PyErr_SetString(PyExc_ValueError, "unsupported common quant backend for this CPU");
+    PyErr_SetString(PyExc_ValueError, "unsupported common quant backend for this build");
     return nullptr;
   }
   Py_RETURN_NONE;
@@ -2561,7 +2561,7 @@ static PyObject *py_common_quant_probe_for_backend(PyObject *, PyObject *args)
   const uint64_t probe = libgguf_common_quant_probe_for_backend(backend);
   if (probe == 0)
   {
-    PyErr_SetString(PyExc_ValueError, "unsupported common quant backend for this CPU");
+    PyErr_SetString(PyExc_ValueError, "unsupported common quant backend for this build");
     return nullptr;
   }
   return PyLong_FromUnsignedLongLong((unsigned long long)probe);
@@ -2595,7 +2595,7 @@ static PyObject *py_storage_set_backend(PyObject *, PyObject *args)
   }
   if (!libgguf_storage_set_backend(backend))
   {
-    PyErr_SetString(PyExc_ValueError, "unsupported storage backend for this CPU");
+    PyErr_SetString(PyExc_ValueError, "unsupported storage backend for this build");
     return nullptr;
   }
   Py_RETURN_NONE;

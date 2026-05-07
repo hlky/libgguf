@@ -45,11 +45,20 @@ Installed Python inspection CLIs are `gguf-inspect` and `gguf-validate`.
 
 ## CPU SIMD and Backend Selection
 
-On x86 builds, CMake includes the SIMD source variants and applies per-source flags for `sse2`, `sse4_1`, and `avx2` files. Runtime code probes CPU features before using those implementations, so unsupported instruction sets fall back to a supported backend or `ref`. Backend-specific private hooks exist so tests can compare `ref` with supported SIMD implementations for byte/value parity.
+Native CPU backend selection is a build-time contract. CMake compiles one row backend via
+`LIBGGUF_CPU_BACKEND=REF|SSE2|SSE4_1|AVX2`, with `REF` as the default. Optimized
+values include only that SIMD source directory and apply the matching per-source
+flags, so a produced library or wheel has one default CPU backend instead of
+runtime dispatch among several machine-specific implementations.
 
-Use runtime auto dispatch as the normal policy. Current defaults are hard-coded preferences by operation/qtype, not benchmark results measured on the user's CPU, so do not treat one benchmark machine as a universal compile-time choice.
+Use `REF` for portable builds and deterministic reference behavior. Choose `SSE2`,
+`SSE4_1`, or `AVX2` only when the build artifact targets CPUs with that instruction
+set. Backend-specific private hooks remain so tests can compare the compiled SIMD
+backend with `ref` for byte/value parity.
 
-If reproducibility or benchmarking needs backend pinning later, add an explicit documented override and keep auto dispatch as the default user path. If portable non-x86 or reference-only builds become a release target, add a CMake option to control SIMD source inclusion instead of replacing runtime dispatch.
+Benchmark results on one CPU should not become universal defaults. If release wheels
+need multiple CPU targets later, build separate artifacts with explicit
+`LIBGGUF_CPU_BACKEND` values rather than adding host-dependent selection.
 
 ## Tests
 

@@ -39,6 +39,7 @@ CMake options exposed by the project:
 | `LIBGGUF_BUILD_TOOLS` | `ON` | Build native command-line tools such as `libgguf_quantize_gguf`. |
 | `LIBGGUF_BUILD_BENCHMARKS` | `OFF` | Build native benchmark binaries. |
 | `LIBGGUF_BUILD_CUDA_KERNELS` | `AUTO` | Build the optional `libgguf_cuda` Torch CUDA extension. Values: `AUTO`, `ON`, `OFF`. |
+| `LIBGGUF_CPU_BACKEND` | `REF` | Native CPU row backend to compile. Values: `REF`, `SSE2`, `SSE4_1`, `AVX2`. |
 
 Example explicit native build:
 
@@ -46,6 +47,11 @@ Example explicit native build:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLIBGGUF_BUILD_TOOLS=ON
 cmake --build build --config Release
 ```
+
+Optimized CPU backends are build-time choices, not runtime auto-dispatch. Use
+`LIBGGUF_CPU_BACKEND=REF` for portable/reference builds, or choose an x86 SIMD
+backend explicitly for wheels or local builds targeting machines with that
+instruction set.
 
 ## CUDA Requirements
 

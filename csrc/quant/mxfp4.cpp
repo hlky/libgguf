@@ -1,8 +1,6 @@
 #include "libgguf_common.h"
-#include "common/libgguf_cpu.h"
+#include "common/libgguf_backend.h"
 #include "libgguf_tables.h"
-
-#include <cstring>
 
 typedef void (*libgguf_mxfp4_kernel_fn)(const float *RESTRICT, block_mxfp4 *RESTRICT, int64_t);
 
@@ -12,9 +10,9 @@ struct libgguf_mxfp4_selection
   libgguf_mxfp4_kernel_fn kernel;
 };
 
-extern "C" void quantize_row_mxfp4_sse2(const float *RESTRICT x, block_mxfp4 *RESTRICT y, int64_t k);
-extern "C" void quantize_row_mxfp4_sse4_1(const float *RESTRICT x, block_mxfp4 *RESTRICT y, int64_t k);
-extern "C" void quantize_row_mxfp4_avx2(const float *RESTRICT x, block_mxfp4 *RESTRICT y, int64_t k);
+#if !LIBGGUF_CPU_BACKEND_REF
+extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_mxfp4)(const float *RESTRICT x, block_mxfp4 *RESTRICT y, int64_t k);
+#endif
 
 void quantize_row_mxfp4(const float *RESTRICT x, block_mxfp4 *RESTRICT y, int64_t k)
 {
@@ -57,15 +55,11 @@ void quantize_row_mxfp4(const float *RESTRICT x, block_mxfp4 *RESTRICT y, int64_
 
 static libgguf_mxfp4_selection libgguf_mxfp4_select_kernel()
 {
-  const libgguf_cpu_features &features = libgguf_get_cpu_features();
-
-  if (features.avx2)
-    return {"avx2", quantize_row_mxfp4_avx2};
-  if (features.sse4_1)
-    return {"sse4_1", quantize_row_mxfp4_sse4_1};
-  if (features.sse2)
-    return {"sse2", quantize_row_mxfp4_sse2};
-  return {"ref", quantize_row_mxfp4};
+#if LIBGGUF_CPU_BACKEND_REF
+  return {LIBGGUF_CPU_BACKEND_NAME, quantize_row_mxfp4};
+#else
+  return {LIBGGUF_CPU_BACKEND_NAME, LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_mxfp4)};
+#endif
 }
 
 static const libgguf_mxfp4_selection &libgguf_mxfp4_selected()
@@ -81,30 +75,17 @@ extern "C" const char *libgguf_mxfp4_backend(void)
 
 extern "C" int libgguf_mxfp4_cpu_supports_backend(const char *backend)
 {
-  const libgguf_cpu_features &features = libgguf_get_cpu_features();
-  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
-    return 1;
-  if (std::strcmp(backend, "sse2") == 0)
-    return features.sse2 ? 1 : 0;
-  if (std::strcmp(backend, "sse4_1") == 0)
-    return features.sse4_1 ? 1 : 0;
-  if (std::strcmp(backend, "avx2") == 0)
-    return features.avx2 ? 1 : 0;
-  return 0;
+  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
 }
 
 static libgguf_mxfp4_kernel_fn libgguf_mxfp4_kernel_for_backend(const char *backend)
 {
-  if (!libgguf_mxfp4_cpu_supports_backend(backend))
-    return nullptr;
-  if (backend == nullptr || std::strcmp(backend, "ref") == 0)
+  if (libgguf_cpu_backend_is_ref_request(backend))
     return quantize_row_mxfp4;
-  if (std::strcmp(backend, "sse2") == 0)
-    return quantize_row_mxfp4_sse2;
-  if (std::strcmp(backend, "sse4_1") == 0)
-    return quantize_row_mxfp4_sse4_1;
-  if (std::strcmp(backend, "avx2") == 0)
-    return quantize_row_mxfp4_avx2;
+#if !LIBGGUF_CPU_BACKEND_REF
+  if (libgguf_cpu_backend_is_compiled_request(backend))
+    return LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_mxfp4);
+#endif
   return nullptr;
 }
 

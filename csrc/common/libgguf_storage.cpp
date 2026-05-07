@@ -1,8 +1,7 @@
 #include "libgguf_storage.h"
+#include "common/libgguf_backend.h"
 
 #include <cstring>
-
-#include "libgguf_cpu.h"
 
 typedef void (*libgguf_store_bf16_fn)(const float *src, ggml_bf16_t *dst, size_t n);
 
@@ -20,29 +19,30 @@ static void libgguf_store_bf16_ref_impl(const float *src, ggml_bf16_t *dst, size
   }
 }
 
-extern "C" void libgguf_store_bf16_sse2(const float *src, ggml_bf16_t *dst, size_t n);
-extern "C" void libgguf_store_bf16_sse4_1(const float *src, ggml_bf16_t *dst, size_t n);
-extern "C" void libgguf_store_bf16_avx2(const float *src, ggml_bf16_t *dst, size_t n);
+#if !LIBGGUF_CPU_BACKEND_REF
+extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_store_bf16)(const float *src, ggml_bf16_t *dst, size_t n);
+#endif
 
 static const libgguf_storage_backend_fns REF_BACKEND = {
     "ref",
     libgguf_store_bf16_ref_impl,
 };
 
-static const libgguf_storage_backend_fns SSE2_BACKEND = {
-    "sse2",
-    libgguf_store_bf16_sse2,
+#if !LIBGGUF_CPU_BACKEND_REF
+static const libgguf_storage_backend_fns COMPILED_BACKEND = {
+    LIBGGUF_CPU_BACKEND_NAME,
+    LIBGGUF_CPU_BACKEND_SYMBOL(libgguf_store_bf16),
 };
+#endif
 
-static const libgguf_storage_backend_fns SSE4_1_BACKEND = {
-    "sse4_1",
-    libgguf_store_bf16_sse4_1,
-};
-
-static const libgguf_storage_backend_fns AVX2_BACKEND = {
-    "avx2",
-    libgguf_store_bf16_avx2,
-};
+static const libgguf_storage_backend_fns &libgguf_storage_default_backend()
+{
+#if LIBGGUF_CPU_BACKEND_REF
+  return REF_BACKEND;
+#else
+  return COMPILED_BACKEND;
+#endif
+}
 
 static const libgguf_storage_backend_fns *libgguf_storage_backend_for_name(const char *backend)
 {
@@ -56,48 +56,24 @@ static const libgguf_storage_backend_fns *libgguf_storage_backend_for_name(const
     return &REF_BACKEND;
   }
 
-  const libgguf_cpu_features &features = libgguf_get_cpu_features();
-  if (std::strcmp(backend, "sse2") == 0 && features.sse2)
+#if !LIBGGUF_CPU_BACKEND_REF
+  if (libgguf_cpu_backend_is_compiled_request(backend))
   {
-    return &SSE2_BACKEND;
+    return &COMPILED_BACKEND;
   }
-  if (std::strcmp(backend, "sse4_1") == 0 && features.sse4_1)
-  {
-    return &SSE4_1_BACKEND;
-  }
-  if (std::strcmp(backend, "avx2") == 0 && features.avx2)
-  {
-    return &AVX2_BACKEND;
-  }
+#endif
   return nullptr;
 }
 
-static const libgguf_storage_backend_fns *&libgguf_storage_override_slot()
+static const libgguf_storage_backend_fns *&libgguf_storage_selected_slot()
 {
-  static const libgguf_storage_backend_fns *override_selected = nullptr;
-  return override_selected;
+  static const libgguf_storage_backend_fns *selected = &libgguf_storage_default_backend();
+  return selected;
 }
 
 static const libgguf_storage_backend_fns &libgguf_storage_selected()
 {
-  static const libgguf_storage_backend_fns *auto_selected = []() {
-    const libgguf_cpu_features &features = libgguf_get_cpu_features();
-    if (features.avx2)
-    {
-      return &AVX2_BACKEND;
-    }
-    if (features.sse4_1)
-    {
-      return &SSE4_1_BACKEND;
-    }
-    if (features.sse2)
-    {
-      return &SSE2_BACKEND;
-    }
-    return &REF_BACKEND;
-  }();
-  const libgguf_storage_backend_fns *override_selected = libgguf_storage_override_slot();
-  return *(override_selected ? override_selected : auto_selected);
+  return *libgguf_storage_selected_slot();
 }
 
 extern "C" const char *libgguf_storage_backend(void)
@@ -107,14 +83,14 @@ extern "C" const char *libgguf_storage_backend(void)
 
 extern "C" int libgguf_storage_cpu_supports_backend(const char *backend)
 {
-  return libgguf_storage_backend_for_name(backend) ? 1 : 0;
+  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
 }
 
 extern "C" int libgguf_storage_set_backend(const char *backend)
 {
   if (backend != nullptr && std::strcmp(backend, "auto") == 0)
   {
-    libgguf_storage_override_slot() = nullptr;
+    libgguf_storage_selected_slot() = &libgguf_storage_default_backend();
     return 1;
   }
   const libgguf_storage_backend_fns *selected = libgguf_storage_backend_for_name(backend);
@@ -122,7 +98,7 @@ extern "C" int libgguf_storage_set_backend(const char *backend)
   {
     return 0;
   }
-  libgguf_storage_override_slot() = selected;
+  libgguf_storage_selected_slot() = selected;
   return 1;
 }
 

@@ -385,7 +385,7 @@ void print_help(std::ostream &out)
       << "  --sizes LIST       Row widths. Default: 256,1024,4096,8192\n"
       << "  --threads LIST     Thread modes. Use positive integers or default. Default: 1,4,default\n"
       << "  --rows N           Rows per benchmark case. Default: 1024\n"
-      << "  --backends LIST    Backends. Default: ref,sse2,sse4_1,avx2\n"
+      << "  --backends LIST    Backends to try. Unsupported build backends are skipped. Default: ref,sse2,sse4_1,avx2\n"
       << "  --ops LIST         Operations: quantize,store,dequantize. Default: quantize,dequantize\n"
       << "  --types LIST       Type names. Default: all supported row-operation types\n"
       << "  --samples N        Samples per case. Default: 5\n"
@@ -802,7 +802,7 @@ bool storage_quantize_supported(const TypeCase &type_case, const std::string &ba
     {
       return true;
     }
-    *reason = "storage backend is not supported by this CPU";
+    *reason = "storage backend is not supported by this build";
     return false;
   }
   *reason = "unsupported storage type";
@@ -821,14 +821,14 @@ bool quantize_supported(const TypeCase &type_case, const std::string &backend, s
     {
       return true;
     }
-    *reason = "direct quantize backend is not supported by this CPU";
+    *reason = "direct quantize backend is not supported by this build";
     return false;
   }
   if (libgguf_common_quant_cpu_supports_backend(backend.c_str()))
   {
     return true;
   }
-  *reason = "common quant backend is not supported by this CPU";
+  *reason = "common quant backend is not supported by this build";
   return false;
 }
 
@@ -843,7 +843,7 @@ bool dequantize_supported(const TypeCase &type_case, const std::string &backend,
   {
     return true;
   }
-  *reason = "dequant backend is not supported by this CPU";
+  *reason = "dequant backend is not supported by this build";
   return false;
 }
 
