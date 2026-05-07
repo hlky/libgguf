@@ -9,7 +9,7 @@ libgguf exposes two Python inspection entry points plus one native conversion ex
 | `gguf-inspect` | GGUF metadata and tensor descriptor inspection | experimental |
 | `gguf-validate` | Structural GGUF validation without tensor payload reads | experimental |
 
-Python conversion helper modules remain experimental/internal. They are not installed as public console scripts.
+The Python conversion helper API remains experimental/internal. The old Python conversion wrapper modules are retired; use `libgguf_quantize_gguf` for command-line conversion.
 
 ## Native Conversion Executable
 

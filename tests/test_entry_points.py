@@ -20,6 +20,15 @@ EXPECTED_SCRIPT_NAMES = {
     "gguf-validate",
 }
 
+RETIRED_QUANTIZE_MODULES = (
+    "quantize_gguf",
+    "quantize_gguf_native",
+    "quantize_gguf_pt",
+    "quantize_gguf_torch",
+    "quantize_pt",
+    "quantize_torch_pt",
+)
+
 
 def _project_scripts() -> dict[str, str]:
     if tomllib is None:
@@ -49,6 +58,12 @@ def test_project_scripts_include_expected_entry_points() -> None:
     assert scripts.keys() == EXPECTED_SCRIPT_NAMES
     assert scripts["gguf-inspect"] == "libgguf.inspect:main"
     assert scripts["gguf-validate"] == "libgguf.inspect:validate_main"
+
+
+def test_retired_quantize_modules_are_not_in_source_package() -> None:
+    package_dir = ROOT / "src" / "libgguf"
+    for module_name in RETIRED_QUANTIZE_MODULES:
+        assert not (package_dir / f"{module_name}.py").exists()
 
 
 def test_inspect_entry_point_targets_resolve_without_conversion_extras() -> None:

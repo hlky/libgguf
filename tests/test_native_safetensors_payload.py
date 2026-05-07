@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import struct
-import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -207,7 +205,6 @@ def test_native_converter_matches_python_converter_for_tiny_safetensors(tmp_path
 
     assert native_out.read_bytes() == py_out.read_bytes()
 
-
 def test_native_converter_allows_scalar_tensors_outside_selected_prefix(tmp_path: Path) -> None:
     key = "model.double_layers.3.modX.1.weight"
     rows = np.linspace(-2.0, 2.0, 64, dtype=np.float32).reshape(2, 32)
@@ -227,25 +224,3 @@ def test_native_converter_allows_scalar_tensors_outside_selected_prefix(tmp_path
     convert_safetensors_to_gguf_native(src, native_out, "Q4_0", policy="uniform", overwrite=True)
 
     assert native_out.read_bytes() == py_out.read_bytes()
-
-
-def test_native_cli_help_and_rejects_non_safetensors(tmp_path: Path) -> None:
-    help_result = subprocess.run(
-        [sys.executable, "-m", "libgguf.quantize_gguf_native", "--help"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert help_result.returncode == 0
-    assert "Native safetensors-only" in help_result.stdout
-
-    bad_src = tmp_path / "model.pt"
-    bad_src.write_bytes(b"not a checkpoint")
-    reject_result = subprocess.run(
-        [sys.executable, "-m", "libgguf.quantize_gguf_native", "--src", str(bad_src), "--qtype", "Q4_0"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert reject_result.returncode != 0
-    assert "only supports .safetensors" in reject_result.stderr

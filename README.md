@@ -24,7 +24,7 @@ The repository currently contains native GGUF row kernels, Python bindings, NumP
 - Extended Torch GGUF quantization/dequantization backend.
 - Optional CUDA quantization and dequantization kernels exposed through a Torch extension.
 - Native low-memory safetensors-to-GGUF conversion executable.
-- Experimental/internal Python conversion helper modules for native, NumPy-backed, Torch-loaded, and Torch-native workflows.
+- Experimental/internal Python conversion helper API for safetensors/ckpt workflows.
 - Experimental GGUF metadata, tensor descriptor inspection, and structural validation API/CLI.
 - Deterministic policy-based tensor planning for real image-model GGUF conversion.
 - Benchmark suite for native, Torch, and CUDA paths.
@@ -50,7 +50,7 @@ The repository currently contains native GGUF row kernels, Python bindings, NumP
 | `libgguf_torch` | Torch-native quant/dequant implementation for parity testing and integration | active |
 | `libgguf_cuda` | Optional Torch CUDA extension with direct quant/dequant kernels | experimental |
 | `libgguf_quantize_gguf` | Low-memory C++ safetensors-to-GGUF conversion executable | active, Q/K-focused |
-| Python conversion helpers | Helper modules over native bindings, safetensors loaders, and Torch backends | experimental/internal |
+| Python conversion helper | Import-level helper over native bindings and safetensors/ckpt loading | experimental/internal |
 
 ## Installation
 
@@ -130,7 +130,7 @@ libgguf_quantize_gguf --src model.safetensors --qtype Q4_K_M --dst model-Q4_K_M.
 libgguf_quantize_gguf --src model.safetensors --qtype Q4_K_M --dst model-Q4_K_M.gguf --scratch-bytes 33554432
 ```
 
-Python conversion helper modules remain experimental/internal and require the `quantize` extra when used directly.
+The Python conversion helper API remains experimental/internal and requires the `quantize` extra when used directly. The old Python conversion wrapper modules are retired; use `libgguf_quantize_gguf` for command-line conversion.
 
 See [docs/cli.md](docs/cli.md) for implemented options.
 

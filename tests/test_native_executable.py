@@ -263,3 +263,19 @@ def test_native_executable_rejects_q8_k_and_deferred_non_q(tmp_path: Path) -> No
     )
     assert iq.returncode != 0
     assert "non-Q/K" in iq.stderr
+
+
+def test_native_executable_rejects_non_safetensors(tmp_path: Path) -> None:
+    exe = _native_exe()
+    bad_src = tmp_path / "model.pt"
+    bad_src.write_bytes(b"not a checkpoint")
+
+    result = subprocess.run(
+        [str(exe), "--src", str(bad_src), "--qtype", "Q4_0"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "only supports .safetensors" in result.stderr

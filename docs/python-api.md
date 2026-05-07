@@ -105,7 +105,7 @@ Public conversion helpers:
 - `convert_safetensors_to_gguf_native(src, dst=None, qtype="Q4_K_S", *, policy="comfy", overwrite=False, imatrix=None, tensor_overrides=None, include=None, exclude=None, scratch_bytes=33554432) -> QuantResult`
 - `QuantResult`
 
-The conversion helpers are useful but still experimental. The native converter helper is safetensors-only and writes tensor payloads through the native extension to reduce memory pressure.
+The conversion helpers are useful but still experimental import-level APIs. The native converter helper is safetensors-only and writes tensor payloads through the native extension to reduce memory pressure; use the native `libgguf_quantize_gguf` executable for command-line conversion.
 
 ## Backend Modules
 

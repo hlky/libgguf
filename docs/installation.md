@@ -25,7 +25,7 @@ The optional extras are:
 | Extra | Dependencies | Purpose |
 | --- | --- | --- |
 | `cuda` | `torch` | Build/use the optional Torch CUDA extension when CUDA tooling is present. |
-| `quantize` | `gguf`, `safetensors`, `torch`, `tqdm` | Experimental/internal Python conversion helpers and safetensors/ckpt loading. |
+| `quantize` | `gguf`, `safetensors`, `torch`, `tqdm` | Experimental/internal Python conversion helper and safetensors/ckpt loading. |
 | `test` | `gguf`, `huggingface_hub`, `pytest`, `requests`, `safetensors`, `torch`, `tqdm` | Test runner and test-only script dependencies. |
 
 ## Native Build
