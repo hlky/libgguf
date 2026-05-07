@@ -21,7 +21,7 @@ libgguf_quantize_gguf \
   --qtype Q4_K_M \
   --dst model-Q4_K_M.gguf \
   --policy comfy \
-  --backend cpu \
+  --backend auto \
   --overwrite
 ```
 
@@ -39,16 +39,16 @@ Implemented native options:
 - `--scratch-bytes N`: native scratch and direct-copy buffer target in bytes.
 - `--cpu-ram-bytes N`: alias for `--scratch-bytes`, for callers that want to phrase the CPU-side memory budget directly.
 - `--threads N`: worker thread count.
-- `--backend cpu|cuda`: backend for quantized tensor encoding. The default is `cpu`; safetensors reads and GGUF writes remain CPU-side for both backends.
+- `--backend cpu|cuda|auto`: backend for quantized tensor encoding. The default is `auto`; safetensors reads and GGUF writes remain CPU-side for all backends.
 - `--cuda-fallback cpu`: when `--backend cuda` is selected, encode unsupported CUDA qtypes on CPU instead of failing.
 - `--verify-cuda-tensors N`: for the first `N` tensors encoded on CUDA, also encode with CPU and compare the encoded bytes.
-- `--cuda-vram-bytes N`: when `--backend cuda` is selected, use `N` bytes as the CUDA device input/output chunk budget. The default `0` keeps the existing `--scratch-bytes` chunk sizing. Normal CUDA conversion uses two pinned host staging slots, so host RAM can temporarily use up to about `2 * N` in addition to source read buffers.
+- `--cuda-vram-bytes N`: when `--backend cuda` or `--backend auto` routes tensors to CUDA, use `N` bytes as the CUDA device input/output chunk budget. The default `0` keeps the existing `--scratch-bytes` chunk sizing. Normal CUDA conversion uses two pinned host staging slots, so host RAM can temporarily use up to about `2 * N` in addition to source read buffers.
 - `--timings`: print conversion timing breakdown to stderr.
 - `--help`: show native help.
 
 The native executable currently supports Q/K output families and storage overrides. Non-Q/K quantization families are rejected by the native executable even though the row APIs support broader qtype coverage.
 
-The CUDA converter backend is experimental and is linked only when the native CUDA target is built. A CPU-only executable accepts the CLI flags but fails clearly if `--backend cuda` is requested. The current CUDA converter qtype set is `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, and `Q6_K`; other planned or kernel-level qtypes require `--cuda-fallback cpu` or fail.
+The CUDA converter backend is experimental and is linked only when the native CUDA target is built. A CPU-only executable accepts the CLI flags but fails clearly if `--backend cuda` is requested. The current CUDA converter qtype set is `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, and `Q6_K`; other planned or kernel-level qtypes require `--cuda-fallback cpu` or fail for explicit CUDA. In default `auto` mode, simple Q qtypes such as `Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, and `Q8_0` use CPU, K qtypes prefer CUDA when native CUDA is available and usable, and unsupported or unavailable CUDA paths fall back to CPU.
 
 With `--timings`, the native converter reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets. The `metadata` field is also printed to separate GGUF descriptor writes from tensor payload writes. For CUDA runs, the timing line also includes the configured CUDA VRAM budget plus the largest device input/output buffers used.
 

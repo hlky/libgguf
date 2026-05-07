@@ -79,6 +79,7 @@ enum native_source_dtype {
 };
 
 enum converter_backend {
+  CONVERTER_BACKEND_AUTO,
   CONVERTER_BACKEND_CPU,
   CONVERTER_BACKEND_CUDA,
 };
@@ -96,7 +97,7 @@ struct cli_options {
   unsigned int threads = 0;
   bool timings = false;
   bool overwrite = false;
-  converter_backend backend = CONVERTER_BACKEND_CPU;
+  converter_backend backend = CONVERTER_BACKEND_AUTO;
   bool cuda_fallback_cpu = false;
   uint64_t verify_cuda_tensors = 0;
   uint64_t cuda_vram_bytes = 0;
@@ -1670,6 +1671,28 @@ bool converter_cuda_supported_qtype(ggml_type qtype) {
   }
 }
 
+bool converter_auto_prefers_cuda_qtype(ggml_type qtype) {
+  switch (qtype) {
+  case GGML_TYPE_Q2_K:
+  case GGML_TYPE_Q3_K:
+  case GGML_TYPE_Q4_K:
+  case GGML_TYPE_Q5_K:
+  case GGML_TYPE_Q6_K:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool conversion_plans_prefer_cuda(const std::vector<tensor_plan> &plans) {
+  for (const tensor_plan &plan : plans) {
+    if (is_quantized_qtype(plan.qtype) && converter_auto_prefers_cuda_qtype(plan.qtype)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 class cuda_converter_context;
 
 #if defined(LIBGGUF_HAS_CUDA_NATIVE)
@@ -1709,15 +1732,20 @@ public:
       fail(message);
     }
     ctx_ = created;
-    require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &input_), "failed to create CUDA input buffer");
-    require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &output_), "failed to create CUDA output buffer");
-    for (cuda_slot &slot : slots_) {
-      require_cuda_success(ctx_, libgguf_cuda_host_buffer_create(ctx_, 0, &slot.host_input), "failed to create pinned CUDA input buffer");
-      require_cuda_success(ctx_, libgguf_cuda_host_buffer_create(ctx_, 0, &slot.host_output), "failed to create pinned CUDA output buffer");
-      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_begin), "failed to create CUDA timing event");
-      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_h2d), "failed to create CUDA timing event");
-      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_quant), "failed to create CUDA timing event");
-      require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_d2h), "failed to create CUDA timing event");
+    try {
+      require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &input_), "failed to create CUDA input buffer");
+      require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &output_), "failed to create CUDA output buffer");
+      for (cuda_slot &slot : slots_) {
+        require_cuda_success(ctx_, libgguf_cuda_host_buffer_create(ctx_, 0, &slot.host_input), "failed to create pinned CUDA input buffer");
+        require_cuda_success(ctx_, libgguf_cuda_host_buffer_create(ctx_, 0, &slot.host_output), "failed to create pinned CUDA output buffer");
+        require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_begin), "failed to create CUDA timing event");
+        require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_h2d), "failed to create CUDA timing event");
+        require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_quant), "failed to create CUDA timing event");
+        require_cuda_success(ctx_, libgguf_cuda_event_create(ctx_, &slot.event_after_d2h), "failed to create CUDA timing event");
+      }
+    } catch (...) {
+      cleanup();
+      throw;
     }
   }
 
@@ -1725,35 +1753,7 @@ public:
   cuda_converter_context &operator=(const cuda_converter_context &) = delete;
 
   ~cuda_converter_context() {
-    for (cuda_slot &slot : slots_) {
-      if (slot.event_after_d2h) {
-        libgguf_cuda_event_destroy(ctx_, slot.event_after_d2h);
-      }
-      if (slot.event_after_quant) {
-        libgguf_cuda_event_destroy(ctx_, slot.event_after_quant);
-      }
-      if (slot.event_after_h2d) {
-        libgguf_cuda_event_destroy(ctx_, slot.event_after_h2d);
-      }
-      if (slot.event_begin) {
-        libgguf_cuda_event_destroy(ctx_, slot.event_begin);
-      }
-      if (slot.host_output) {
-        libgguf_cuda_host_buffer_destroy(ctx_, slot.host_output);
-      }
-      if (slot.host_input) {
-        libgguf_cuda_host_buffer_destroy(ctx_, slot.host_input);
-      }
-    }
-    if (output_) {
-      libgguf_cuda_buffer_destroy(ctx_, output_);
-    }
-    if (input_) {
-      libgguf_cuda_buffer_destroy(ctx_, input_);
-    }
-    if (ctx_) {
-      libgguf_cuda_context_destroy(ctx_);
-    }
+    cleanup();
   }
 
   bool supports(ggml_type qtype, uint64_t n_per_row) const {
@@ -1854,6 +1854,47 @@ private:
     libgguf_cuda_event *event_after_d2h = nullptr;
   };
 
+  void cleanup() {
+    for (cuda_slot &slot : slots_) {
+      if (slot.event_after_d2h) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_after_d2h);
+        slot.event_after_d2h = nullptr;
+      }
+      if (slot.event_after_quant) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_after_quant);
+        slot.event_after_quant = nullptr;
+      }
+      if (slot.event_after_h2d) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_after_h2d);
+        slot.event_after_h2d = nullptr;
+      }
+      if (slot.event_begin) {
+        libgguf_cuda_event_destroy(ctx_, slot.event_begin);
+        slot.event_begin = nullptr;
+      }
+      if (slot.host_output) {
+        libgguf_cuda_host_buffer_destroy(ctx_, slot.host_output);
+        slot.host_output = nullptr;
+      }
+      if (slot.host_input) {
+        libgguf_cuda_host_buffer_destroy(ctx_, slot.host_input);
+        slot.host_input = nullptr;
+      }
+    }
+    if (output_) {
+      libgguf_cuda_buffer_destroy(ctx_, output_);
+      output_ = nullptr;
+    }
+    if (input_) {
+      libgguf_cuda_buffer_destroy(ctx_, input_);
+      input_ = nullptr;
+    }
+    if (ctx_) {
+      libgguf_cuda_context_destroy(ctx_);
+      ctx_ = nullptr;
+    }
+  }
+
   cuda_slot &slot_at(size_t slot_index) {
     if (slot_index >= 2) {
       fail("invalid CUDA pipeline slot index");
@@ -1920,13 +1961,15 @@ void write_tensor_payload(
   const bool source_f32 = plan.source_dtype == NATIVE_DTYPE_F32;
   const bool native_quant = is_quantized_qtype(plan.qtype) && native_quantize_function(plan.qtype) != nullptr;
   bool cuda_quant = false;
-  if (options.backend == CONVERTER_BACKEND_CUDA && is_quantized_qtype(plan.qtype)) {
+  if (is_quantized_qtype(plan.qtype) &&
+      (options.backend == CONVERTER_BACKEND_CUDA ||
+       (options.backend == CONVERTER_BACKEND_AUTO && converter_auto_prefers_cuda_qtype(plan.qtype)))) {
 #if defined(LIBGGUF_HAS_CUDA_NATIVE)
     cuda_quant = cuda_ctx && cuda_ctx->supports(plan.qtype, plan.n_per_row);
 #else
     (void)cuda_ctx;
 #endif
-    if (!cuda_quant && !options.cuda_fallback_cpu) {
+    if (options.backend == CONVERTER_BACKEND_CUDA && !cuda_quant && !options.cuda_fallback_cpu) {
       fail(
           "CUDA backend does not support " + qtype_name(plan.qtype) +
           " for tensor " + plan.key + "; pass --cuda-fallback cpu to use CPU for unsupported tensors");
@@ -2136,7 +2179,7 @@ void print_help() {
   std::puts("  --scratch-bytes N          Native scratch and direct-copy buffer target in bytes");
   std::puts("  --cpu-ram-bytes N          Alias for --scratch-bytes");
   std::puts("  --threads N                Worker thread count (default: hardware or LIBGGUF_NUM_THREADS)");
-  std::puts("  --backend cpu|cuda         Conversion backend for quantized tensors (default: cpu)");
+  std::puts("  --backend cpu|cuda|auto    Conversion backend for quantized tensors (default: auto)");
   std::puts("  --cuda-fallback cpu        Use CPU for tensors unsupported by the CUDA converter");
   std::puts("  --verify-cuda-tensors N    Compare the first N CUDA tensors against CPU bytes");
   std::puts("  --cuda-vram-bytes N        CUDA device chunk budget in bytes (0 uses --scratch-bytes)");
@@ -2200,12 +2243,14 @@ cli_options parse_args(int argc, char **argv) {
       options.threads = parsed;
     } else if (arg == "--backend") {
       std::string value = need_value("--backend");
-      if (value == "cpu") {
+      if (value == "auto") {
+        options.backend = CONVERTER_BACKEND_AUTO;
+      } else if (value == "cpu") {
         options.backend = CONVERTER_BACKEND_CPU;
       } else if (value == "cuda") {
         options.backend = CONVERTER_BACKEND_CUDA;
       } else {
-        fail("--backend must be 'cpu' or 'cuda'");
+        fail("--backend must be 'cpu', 'cuda', or 'auto'");
       }
     } else if (arg == "--cuda-fallback") {
       std::string value = need_value("--cuda-fallback");
@@ -2249,11 +2294,11 @@ cli_options parse_args(int argc, char **argv) {
   if (!ends_with(upper_ascii(options.src), ".SAFETENSORS")) {
     fail("native quantize_gguf only supports .safetensors inputs");
   }
-  if (options.verify_cuda_tensors > 0 && options.backend != CONVERTER_BACKEND_CUDA) {
-    fail("--verify-cuda-tensors requires --backend cuda");
+  if (options.verify_cuda_tensors > 0 && options.backend == CONVERTER_BACKEND_CPU) {
+    fail("--verify-cuda-tensors requires --backend cuda or auto");
   }
-  if (options.cuda_vram_bytes > 0 && options.backend != CONVERTER_BACKEND_CUDA) {
-    fail("--cuda-vram-bytes requires --backend cuda");
+  if (options.cuda_vram_bytes > 0 && options.backend == CONVERTER_BACKEND_CPU) {
+    fail("--cuda-vram-bytes requires --backend cuda or auto");
   }
   return options;
 }
@@ -2302,6 +2347,12 @@ conversion_result convert(const cli_options &options) {
   std::unique_ptr<cuda_converter_context> cuda_ctx;
   if (options.backend == CONVERTER_BACKEND_CUDA) {
     cuda_ctx.reset(new cuda_converter_context());
+  } else if (options.backend == CONVERTER_BACKEND_AUTO && conversion_plans_prefer_cuda(plans)) {
+    try {
+      cuda_ctx.reset(new cuda_converter_context());
+    } catch (const std::runtime_error &) {
+      cuda_ctx.reset();
+    }
   }
 #else
   cuda_converter_context *cuda_ctx = nullptr;

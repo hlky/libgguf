@@ -84,8 +84,7 @@ The native `libgguf_quantize_gguf` executable can use the native CUDA target for
 libgguf_quantize_gguf \
   --src model.safetensors \
   --qtype Q4_K_M \
-  --backend cuda \
-  --cuda-fallback cpu \
+  --backend auto \
   --verify-cuda-tensors 2 \
   --timings \
   --overwrite
@@ -94,6 +93,8 @@ libgguf_quantize_gguf \
 Safetensors reading, half/BF16-to-F32 preparation, tensor planning, and GGUF writing remain CPU-side. For CUDA-supported quantized tensors, the converter reuses CUDA input/output buffers across tensor chunks, uploads F32 rows, runs CUDA quantization, downloads encoded bytes, and writes through the existing GGUF writer.
 
 The converter backend currently enables CUDA for `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, and `Q6_K`. If a tensor resolves to another qtype under the existing policy/override rules, `--backend cuda` fails unless `--cuda-fallback cpu` is supplied. CPU-only builds still configure and build the executable; requesting `--backend cuda` in that executable fails with a clear build-support error.
+
+The native converter defaults to `--backend auto`. Auto mode routes simple Q qtypes (`Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, `Q8_0`) to CPU. K qtypes (`Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`, including file-type aliases such as `Q4_K_M` after tensor qtype resolution) prefer CUDA when native CUDA is available and usable, and otherwise fall back to CPU. Auto mode does not initialize CUDA when no planned tensor prefers CUDA.
 
 `--verify-cuda-tensors N` encodes the first `N` CUDA-routed tensors through both CUDA and CPU and compares the encoded bytes. `--timings` reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets, plus metadata and tensor counts.
 

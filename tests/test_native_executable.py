@@ -75,7 +75,7 @@ def _help_native_cli_options(help_text: str) -> set[str]:
         "PATTERN=TYPE",
         "PATTERN",
         "N",
-        "cpu|cuda",
+        "cpu|cuda|auto",
         "cpu",
     }
     options: set[str] = set()
@@ -307,7 +307,7 @@ def test_native_executable_backend_cpu_preserves_default_output(tmp_path: Path) 
     assert actual.read_bytes() == expected.read_bytes()
 
 
-def test_native_executable_verify_cuda_requires_cuda_backend(tmp_path: Path) -> None:
+def test_native_executable_verify_cuda_rejects_explicit_cpu_backend(tmp_path: Path) -> None:
     exe = _native_exe()
     key = "double_layers.3.modX.1.weight"
     rows = np.zeros((2, 256), dtype=np.float32)
@@ -315,17 +315,17 @@ def test_native_executable_verify_cuda_requires_cuda_backend(tmp_path: Path) -> 
     _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
 
     result = subprocess.run(
-        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--verify-cuda-tensors", "1"],
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--backend", "cpu", "--verify-cuda-tensors", "1"],
         check=False,
         capture_output=True,
         text=True,
     )
 
     assert result.returncode != 0
-    assert "--verify-cuda-tensors requires --backend cuda" in result.stderr
+    assert "--verify-cuda-tensors requires --backend cuda or auto" in result.stderr
 
 
-def test_native_executable_cuda_vram_bytes_requires_cuda_backend(tmp_path: Path) -> None:
+def test_native_executable_cuda_vram_bytes_rejects_explicit_cpu_backend(tmp_path: Path) -> None:
     exe = _native_exe()
     key = "double_layers.3.modX.1.weight"
     rows = np.zeros((2, 256), dtype=np.float32)
@@ -333,14 +333,95 @@ def test_native_executable_cuda_vram_bytes_requires_cuda_backend(tmp_path: Path)
     _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
 
     result = subprocess.run(
-        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--cuda-vram-bytes", "4096"],
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--backend", "cpu", "--cuda-vram-bytes", "4096"],
         check=False,
         capture_output=True,
         text=True,
     )
 
     assert result.returncode != 0
-    assert "--cuda-vram-bytes requires --backend cuda" in result.stderr
+    assert "--cuda-vram-bytes requires --backend cuda or auto" in result.stderr
+
+
+def test_native_executable_backend_auto_simple_qtype_uses_cpu(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
+    result = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            "Q4_0",
+            "--policy",
+            "uniform",
+            "--backend",
+            "auto",
+            "--timings",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes() == expected.read_bytes()
+    assert "cuda_tensors=0" in result.stderr
+
+
+@pytest.mark.parametrize("qtype", ["Q2_K", "Q3_K", "Q4_K", "Q5_K", "Q6_K"])
+def test_native_executable_backend_auto_k_qtype_matches_cpu(tmp_path: Path, qtype: str) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    convert_safetensors_to_gguf_native(src, expected, qtype, policy="uniform", overwrite=True)
+    result = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            qtype,
+            "--policy",
+            "uniform",
+            "--backend",
+            "auto",
+            "--cuda-vram-bytes",
+            "4096",
+            "--verify-cuda-tensors",
+            "1",
+            "--timings",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes() == expected.read_bytes()
+    if "cuda_tensors=1" in result.stderr:
+        assert "cuda_verified=1" in result.stderr
+    else:
+        assert "cuda_tensors=0" in result.stderr
+        assert "cuda_verified=0" in result.stderr
 
 
 def test_native_executable_cpu_ram_bytes_alias_preserves_output(tmp_path: Path) -> None:
