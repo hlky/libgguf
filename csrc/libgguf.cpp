@@ -9,8 +9,22 @@
 #include "common/libgguf_internal.h"
 #include "common/libgguf_storage.h"
 
+static size_t libgguf_block_row_size(int64_t n_per_row, int64_t block_size, size_t type_size)
+{
+  if (n_per_row <= 0 || block_size <= 0 || n_per_row % block_size != 0)
+  {
+    return 0;
+  }
+  return (size_t)(n_per_row / block_size) * type_size;
+}
+
 extern "C" LIBGGUF_API size_t libgguf_row_size(enum ggml_type type, int64_t n_per_row)
 {
+  if (n_per_row <= 0)
+  {
+    return 0;
+  }
+
   switch (type)
   {
   case GGML_TYPE_F32:
@@ -20,53 +34,53 @@ extern "C" LIBGGUF_API size_t libgguf_row_size(enum ggml_type type, int64_t n_pe
   case GGML_TYPE_BF16:
     return (size_t)n_per_row * sizeof(ggml_bf16_t);
   case GGML_TYPE_Q1_0:
-    return (size_t)n_per_row * sizeof(block_q1_0) / QK1_0;
+    return libgguf_block_row_size(n_per_row, QK1_0, sizeof(block_q1_0));
   case GGML_TYPE_Q4_0:
-    return (size_t)n_per_row * sizeof(block_q4_0) / QK4_0;
+    return libgguf_block_row_size(n_per_row, QK4_0, sizeof(block_q4_0));
   case GGML_TYPE_Q4_1:
-    return (size_t)n_per_row * sizeof(block_q4_1) / QK4_1;
+    return libgguf_block_row_size(n_per_row, QK4_1, sizeof(block_q4_1));
   case GGML_TYPE_Q5_0:
-    return (size_t)n_per_row * sizeof(block_q5_0) / QK5_0;
+    return libgguf_block_row_size(n_per_row, QK5_0, sizeof(block_q5_0));
   case GGML_TYPE_Q5_1:
-    return (size_t)n_per_row * sizeof(block_q5_1) / QK5_1;
+    return libgguf_block_row_size(n_per_row, QK5_1, sizeof(block_q5_1));
   case GGML_TYPE_Q8_0:
-    return (size_t)n_per_row * sizeof(block_q8_0) / QK8_0;
+    return libgguf_block_row_size(n_per_row, QK8_0, sizeof(block_q8_0));
   case GGML_TYPE_Q2_K:
-    return (size_t)n_per_row * sizeof(block_q2_K) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_q2_K));
   case GGML_TYPE_Q3_K:
-    return (size_t)n_per_row * sizeof(block_q3_K) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_q3_K));
   case GGML_TYPE_Q4_K:
-    return (size_t)n_per_row * sizeof(block_q4_K) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_q4_K));
   case GGML_TYPE_Q5_K:
-    return (size_t)n_per_row * sizeof(block_q5_K) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_q5_K));
   case GGML_TYPE_Q6_K:
-    return (size_t)n_per_row * sizeof(block_q6_K) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_q6_K));
   case GGML_TYPE_IQ2_XXS:
-    return (size_t)n_per_row * sizeof(block_iq2_xxs) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq2_xxs));
   case GGML_TYPE_IQ2_XS:
-    return (size_t)n_per_row * sizeof(block_iq2_xs) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq2_xs));
   case GGML_TYPE_IQ2_S:
-    return (size_t)n_per_row * sizeof(block_iq2_s) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq2_s));
   case GGML_TYPE_IQ3_XXS:
-    return (size_t)n_per_row * sizeof(block_iq3_xxs) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq3_xxs));
   case GGML_TYPE_IQ3_S:
-    return (size_t)n_per_row * sizeof(block_iq3_s) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq3_s));
   case GGML_TYPE_IQ1_S:
-    return (size_t)n_per_row * sizeof(block_iq1_s) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq1_s));
   case GGML_TYPE_IQ1_M:
-    return (size_t)n_per_row * sizeof(block_iq1_m) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq1_m));
   case GGML_TYPE_IQ4_NL:
-    return (size_t)n_per_row * sizeof(block_iq4_nl) / QK4_NL;
+    return libgguf_block_row_size(n_per_row, QK4_NL, sizeof(block_iq4_nl));
   case GGML_TYPE_IQ4_XS:
-    return (size_t)n_per_row * sizeof(block_iq4_xs) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq4_xs));
   case GGML_TYPE_TQ1_0:
-    return (size_t)n_per_row * sizeof(block_tq1_0) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_tq1_0));
   case GGML_TYPE_TQ2_0:
-    return (size_t)n_per_row * sizeof(block_tq2_0) / QK_K;
+    return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_tq2_0));
   case GGML_TYPE_MXFP4:
-    return (size_t)n_per_row * sizeof(block_mxfp4) / QK_MXFP4;
+    return libgguf_block_row_size(n_per_row, QK_MXFP4, sizeof(block_mxfp4));
   case GGML_TYPE_NVFP4:
-    return (size_t)n_per_row * sizeof(block_nvfp4) / QK_NVFP4;
+    return libgguf_block_row_size(n_per_row, QK_NVFP4, sizeof(block_nvfp4));
   default:
     return 0;
   }
@@ -303,8 +317,16 @@ static size_t libgguf_quantize_chunk_serial(
     int64_t n_per_row,
     const float *imatrix)
 {
+  if (nrows <= 0)
+  {
+    return 0;
+  }
+
   const size_t row_size = libgguf_row_size(type, n_per_row);
-  const size_t start_row = (size_t)(start / n_per_row);
+  if (row_size == 0 || start < 0 || start % n_per_row != 0)
+  {
+    return 0;
+  }
 
   assert(row_size != 0);
   assert(start % n_per_row == 0);
@@ -312,7 +334,13 @@ static size_t libgguf_quantize_chunk_serial(
   if (libgguf_quantize_requires_imatrix(type))
   {
     assert(imatrix != nullptr);
+    if (imatrix == nullptr)
+    {
+      return 0;
+    }
   }
+
+  const size_t start_row = (size_t)(start / n_per_row);
 
   switch (type)
   {
@@ -391,12 +419,21 @@ extern "C" LIBGGUF_API size_t libgguf_quantize_chunk(
   }
 
   const size_t row_size = libgguf_row_size(type, n_per_row);
+  if (row_size == 0 || start < 0 || start % n_per_row != 0)
+  {
+    return 0;
+  }
+
   assert(row_size != 0);
   assert(start % n_per_row == 0);
 
   if (libgguf_quantize_requires_imatrix(type))
   {
     assert(imatrix != nullptr);
+    if (imatrix == nullptr)
+    {
+      return 0;
+    }
   }
 
   libgguf_quantize_init(type);
@@ -460,7 +497,7 @@ static size_t libgguf_dequantize_chunk_serial(
   }
 
   const size_t row_size = libgguf_row_size(type, n_per_row);
-  if (row_size == 0 || n_per_row <= 0 || start % n_per_row != 0)
+  if (row_size == 0 || n_per_row <= 0 || start < 0 || start % n_per_row != 0)
   {
     return 0;
   }
@@ -565,7 +602,7 @@ extern "C" LIBGGUF_API size_t libgguf_dequantize_chunk(
   }
 
   const size_t row_size = libgguf_row_size(type, n_per_row);
-  if (row_size == 0 || n_per_row <= 0 || start % n_per_row != 0)
+  if (row_size == 0 || n_per_row <= 0 || start < 0 || start % n_per_row != 0)
   {
     return 0;
   }

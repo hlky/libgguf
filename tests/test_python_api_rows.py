@@ -183,3 +183,124 @@ def test_dequantize_rows_without_n_per_row_rejects_non_quantized_types(qtype: GG
 
     with pytest.raises(ValueError):
         libgguf.dequantize_rows(encoded, qtype)
+
+
+@pytest.mark.parametrize("qtype", STORAGE_QTYPES, ids=qtype_id)
+def test_dequantize_rows_with_n_per_row_rejects_storage_types(qtype: GGMLQuantizationType) -> None:
+    _, type_size = GGML_QUANT_SIZES[qtype]
+    encoded = np.zeros((2, type_size), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="unsupported quantization type or row width"):
+        libgguf.dequantize_rows(encoded, qtype, n_per_row=1)
+
+
+@pytest.mark.parametrize("qtype", SUPPORTED_QUANTIZED_QTYPES, ids=qtype_id)
+def test_row_size_rejects_invalid_quantized_row_widths(qtype: GGMLQuantizationType) -> None:
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+
+    assert libgguf.row_size(qtype, 0) == 0
+    assert libgguf.row_size(qtype, -block_size) == 0
+    assert libgguf.row_size(qtype, block_size - 1) == 0
+    assert libgguf.row_size(qtype, block_size) > 0
+
+
+@pytest.mark.parametrize("qtype", STORAGE_QTYPES, ids=qtype_id)
+def test_row_size_accepts_positive_storage_row_widths(qtype: GGMLQuantizationType) -> None:
+    assert libgguf.row_size(qtype, 1) > 0
+    assert libgguf.row_size(qtype, 7) > 0
+    assert libgguf.row_size(qtype, 0) == 0
+
+
+@pytest.mark.parametrize("qtype", SUPPORTED_QUANTIZED_QTYPES, ids=qtype_id)
+def test_quantize_rows_rejects_invalid_row_widths(qtype: GGMLQuantizationType) -> None:
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    rows = np.zeros((2, block_size + 1), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="row width must be a multiple"):
+        libgguf.quantize_rows(rows, qtype)
+
+
+@pytest.mark.parametrize("qtype", SUPPORTED_QUANTIZED_QTYPES, ids=qtype_id)
+def test_dequantize_rows_rejects_invalid_explicit_row_widths(qtype: GGMLQuantizationType) -> None:
+    block_size, type_size = GGML_QUANT_SIZES[qtype]
+    encoded = np.zeros((2, type_size), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="row width must be a multiple"):
+        libgguf.dequantize_rows(encoded, qtype, n_per_row=block_size - 1)
+
+
+@pytest.mark.parametrize("qtype", SUPPORTED_QUANTIZED_QTYPES, ids=qtype_id)
+def test_dequantize_rows_rejects_encoded_width_not_matching_n_per_row(qtype: GGMLQuantizationType) -> None:
+    block_size, type_size = GGML_QUANT_SIZES[qtype]
+    encoded = np.zeros((2, type_size + 1), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="encoded row width does not match"):
+        libgguf.dequantize_rows(encoded, qtype, n_per_row=block_size)
+
+
+@pytest.mark.parametrize("raw_api", (libgguf.quantize_rows_raw, libgguf.quantize_rows_into_raw))
+def test_quantize_raw_apis_reject_invalid_row_widths(raw_api) -> None:
+    qtype = GGMLQuantizationType.Q4_0
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    n_per_row = block_size + 1
+    rows = np.zeros((1, n_per_row), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="row width must be a multiple"):
+        if raw_api is libgguf.quantize_rows_raw:
+            raw_api(qtype, rows, 1, n_per_row)
+        else:
+            raw_api(qtype, rows, np.zeros(1, dtype=np.uint8), 1, n_per_row)
+
+
+@pytest.mark.parametrize("raw_api", (libgguf.dequantize_rows_raw, libgguf.dequantize_rows_into_raw))
+def test_dequantize_raw_apis_reject_invalid_row_widths(raw_api) -> None:
+    qtype = GGMLQuantizationType.Q4_0
+    block_size, type_size = GGML_QUANT_SIZES[qtype]
+    encoded = np.zeros(type_size, dtype=np.uint8)
+    n_per_row = block_size + 1
+
+    with pytest.raises(ValueError, match="row width must be a multiple"):
+        if raw_api is libgguf.dequantize_rows_raw:
+            raw_api(qtype, encoded, 1, n_per_row)
+        else:
+            raw_api(qtype, encoded, np.zeros(n_per_row, dtype=np.float32), 1, n_per_row)
+
+
+@pytest.mark.parametrize("raw_api", (libgguf.quantize_rows_raw, libgguf.dequantize_rows_raw))
+def test_raw_apis_reject_bad_n_per_row(raw_api) -> None:
+    qtype = GGMLQuantizationType.Q4_0
+    data = np.zeros(1, dtype=np.float32 if raw_api is libgguf.quantize_rows_raw else np.uint8)
+
+    with pytest.raises(ValueError, match="n_per_row must be positive"):
+        raw_api(qtype, data, 1, 0)
+
+
+@pytest.mark.parametrize("qtype", UNSUPPORTED_ROW_QTYPES, ids=qtype_id)
+def test_raw_apis_reject_unsupported_qtypes(qtype: GGMLQuantizationType) -> None:
+    block_size, type_size = GGML_QUANT_SIZES[qtype]
+    rows = np.zeros((1, block_size), dtype=np.float32)
+    encoded = np.zeros(type_size, dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="unsupported quantization type or row width"):
+        libgguf.quantize_rows_raw(qtype, rows, 1, block_size)
+    with pytest.raises(ValueError, match="unsupported quantization type or row width"):
+        libgguf.dequantize_rows_raw(qtype, encoded, 1, block_size)
+
+
+def test_quantize_rows_rejects_bad_imatrix_shape_and_length() -> None:
+    qtype = GGMLQuantizationType.IQ2_XXS
+    rows = build_rows(qtype)
+
+    with pytest.raises(ValueError, match="imatrix must be a one-dimensional"):
+        libgguf.quantize_rows(rows, qtype, imatrix=np.zeros((1, rows.shape[-1]), dtype=np.float32))
+
+    with pytest.raises(ValueError, match="imatrix length must match n_per_row"):
+        libgguf.quantize_rows(rows, qtype, imatrix=np.zeros(rows.shape[-1] - 1, dtype=np.float32))
+
+
+def test_quantize_rows_rejects_bad_optional_imatrix_length() -> None:
+    qtype = GGMLQuantizationType.Q4_0
+    rows = build_rows(qtype)
+
+    with pytest.raises(ValueError, match="imatrix length must match n_per_row"):
+        libgguf.quantize_rows(rows, qtype, imatrix=np.zeros(rows.shape[-1] + 1, dtype=np.float32))

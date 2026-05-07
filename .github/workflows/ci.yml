@@ -47,3 +47,23 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+  wheel-install:
+    name: Wheel install smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Check wheel install
+        run: python scripts/check_wheel_install.py

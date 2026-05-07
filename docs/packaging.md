@@ -37,8 +37,9 @@ environment, and runs import, row API, Python CLI, and native executable
 by default; pass `--preserve-temp` to keep the wheelhouse, venv, and smoke
 directory for debugging.
 
-This remains manual and is intentionally not wired into CI, avoiding extra CI
-minutes until wheel smoke coverage is explicitly enabled.
+CI runs the same helper in a dedicated wheel install smoke job. Running it
+locally is still useful before packaging-sensitive changes because it exercises
+the installed wheel from outside the source tree.
 
 ## Optional CUDA Builds
 

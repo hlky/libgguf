@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from libgguf.quantize import convert_safetensors_to_gguf_native
+
+
+def _native_exe_names() -> tuple[str, str]:
+    base = "libgguf_quantize_gguf"
+    if os.name == "nt":
+        return (f"{base}.exe", base)
+    return (base, f"{base}.exe")
 
 
 def _write_safetensors(path: Path, tensors: dict[str, tuple[str, tuple[int, ...], bytes]]) -> None:
@@ -30,12 +39,71 @@ def _native_exe() -> Path:
     if env:
         candidates.append(Path(env))
     root = Path(__file__).resolve().parents[1]
-    candidates.extend(root.glob("build/cmake/**/libgguf_quantize_gguf.exe"))
-    candidates.extend(root.glob("build/cmake/**/libgguf_quantize_gguf"))
+    for name in _native_exe_names():
+        candidates.extend(root.glob(f"build/cmake/**/{name}"))
+    scripts_dir = sysconfig.get_path("scripts")
+    if scripts_dir:
+        candidates.extend(Path(scripts_dir) / name for name in _native_exe_names())
+    for name in _native_exe_names():
+        found = shutil.which(name)
+        if found:
+            candidates.append(Path(found))
     for candidate in candidates:
         if candidate.is_file():
             return candidate
     pytest.skip("libgguf_quantize_gguf executable is not built")
+
+
+def test_native_exe_prefers_env_then_repo_build_then_current_env_scripts_then_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_test_file = tmp_path / "repo" / "tests" / "test_native_executable.py"
+    fake_test_file.parent.mkdir(parents=True)
+    fake_test_file.touch()
+    repo_exe = tmp_path / "repo" / "build" / "cmake" / "out" / "libgguf_quantize_gguf"
+    repo_exe.parent.mkdir(parents=True)
+    repo_exe.touch()
+    scripts_exe = tmp_path / "scripts" / "libgguf_quantize_gguf"
+    scripts_exe.parent.mkdir()
+    scripts_exe.touch()
+    path_exe = tmp_path / "bin" / "libgguf_quantize_gguf"
+    path_exe.parent.mkdir()
+    path_exe.touch()
+    env_exe = tmp_path / "env" / "libgguf_quantize_gguf"
+    env_exe.parent.mkdir()
+    env_exe.touch()
+    monkeypatch.setitem(globals(), "__file__", str(fake_test_file))
+    monkeypatch.setattr(sysconfig, "get_path", lambda name: str(scripts_exe.parent) if name == "scripts" else None)
+    monkeypatch.setattr(shutil, "which", lambda name: str(path_exe))
+
+    monkeypatch.setenv("LIBGGUF_QUANTIZE_GGUF_EXE", str(env_exe))
+    assert _native_exe() == env_exe
+
+    monkeypatch.delenv("LIBGGUF_QUANTIZE_GGUF_EXE")
+    assert _native_exe() == repo_exe
+
+    repo_exe.unlink()
+    assert _native_exe() == scripts_exe
+
+    scripts_exe.unlink()
+    assert _native_exe() == path_exe
+
+
+def test_native_exe_checks_windows_exe_name_in_current_env_scripts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_test_file = tmp_path / "repo" / "tests" / "test_native_executable.py"
+    fake_test_file.parent.mkdir(parents=True)
+    fake_test_file.touch()
+    scripts_exe = tmp_path / "scripts" / "libgguf_quantize_gguf.exe"
+    scripts_exe.parent.mkdir()
+    scripts_exe.touch()
+    monkeypatch.setitem(globals(), "__file__", str(fake_test_file))
+    monkeypatch.delenv("LIBGGUF_QUANTIZE_GGUF_EXE", raising=False)
+    monkeypatch.setattr(sysconfig, "get_path", lambda name: str(scripts_exe.parent) if name == "scripts" else None)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    assert _native_exe() == scripts_exe
 
 
 @pytest.mark.parametrize(

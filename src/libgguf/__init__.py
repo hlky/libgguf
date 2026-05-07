@@ -24,7 +24,14 @@ def _qtype_value(qtype: int | Any) -> int:
 
 
 def row_size(qtype: int | Any, n_per_row: int) -> int:
-    return int(_libgguf.row_size(_qtype_value(qtype), int(n_per_row)))
+    qtype_value = _qtype_value(qtype)
+    n_per_row_value = int(n_per_row)
+    if n_per_row_value <= 0:
+        return 0
+    block_size = _BLOCK_SIZES.get(qtype_value)
+    if block_size is not None and block_size > 1 and n_per_row_value % block_size != 0:
+        return 0
+    return int(_libgguf.row_size(qtype_value, n_per_row_value))
 
 
 def type_size(qtype: int | Any) -> int:
@@ -39,32 +46,7 @@ def quantize_requires_imatrix(qtype: int | Any) -> bool:
     return bool(_libgguf.quantize_requires_imatrix(_qtype_value(qtype)))
 
 
-_BLOCK_SIZES: dict[int, int] = {
-    2: 32,
-    3: 32,
-    6: 32,
-    7: 32,
-    8: 32,
-    10: 256,
-    11: 256,
-    12: 256,
-    13: 256,
-    14: 256,
-    16: 256,
-    17: 256,
-    18: 256,
-    19: 256,
-    20: 32,
-    21: 256,
-    22: 256,
-    23: 256,
-    29: 256,
-    34: 256,
-    35: 256,
-    39: 32,
-    40: 64,
-    41: 128,
-}
+_BLOCK_SIZES: dict[int, int] = {int(qtype): block_size for qtype, (block_size, _) in GGML_QUANT_SIZES.items()}
 
 _STORAGE_QTYPE_DTYPES: dict[int, np.dtype[Any]] = {
     0: np.dtype(np.float32),
@@ -72,6 +54,38 @@ _STORAGE_QTYPE_DTYPES: dict[int, np.dtype[Any]] = {
 }
 
 _STORAGE_QTYPES = frozenset((*_STORAGE_QTYPE_DTYPES, 30))
+_SUPPORTED_ROW_QTYPES = frozenset(
+    qtype for qtype, block_size in _BLOCK_SIZES.items() if row_size(qtype, block_size) > 0
+)
+_SUPPORTED_QUANTIZED_QTYPES = frozenset(
+    qtype for qtype in _SUPPORTED_ROW_QTYPES if qtype not in _STORAGE_QTYPES
+)
+
+
+def _validated_row_size(qtype_value: int, n_per_row: int, operation: str) -> int:
+    if n_per_row <= 0:
+        raise ValueError("n_per_row must be positive")
+    if operation == "dequantize" and qtype_value not in _SUPPORTED_QUANTIZED_QTYPES:
+        raise ValueError("unsupported quantization type or row width")
+
+    bytes_per_row = row_size(qtype_value, n_per_row)
+    if bytes_per_row > 0:
+        return bytes_per_row
+
+    block_size = _BLOCK_SIZES.get(qtype_value)
+    if block_size is not None and block_size > 1 and n_per_row % block_size != 0:
+        raise ValueError(f"{operation} row width must be a multiple of this quantization type's block size ({block_size})")
+
+    raise ValueError("unsupported quantization type or row width")
+
+
+def _validate_imatrix(imatrix: Any, n_per_row: int) -> np.ndarray:
+    quant_weights = np.ascontiguousarray(imatrix, dtype=np.float32)
+    if quant_weights.ndim != 1:
+        raise ValueError("imatrix must be a one-dimensional float32 array")
+    if quant_weights.shape[0] != n_per_row:
+        raise ValueError("imatrix length must match n_per_row")
+    return quant_weights
 
 
 def quantize_rows_raw(
@@ -81,11 +95,14 @@ def quantize_rows_raw(
     n_per_row: int,
     imatrix: Any | None = None,
 ) -> bytes:
+    qtype_value = _qtype_value(qtype)
+    n_per_row_value = int(n_per_row)
+    _validated_row_size(qtype_value, n_per_row_value, "quantize")
     return _libgguf.quantize_rows_raw(
-        _qtype_value(qtype),
+        qtype_value,
         src,
         int(n_rows),
-        int(n_per_row),
+        n_per_row_value,
         imatrix,
     )
 
@@ -98,13 +115,16 @@ def quantize_rows_into_raw(
     n_per_row: int,
     imatrix: Any | None = None,
 ) -> int:
+    qtype_value = _qtype_value(qtype)
+    n_per_row_value = int(n_per_row)
+    _validated_row_size(qtype_value, n_per_row_value, "quantize")
     return int(
         _libgguf.quantize_rows_into_raw(
-            _qtype_value(qtype),
+            qtype_value,
             src,
             dst,
             int(n_rows),
-            int(n_per_row),
+            n_per_row_value,
             imatrix,
         )
     )
@@ -116,11 +136,14 @@ def dequantize_rows_raw(
     n_rows: int,
     n_per_row: int,
 ) -> bytes:
+    qtype_value = _qtype_value(qtype)
+    n_per_row_value = int(n_per_row)
+    _validated_row_size(qtype_value, n_per_row_value, "dequantize")
     return _libgguf.dequantize_rows_raw(
-        _qtype_value(qtype),
+        qtype_value,
         src,
         int(n_rows),
-        int(n_per_row),
+        n_per_row_value,
     )
 
 
@@ -131,13 +154,16 @@ def dequantize_rows_into_raw(
     n_rows: int,
     n_per_row: int,
 ) -> int:
+    qtype_value = _qtype_value(qtype)
+    n_per_row_value = int(n_per_row)
+    _validated_row_size(qtype_value, n_per_row_value, "dequantize")
     return int(
         _libgguf.dequantize_rows_into_raw(
-            _qtype_value(qtype),
+            qtype_value,
             src,
             dst,
             int(n_rows),
-            int(n_per_row),
+            n_per_row_value,
         )
     )
 
@@ -155,7 +181,7 @@ def quantize_rows(data: np.ndarray, qtype: int | Any, imatrix: Any | None = None
     n_per_row = int(rows.shape[-1])
 
     if imatrix is not None:
-        quant_weights = np.ascontiguousarray(imatrix, dtype=np.float32)
+        quant_weights = _validate_imatrix(imatrix, n_per_row)
     elif quantize_requires_imatrix(qtype_value):
         quant_weights = np.ascontiguousarray(
             np.sum((rows * rows).reshape((-1, n_per_row)), axis=0, dtype=np.float32),
@@ -164,7 +190,7 @@ def quantize_rows(data: np.ndarray, qtype: int | Any, imatrix: Any | None = None
     else:
         quant_weights = None
 
-    bytes_per_row = row_size(qtype_value, n_per_row)
+    bytes_per_row = _validated_row_size(qtype_value, n_per_row, "quantize")
     out = np.empty((*rows.shape[:-1], bytes_per_row), dtype=np.uint8)
     quantize_rows_into_raw(qtype_value, rows, out, n_rows, n_per_row, quant_weights)
     return out
@@ -181,7 +207,7 @@ def store_rows(data: np.ndarray, qtype: int | Any) -> np.ndarray:
 
     n_rows = int(np.prod(rows.shape[:-1], dtype=np.int64)) if rows.ndim > 1 else 1
     n_per_row = int(rows.shape[-1])
-    bytes_per_row = row_size(qtype_value, n_per_row)
+    bytes_per_row = _validated_row_size(qtype_value, n_per_row, "store")
     out = np.empty((*rows.shape[:-1], bytes_per_row), dtype=np.uint8)
     quantize_rows_into_raw(qtype_value, rows, out, n_rows, n_per_row)
 
@@ -199,9 +225,9 @@ def dequantize_rows(data: Any, qtype: int | Any, n_per_row: int | None = None) -
     qtype_value = _qtype_value(qtype)
     bytes_per_row = int(rows.shape[-1])
     if n_per_row is None:
-        block_size = _BLOCK_SIZES.get(qtype_value)
-        if block_size is None:
+        if qtype_value not in _SUPPORTED_QUANTIZED_QTYPES:
             raise ValueError("unsupported quantization type")
+        block_size = _BLOCK_SIZES[qtype_value]
         block_bytes = type_size(qtype_value)
         if bytes_per_row % block_bytes != 0:
             raise ValueError("encoded row width is not a multiple of the quantization block size")
@@ -209,7 +235,7 @@ def dequantize_rows(data: Any, qtype: int | Any, n_per_row: int | None = None) -
     else:
         n_per_row = int(n_per_row)
 
-    if row_size(qtype_value, n_per_row) != bytes_per_row:
+    if _validated_row_size(qtype_value, n_per_row, "dequantize") != bytes_per_row:
         raise ValueError("encoded row width does not match n_per_row for this quantization type")
 
     n_rows = int(np.prod(rows.shape[:-1], dtype=np.int64)) if rows.ndim > 1 else 1

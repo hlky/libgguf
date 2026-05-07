@@ -72,6 +72,10 @@ def quantize_pair(rows: np.ndarray, qtype: GGMLQuantizationType) -> tuple[torch.
     return actual, expected
 
 
+def cuda_rows(qtype: GGMLQuantizationType, *, rows: int = 1) -> torch.Tensor:
+    return torch.from_numpy(build_rows(qtype, rows=rows)).to("cuda")
+
+
 @pytest.mark.parametrize("qtype", CUDA_QUANT_QTYPES, ids=qtype_id)
 def test_cuda_quantize_matches_libgguf(qtype: GGMLQuantizationType) -> None:
     require_cuda_quantize()
@@ -113,6 +117,100 @@ def test_cuda_quantize_k_edge_cases_match_libgguf(qtype: GGMLQuantizationType, c
     actual, expected = quantize_pair(rows, qtype)
 
     np.testing.assert_array_equal(actual.cpu().numpy(), expected)
+
+
+def test_cuda_quantize_rejects_bad_input_dtype() -> None:
+    require_cuda_quantize()
+
+    rows = cuda_rows(GGMLQuantizationType.Q4_0).half()
+
+    with pytest.raises(RuntimeError, match="float32 input"):
+        libgguf_cuda.quantize(rows, int(GGMLQuantizationType.Q4_0))
+
+
+def test_cuda_quantize_rejects_non_contiguous_input() -> None:
+    require_cuda_quantize()
+
+    block_size, _ = GGML_QUANT_SIZES[GGMLQuantizationType.Q4_0]
+    rows = torch.empty((1, block_size * 2, 2), device="cuda", dtype=torch.float32)[:, :, 0]
+
+    assert not rows.is_contiguous()
+    with pytest.raises(RuntimeError, match="contiguous input"):
+        libgguf_cuda.quantize(rows, int(GGMLQuantizationType.Q4_0))
+
+
+def test_cuda_quantize_rejects_bad_row_width() -> None:
+    require_cuda_quantize()
+
+    block_size, _ = GGML_QUANT_SIZES[GGMLQuantizationType.Q4_0]
+    rows = torch.empty((1, block_size + 1), device="cuda", dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="divisible"):
+        libgguf_cuda.quantize(rows, int(GGMLQuantizationType.Q4_0))
+
+
+def test_cuda_quantize_rejects_unsupported_qtype() -> None:
+    require_cuda_quantize()
+
+    rows = cuda_rows(GGMLQuantizationType.Q4_0)
+
+    with pytest.raises(RuntimeError, match="Unsupported GGML quantization type"):
+        libgguf_cuda.quantize(rows, int(GGMLQuantizationType.F32))
+
+
+def test_cuda_quantize_rejects_missing_required_imatrix() -> None:
+    require_cuda_quantize()
+
+    qtype = GGMLQuantizationType.IQ2_XXS
+    assert libgguf.quantize_requires_imatrix(qtype)
+
+    with pytest.raises(RuntimeError, match="requires imatrix"):
+        libgguf_cuda.quantize(cuda_rows(qtype), int(qtype))
+
+
+def test_cuda_quantize_rejects_bad_imatrix_dtype() -> None:
+    require_cuda_quantize()
+
+    qtype = GGMLQuantizationType.IQ2_XXS
+    rows = cuda_rows(qtype)
+    imatrix = torch.empty((rows.shape[-1],), device="cuda", dtype=torch.float16)
+
+    with pytest.raises(RuntimeError, match="imatrix must be float32"):
+        libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+def test_cuda_quantize_rejects_bad_imatrix_rank() -> None:
+    require_cuda_quantize()
+
+    qtype = GGMLQuantizationType.IQ2_XXS
+    rows = cuda_rows(qtype)
+    imatrix = torch.empty((1, rows.shape[-1]), device="cuda", dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="one-dimensional"):
+        libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+def test_cuda_quantize_rejects_short_imatrix() -> None:
+    require_cuda_quantize()
+
+    qtype = GGMLQuantizationType.IQ2_XXS
+    rows = cuda_rows(qtype)
+    imatrix = torch.empty((rows.shape[-1] - 1,), device="cuda", dtype=torch.float32)
+
+    with pytest.raises(RuntimeError, match="at least input width"):
+        libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+def test_cuda_quantize_rejects_non_contiguous_imatrix() -> None:
+    require_cuda_quantize()
+
+    qtype = GGMLQuantizationType.IQ2_XXS
+    rows = cuda_rows(qtype)
+    imatrix = torch.empty((rows.shape[-1], 2), device="cuda", dtype=torch.float32)[:, 0]
+
+    assert not imatrix.is_contiguous()
+    with pytest.raises(RuntimeError, match="imatrix must be contiguous"):
+        libgguf_cuda.quantize(rows, int(qtype), imatrix)
 
 
 @pytest.mark.parametrize(
