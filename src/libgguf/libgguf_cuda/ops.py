@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
-from libgguf import GGMLQuantizationType, GGML_QUANT_SIZES
+from libgguf import GGMLQuantizationType, GGML_QUANT_SIZES, quantize_requires_imatrix
 
 try:
     from torch.library import register_fake
@@ -33,6 +33,10 @@ if hasattr(torch.ops, "_C_gguf") and hasattr(torch.ops._C_gguf, "quantize"):
         W: torch.Tensor, quant_type: int, imatrix: torch.Tensor | None = None
     ) -> torch.Tensor:
         qtype = GGMLQuantizationType(quant_type)
+        if W.dtype != torch.float32:
+            raise RuntimeError("CUDA quantize expects float32 input")
+        if W.dim() < 1:
+            raise RuntimeError("CUDA quantize expects at least one dimension")
         if qtype not in (
             GGMLQuantizationType.IQ2_XXS,
             GGMLQuantizationType.IQ2_XS,
@@ -59,8 +63,18 @@ if hasattr(torch.ops, "_C_gguf") and hasattr(torch.ops._C_gguf, "quantize"):
             GGMLQuantizationType.TQ1_0,
             GGMLQuantizationType.TQ2_0,
         ):
-            raise NotImplementedError(f"CUDA quantize does not support {qtype.name}")
+            raise RuntimeError(
+                f"Unsupported GGML quantization type for CUDA quantize: {quant_type}"
+            )
         block_size, type_size = GGML_QUANT_SIZES[qtype]
+        if W.shape[-1] % block_size != 0:
+            raise RuntimeError(
+                "CUDA quantize input width must be divisible by the quantization block size"
+            )
+        if quantize_requires_imatrix(qtype) and imatrix is None:
+            raise RuntimeError(
+                f"CUDA quantize requires imatrix for GGML quantization type: {quant_type}"
+            )
         row_size = W.shape[-1] * type_size // block_size
         return torch.empty((*W.shape[:-1], row_size), dtype=torch.uint8, device=W.device)
 
