@@ -26,6 +26,8 @@ Public metadata helpers:
 - `quant_shape_to_byte_shape(shape, quant_type)`
 - `quant_shape_from_byte_shape(shape, quant_type)`
 
+`row_size(qtype, n_per_row)` returns the encoded byte width for one row. It returns `0` when the qtype is unsupported, `n_per_row` is not positive, or a quantized qtype receives a row width that is not a valid multiple of its block size.
+
 ## Row Quantization
 
 High-level NumPy row APIs:
@@ -51,9 +53,13 @@ Public row APIs:
 - `dequantize_rows_raw(qtype, src, n_rows, n_per_row) -> bytes`
 - `dequantize_rows_into_raw(qtype, src, dst, n_rows, n_per_row) -> int`
 
-`quantize_rows` accepts arrays whose last dimension is the row width. For imatrix qtypes, passing `imatrix=None` computes weights from the input rows.
+`quantize_rows` accepts arrays whose last dimension is the row width. Quantized qtypes require a positive row width divisible by the qtype block size; the raw quantize APIs enforce the same contract through `n_per_row`.
 
-`store_rows` handles storage qtypes `F32`, `F16`, and `BF16`.
+`dequantize_rows(..., n_per_row=None)` can infer the row width from encoded bytes for supported quantized qtypes. When `n_per_row` is passed explicitly, it must be valid for the qtype and match the encoded bytes per row.
+
+`store_rows` handles storage qtypes `F32`, `F16`, and `BF16` for any positive row width. Storage qtypes should be written with `store_rows`, not decoded with `dequantize_rows`.
+
+For qtypes that require imatrix weights, passing `imatrix=None` to high-level `quantize_rows` computes weights from the input rows. Explicit `imatrix` values must be one-dimensional, float32-compatible, and have length exactly equal to the row width.
 
 ## Imatrix
 

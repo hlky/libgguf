@@ -1,6 +1,6 @@
 # Qtypes
 
-GGUF quantized tensors are stored in fixed-size blocks. A qtype defines how many source values are encoded per block and how many bytes each encoded block uses. Row APIs require the last dimension to be divisible by the qtype block size.
+GGUF quantized tensors are stored in fixed-size blocks. A qtype defines how many source values are encoded per block and how many bytes each encoded block uses. Quantized row APIs require a positive last dimension divisible by the qtype block size; storage qtypes `F32`, `F16`, and `BF16` can be stored at any positive row width.
 
 At the file-format level, GGUF is a single-file binary container with header metadata, key-value metadata, tensor descriptors, and a tensor data blob. libgguf's current public surface includes qtype metadata, row kernels, converter paths, GGUF inspection, and minimal structural validation; first-class public reader/writer APIs and deeper validator coverage are planned.
 
@@ -13,6 +13,8 @@ qtype = libgguf.GGMLQuantizationType.Q4_K
 block_size, block_bytes = libgguf.GGML_QUANT_SIZES[qtype]
 row_bytes = libgguf.row_size(qtype, 4096)
 ```
+
+`row_size(qtype, n_per_row)` returns `0` for unsupported qtypes, non-positive widths, and quantized widths that are not valid multiples of the qtype block size.
 
 ## Families
 
