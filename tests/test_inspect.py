@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import libgguf
+import pytest
 
 
 def _gguf_string(value: str) -> bytes:
@@ -107,6 +108,71 @@ def test_inspect_gguf_reads_metadata_and_tensor_descriptors_without_payload(tmp_
         "nbytes": 288,
     }
     assert info.tensor_type_counts == {"Q4_0": 1}
+
+
+def test_gguf_file_get_tensor_and_read_tensor_bytes(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "minimal.gguf"
+    _minimal_gguf(gguf_path)
+    info = libgguf.inspect_gguf(gguf_path)
+    tensor = info.tensors[0]
+    assert tensor.nbytes is not None
+    payload = bytes(i % 256 for i in range(tensor.nbytes))
+    with gguf_path.open("r+b") as handle:
+        handle.seek(tensor.data_offset)
+        handle.write(payload)
+
+    assert info.get_tensor("blocks.0.attn_v.weight") == tensor
+    assert info.get_tensor("missing.weight") is None
+    assert info.read_tensor_bytes(tensor) == payload
+    assert info.read_tensor_bytes("blocks.0.attn_v.weight", offset=10, size=5) == payload[10:15]
+
+
+def test_gguf_file_read_tensor_bytes_rejects_invalid_requests(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "minimal.gguf"
+    _minimal_gguf(gguf_path)
+    info = libgguf.inspect_gguf(gguf_path)
+    tensor = info.tensors[0]
+    assert tensor.nbytes is not None
+
+    with pytest.raises(KeyError, match="tensor not found"):
+        info.read_tensor_bytes("missing.weight")
+    with pytest.raises(ValueError, match="offset must be non-negative"):
+        info.read_tensor_bytes(tensor, offset=-1)
+    with pytest.raises(ValueError, match="requested byte range extends past tensor payload"):
+        info.read_tensor_bytes(tensor, offset=tensor.nbytes - 1, size=2)
+    with pytest.raises(ValueError, match="not part of this GGUFFile"):
+        info.read_tensor_bytes(
+            libgguf.GGUFTensorInfo(
+                name="other.weight",
+                shape=(256, 2),
+                qtype="Q4_0",
+                qtype_value=int(libgguf.GGMLQuantizationType.Q4_0),
+                offset=0,
+                data_offset=info.data_offset,
+                nbytes=288,
+            )
+        )
+
+
+def test_gguf_file_read_tensor_bytes_requires_size_for_unknown_nbytes(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "invalid-row-width.gguf"
+    _minimal_gguf(gguf_path, shape=(16, 2), payload_size=64 + 8)
+    info = libgguf.inspect_gguf(gguf_path)
+    tensor = info.tensors[0]
+    assert tensor.nbytes is None
+
+    with pytest.raises(ValueError, match="byte length is unknown"):
+        info.read_tensor_bytes(tensor)
+    assert info.read_tensor_bytes(tensor, size=8) == b"\0" * 8
+
+
+def test_gguf_file_read_tensor_bytes_errors_for_truncated_payload(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "truncated-payload.gguf"
+    _minimal_gguf(gguf_path, payload_size=64 + 100)
+    info = libgguf.inspect_gguf(gguf_path)
+
+    with pytest.raises(libgguf.GGUFFormatError, match="unexpected end of GGUF tensor payload"):
+        info.read_tensor_bytes(info.tensors[0])
 
 
 def test_inspect_gguf_reports_unknown_nbytes_for_invalid_block_row_width(tmp_path: Path) -> None:

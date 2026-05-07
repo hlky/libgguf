@@ -129,6 +129,71 @@ class GGUFFile:
             counts[tensor.qtype] = counts.get(tensor.qtype, 0) + 1
         return counts
 
+    def get_tensor(self, name: str) -> GGUFTensorInfo | None:
+        """Return the first tensor descriptor with ``name``, if present."""
+
+        for tensor in self.tensors:
+            if tensor.name == name:
+                return tensor
+        return None
+
+    def read_tensor_bytes(
+        self,
+        tensor: str | GGUFTensorInfo,
+        *,
+        offset: int = 0,
+        size: int | None = None,
+    ) -> bytes:
+        """Read raw tensor payload bytes without decoding tensor contents.
+
+        Args:
+            tensor: Tensor name or descriptor from this file.
+            offset: Byte offset relative to the tensor payload.
+            size: Number of bytes to read. Defaults to the remaining payload
+                size when the tensor byte length is known.
+        """
+
+        tensor_info: GGUFTensorInfo
+        if isinstance(tensor, str):
+            found = self.get_tensor(tensor)
+            if found is None:
+                raise KeyError(f"tensor not found: {tensor!r}")
+            tensor_info = found
+        else:
+            if tensor not in self.tensors:
+                raise ValueError("tensor descriptor is not part of this GGUFFile")
+            tensor_info = tensor
+
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        if size is not None and size < 0:
+            raise ValueError("size must be non-negative or None")
+
+        if tensor_info.nbytes is None:
+            if size is None:
+                raise ValueError(f"tensor {tensor_info.name!r} byte length is unknown; pass size")
+            read_size = size
+        else:
+            if offset > tensor_info.nbytes:
+                raise ValueError("offset extends past tensor payload")
+            remaining = tensor_info.nbytes - offset
+            if size is None:
+                read_size = remaining
+            elif size > remaining:
+                raise ValueError("requested byte range extends past tensor payload")
+            else:
+                read_size = size
+
+        with self.path.open("rb") as handle:
+            handle.seek(tensor_info.data_offset + offset)
+            data = handle.read(read_size)
+        if len(data) != read_size:
+            raise GGUFFormatError(
+                f"unexpected end of GGUF tensor payload for {tensor_info.name!r}: "
+                f"wanted {read_size} bytes, got {len(data)}"
+            )
+        return data
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "path": os.fspath(self.path),

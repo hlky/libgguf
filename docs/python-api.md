@@ -69,6 +69,7 @@ weights = libgguf.load_imatrix("imatrix.dat")
 info = libgguf.inspect_gguf("model.gguf")
 print(info.metadata["general.architecture"].value)
 print(info.tensors[0].name, info.tensors[0].shape, info.tensors[0].qtype)
+payload = info.read_tensor_bytes(info.tensors[0])
 ```
 
 Public inspection APIs:
@@ -83,7 +84,7 @@ Public inspection APIs:
 - `GGUFValidationResult`
 - `GGUFFormatError`
 
-The inspector reads GGUF metadata and tensor descriptors only. Tensor descriptors include the qtype, stored shape, relative tensor offset, absolute payload offset, and computed payload byte length when the qtype is known.
+The inspector reads GGUF metadata and tensor descriptors when parsing. Tensor descriptors include the qtype, stored shape, relative tensor offset, absolute payload offset, and computed payload byte length when the qtype is known. `GGUFFile.get_tensor(name)` returns a descriptor by name, and `GGUFFile.read_tensor_bytes(tensor_or_name, *, offset=0, size=None)` can read raw payload bytes for one tensor without decoding it.
 
 The validator builds on the inspector and also avoids tensor payload reads. It checks common structural issues such as missing common metadata, unknown qtypes, invalid row widths, duplicate tensor names, payload ranges that exceed the file size, and overlapping known tensor ranges. `GGUFValidationResult.ok` is false only when errors are present; warnings alone do not make the result invalid.
 
