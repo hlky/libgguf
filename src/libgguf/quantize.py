@@ -546,13 +546,21 @@ def _load_bf16_safetensors_tensor(file_bytes: np.ndarray, data_start: int, heade
     return tensor_bytes.view(np.uint16).reshape(shape)
 
 
-def parse_qtype(qtype: str | Any) -> tuple[str, str]:
-    if not isinstance(qtype, str):
+def _qtype_name(qtype: str | Any) -> str | None:
+    if isinstance(qtype, str):
+        name = qtype
+    else:
         name = getattr(qtype, "name", None)
         if name is None:
-            raise ValueError(f"Unsupported quantization type: {qtype!r}")
-        qtype = name
-    file_type = FILE_TYPE_ALIASES.get(qtype.upper(), qtype.upper())
+            return None
+    return name.upper().removeprefix("MOSTLY_")
+
+
+def parse_qtype(qtype: str | Any) -> tuple[str, str]:
+    qtype_name = _qtype_name(qtype)
+    if qtype_name is None:
+        raise ValueError(f"Unsupported quantization type: {qtype!r}")
+    file_type = FILE_TYPE_ALIASES.get(qtype_name, qtype_name)
     tensor_qtype = FILE_TYPE_TO_TENSOR_QTYPE.get(file_type, file_type)
     if tensor_qtype not in SUPPORTED_QUANT_QTYPES:
         raise ValueError(f"Unsupported direct quantization type: {qtype}")
@@ -560,12 +568,11 @@ def parse_qtype(qtype: str | Any) -> tuple[str, str]:
 
 
 def parse_tensor_qtype(qtype: str | Any) -> str:
-    if not isinstance(qtype, str):
-        name = getattr(qtype, "name", None)
-        if name is None:
-            raise ValueError(f"Unsupported tensor type: {qtype!r}")
-        qtype = name
-    qtype_name = FILE_TYPE_TO_TENSOR_QTYPE.get(FILE_TYPE_ALIASES.get(qtype.upper(), qtype.upper()), qtype.upper())
+    raw_qtype_name = _qtype_name(qtype)
+    if raw_qtype_name is None:
+        raise ValueError(f"Unsupported tensor type: {qtype!r}")
+    file_type = FILE_TYPE_ALIASES.get(raw_qtype_name, raw_qtype_name)
+    qtype_name = FILE_TYPE_TO_TENSOR_QTYPE.get(file_type, file_type)
     if qtype_name not in SUPPORTED_STORAGE_QTYPES:
         raise ValueError(f"Unsupported GGML tensor type: {qtype}")
     return qtype_name
