@@ -28,6 +28,28 @@ Control CUDA extension builds:
 cmake -S . -B build -DLIBGGUF_BUILD_CUDA_KERNELS=ON
 ```
 
+## Repository Layout
+
+- `include/`: public C API.
+- `csrc/`: native C++ implementation.
+- `csrc/common/`: shared tables, CPU feature probing, storage helpers, and quantization helpers.
+- `csrc/quant/`: scalar row quantizers plus x86 SIMD variants in `sse2/`, `sse4_1/`, and `avx2/`.
+- `csrc/dequant/`: scalar row dequantizers, dispatch glue, and the same x86 SIMD variant layout.
+- `csrc/quantize_gguf.cpp`: native GGUF quantization/conversion executable.
+- `src/libgguf/`: public Python package, row APIs, conversion helpers, and inspection/validation CLIs.
+- `src/libgguf/libgguf_numpy/`, `src/libgguf/libgguf_torch/`, `src/libgguf/libgguf_cuda/`: optional backend packages.
+- `tests/`, `bench/`, `scripts/`, `docs/`: parity tests, benchmark drivers, maintenance scripts, and documentation.
+
+Installed Python inspection CLIs are `gguf-inspect` and `gguf-validate`.
+
+## CPU SIMD and Backend Selection
+
+On x86 builds, CMake includes the SIMD source variants and applies per-source flags for `sse2`, `sse4_1`, and `avx2` files. Runtime code probes CPU features before using those implementations, so unsupported instruction sets fall back to a supported backend or `ref`. Backend-specific private hooks exist so tests can compare `ref` with supported SIMD implementations for byte/value parity.
+
+Use runtime auto dispatch as the normal policy. Current defaults are hard-coded preferences by operation/qtype, not benchmark results measured on the user's CPU, so do not treat one benchmark machine as a universal compile-time choice.
+
+If reproducibility or benchmarking needs backend pinning later, add an explicit documented override and keep auto dispatch as the default user path. If portable non-x86 or reference-only builds become a release target, add a CMake option to control SIMD source inclusion instead of replacing runtime dispatch.
+
 ## Tests
 
 ```bash
