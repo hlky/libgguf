@@ -78,6 +78,7 @@ def _help_native_cli_options(help_text: str) -> set[str]:
         "N|all",
         "cpu|cuda|auto",
         "cpu",
+        "0|1",
     }
     options: set[str] = set()
     for line in help_text.splitlines():
@@ -491,6 +492,25 @@ def test_native_executable_cuda_batch_mb_rejects_bad_value(tmp_path: Path, value
 
     assert result.returncode != 0
     assert "--cuda-batch-mb" in result.stderr
+
+
+@pytest.mark.parametrize("value", ["2", "some"])
+def test_native_executable_cuda_pipeline_rejects_bad_value(tmp_path: Path, value: str) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.zeros((2, 256), dtype=np.float32)
+    src = tmp_path / "model.safetensors"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--cuda-pipeline", value],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "--cuda-pipeline must be 0 or 1" in result.stderr
 
 
 def test_native_executable_backend_auto_simple_qtype_uses_cpu(tmp_path: Path) -> None:
@@ -1007,42 +1027,56 @@ def test_native_executable_cuda_pipeline_matches_cpu_when_available(tmp_path: Pa
     rows = np.linspace(-2.0, 2.0, 2048, dtype=np.float32).reshape(8, 256)
     src = tmp_path / "model.safetensors"
     expected = tmp_path / "expected.gguf"
-    actual = tmp_path / "actual.gguf"
+    actual_0 = tmp_path / "actual-pipeline-0.gguf"
+    actual_1 = tmp_path / "actual-pipeline-1.gguf"
     _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
 
     convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
-    result = subprocess.run(
-        [
-            str(exe),
-            "--src",
-            str(src),
-            "--dst",
-            str(actual),
-            "--qtype",
-            "Q4_0",
-            "--policy",
-            "uniform",
-            "--backend",
-            "cuda",
-            "--cuda-vram-bytes",
-            "1536",
-            "--overwrite",
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
     unavailable = (
         "built without native CUDA support",
         "failed to initialize CUDA backend",
         "CUDA driver",
         "CUDA-capable device",
     )
-    if result.returncode != 0 and any(fragment in result.stderr for fragment in unavailable):
-        pytest.skip("native CUDA converter support is unavailable")
-    assert result.returncode == 0, result.stderr
-    assert actual.read_bytes() == expected.read_bytes()
+    for pipeline, actual in [("0", actual_0), ("1", actual_1)]:
+        result = subprocess.run(
+            [
+                str(exe),
+                "--src",
+                str(src),
+                "--dst",
+                str(actual),
+                "--qtype",
+                "Q4_0",
+                "--policy",
+                "uniform",
+                "--backend",
+                "cuda",
+                "--cuda-vram-bytes",
+                "4096",
+                "--cuda-pipeline",
+                pipeline,
+                "--timings",
+                "--overwrite",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 and any(fragment in result.stderr for fragment in unavailable):
+            pytest.skip("native CUDA converter support is unavailable")
+        assert result.returncode == 0, result.stderr
+        assert actual.read_bytes() == expected.read_bytes()
+        assert "cuda_tensors=1" in result.stderr
+        assert f"cuda_pipeline={pipeline}" in result.stderr
+        chunks = [
+            int(token.split("=", 1)[1])
+            for token in result.stderr.split()
+            if token.startswith("cuda_chunks=")
+        ]
+        assert chunks and chunks[0] > 0
+
+    assert actual_0.read_bytes() == actual_1.read_bytes()
 
 
 def test_native_executable_cuda_unsupported_qtype_requires_fallback_when_available(tmp_path: Path) -> None:

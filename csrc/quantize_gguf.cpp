@@ -106,6 +106,7 @@ struct cli_options {
   uint64_t verify_cuda_random_tensors = 0;
   uint64_t seed = 0;
   uint64_t cuda_vram_bytes = 0;
+  bool cuda_pipeline = true;
 };
 
 struct tensor_meta {
@@ -2069,7 +2070,7 @@ void write_tensor_payload(
   rows_per_chunk = std::min<uint64_t>(rows_per_chunk, plan.n_rows);
 
 #if defined(LIBGGUF_HAS_CUDA_NATIVE)
-  if (cuda_quant && !verify_cuda) {
+  if (cuda_quant && !verify_cuda && options.cuda_pipeline) {
     struct cuda_pipeline_slot_state {
       uint64_t row = 0;
       uint64_t row_count = 0;
@@ -2259,6 +2260,7 @@ void print_help() {
   std::puts("  --seed N                  Seed for random CUDA tensor verification (default: 0)");
   std::puts("  --cuda-vram-bytes N        CUDA device chunk budget in bytes (0 uses --scratch-bytes)");
   std::puts("  --cuda-batch-mb N          CUDA device chunk budget in MiB (alias for --cuda-vram-bytes)");
+  std::puts("  --cuda-pipeline 0|1        Use two-slot CUDA host pipeline for unverified tensors (default: 1)");
   std::puts("  --timings                  Print conversion timing breakdown to stderr");
   std::puts("  --help                     Show this help");
 }
@@ -2370,6 +2372,15 @@ cli_options parse_args(int argc, char **argv) {
         fail("--cuda-batch-mb is too large");
       }
       options.cuda_vram_bytes = mib * 1024ULL * 1024ULL;
+    } else if (arg == "--cuda-pipeline") {
+      const std::string value = need_value("--cuda-pipeline");
+      if (value == "0") {
+        options.cuda_pipeline = false;
+      } else if (value == "1") {
+        options.cuda_pipeline = true;
+      } else {
+        fail("--cuda-pipeline must be 0 or 1");
+      }
     } else if (arg == "--timings") {
       options.timings = true;
     } else {
@@ -2515,7 +2526,7 @@ conversion_result convert(const cli_options &options) {
     timings.total_s = elapsed_seconds(total_begin, steady_clock::now());
     std::fprintf(
         stderr,
-        "Timings: total=%.3fs metadata=%.3fs read=%.3fs cpu_convert=%.3fs h2d=%.3fs cuda_quant=%.3fs d2h=%.3fs write=%.3fs tensors=%llu cuda_tensors=%llu cuda_verified=%llu cuda_chunks=%llu threads=%u scratch=%llu cuda_vram=%llu cuda_max_input=%llu cuda_max_output=%llu\n",
+        "Timings: total=%.3fs metadata=%.3fs read=%.3fs cpu_convert=%.3fs h2d=%.3fs cuda_quant=%.3fs d2h=%.3fs write=%.3fs tensors=%llu cuda_tensors=%llu cuda_verified=%llu cuda_chunks=%llu threads=%u scratch=%llu cuda_vram=%llu cuda_pipeline=%u cuda_max_input=%llu cuda_max_output=%llu\n",
         timings.total_s,
         timings.metadata_s,
         timings.read_s,
@@ -2531,6 +2542,7 @@ conversion_result convert(const cli_options &options) {
         worker_threads,
         (unsigned long long)options.scratch_bytes,
         (unsigned long long)options.cuda_vram_bytes,
+        options.cuda_pipeline ? 1U : 0U,
         (unsigned long long)timings.cuda_max_input_bytes,
         (unsigned long long)timings.cuda_max_output_bytes);
   }
