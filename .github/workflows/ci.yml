@@ -49,9 +49,19 @@ jobs:
         run: python -m pytest -q
 
   wheel-install:
-    name: Wheel install smoke
+    name: Wheel install smoke (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: build-isolation
+            args: ""
+            build-requires: ""
+          - name: no-build-isolation
+            args: "--no-build-isolation"
+            build-requires: "scikit-build-core>=0.12.0"
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       PYTHONDONTWRITEBYTECODE: "1"
@@ -65,5 +75,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install no-build-isolation build requirements
+        if: matrix.build-requires != ''
+        run: python -m pip install "${{ matrix.build-requires }}"
+
       - name: Check wheel install
-        run: python scripts/check_wheel_install.py
+        run: python scripts/check_wheel_install.py ${{ matrix.args }}
