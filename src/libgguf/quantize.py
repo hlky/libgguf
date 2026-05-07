@@ -12,18 +12,14 @@ import struct
 from typing import Any, Iterator, Mapping, Protocol, Sequence
 
 import numpy as np
-from tqdm import tqdm
 
 from .imatrix import load_imatrix
 from ._metadata import GGMLQuantizationType, LlamaFileType, GGML_QUANT_SIZES
 
-try:
-    import gguf
-    from safetensors import safe_open
-except ImportError as exc:
-    raise ImportError(
-        "Direct GGUF quantization requires gguf, safetensors, and the editable libgguf package."
-    ) from exc
+_QUANTIZE_EXTRA_ERROR = (
+    "Direct GGUF quantization requires gguf, safetensors, torch, and tqdm. "
+    "Install the libgguf quantize extra to use conversion helpers."
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -32,6 +28,30 @@ QUANTIZATION_THRESHOLD = 1024
 REARRANGE_THRESHOLD = 512
 MAX_TENSOR_NAME_LENGTH = 127
 NATIVE_DEFAULT_SCRATCH_BYTES = 32 * 1024 * 1024
+
+
+def _require_gguf() -> Any:
+    try:
+        import gguf
+    except ImportError as exc:
+        raise ImportError(_QUANTIZE_EXTRA_ERROR) from exc
+    return gguf
+
+
+def _safe_open(*args: Any, **kwargs: Any) -> Any:
+    try:
+        from safetensors import safe_open
+    except ImportError as exc:
+        raise ImportError(_QUANTIZE_EXTRA_ERROR) from exc
+    return safe_open(*args, **kwargs)
+
+
+def _tqdm(iterable: Sequence[Any]) -> Any:
+    try:
+        from tqdm import tqdm
+    except ImportError as exc:
+        raise ImportError(_QUANTIZE_EXTRA_ERROR) from exc
+    return tqdm(iterable)
 
 
 @dataclass(frozen=True)
@@ -786,7 +806,7 @@ def _open_tensor_source(path: Path) -> Iterator[tuple[Mapping[str, str], TensorS
     if _is_safetensors_path(path):
         data_start, header = _read_safetensors_header(path)
         file_bytes = np.memmap(path, dtype=np.uint8, mode="r")
-        with safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
+        with _safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
             keys = list(handle.keys())
             key_map, _ = _strip_prefix_keys(keys)
 
@@ -831,7 +851,7 @@ def _open_safetensors_metadata_source(path: Path) -> Iterator[tuple[Mapping[str,
     if not _is_safetensors_path(path):
         raise ValueError("Native GGUF conversion only supports .safetensors inputs")
 
-    with safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
+    with _safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
         keys = list(handle.keys())
         key_map, _ = _strip_prefix_keys(keys)
 
@@ -862,6 +882,7 @@ def _prepare_conversion(
     include: Sequence[str] | None,
     exclude: Sequence[str] | None,
 ) -> tuple[gguf.GGUFWriter, ModelTemplate, list[TensorPlan], dict[str, int], dict[str, int]]:
+    gguf = _require_gguf()
     keys = tuple(tensor_source.keys())
     model_arch = detect_arch(set(keys))
     name_lengths = sorted(((key, len(key)) for key in keys), key=lambda item: item[1], reverse=True)
@@ -977,7 +998,7 @@ def convert_to_gguf(
         writer.write_ti_data_to_file()
 
         try:
-            for plan in tqdm(plans):
+            for plan in _tqdm(plans):
                 tensor = tensor_source.load_tensor(plan.key)
                 if plan.write_shape != plan.source_shape:
                     if plan.source_dtype == "BF16" and isinstance(tensor, np.ndarray) and tensor.dtype == np.dtype(np.uint16):
