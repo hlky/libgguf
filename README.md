@@ -75,12 +75,12 @@ python -m pip install -e ".[cuda]"
 
 Core dependency: `numpy`. Optional extras: `cuda`, `quantize`, and `test`.
 
-The build backend is `scikit-build-core`. Native builds require CMake >=3.18 and C++17. CUDA extension builds require importable `torch`, Torch CMake metadata, and `nvcc`.
+The build backend is `scikit-build-core`. Native builds require CMake >=3.18 and C++17. CUDA kernel builds require `nvcc` and the CUDA toolkit; the optional Torch CUDA extension additionally requires importable `torch` and Torch CMake metadata.
 
 Useful CMake options:
 
 - `LIBGGUF_CPU_BACKEND=REF|SSE2|SSE4_1|AVX2`: native CPU row backend to compile, default `REF`.
-- `LIBGGUF_BUILD_CUDA_KERNELS=AUTO|ON|OFF`: optional CUDA Torch extension build, default `AUTO`.
+- `LIBGGUF_BUILD_CUDA_KERNELS=AUTO|ON|OFF`: optional CUDA kernel targets, including the Torch extension when Torch is available, default `AUTO`.
 - `LIBGGUF_BUILD_TOOLS=ON`: build native command-line tools, default `ON`.
 - `LIBGGUF_BUILD_BENCHMARKS=OFF`: build native benchmark binaries, default `OFF`.
 

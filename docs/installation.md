@@ -38,7 +38,7 @@ CMake options exposed by the project:
 | `LIBGGUF_BUILD_PYTHON` | `ON` | Build the Python native extension `_libgguf`. |
 | `LIBGGUF_BUILD_TOOLS` | `ON` | Build native command-line tools such as `libgguf_quantize_gguf`. |
 | `LIBGGUF_BUILD_BENCHMARKS` | `OFF` | Build native benchmark binaries. |
-| `LIBGGUF_BUILD_CUDA_KERNELS` | `AUTO` | Build the optional `libgguf_cuda` Torch CUDA extension. Values: `AUTO`, `ON`, `OFF`. |
+| `LIBGGUF_BUILD_CUDA_KERNELS` | `AUTO` | Build optional CUDA kernel targets, including the `libgguf_cuda` Torch extension when Torch is available. Values: `AUTO`, `ON`, `OFF`. |
 | `LIBGGUF_CPU_BACKEND` | `REF` | Native CPU row backend to compile. Values: `REF`, `SSE2`, `SSE4_1`, `AVX2`. |
 
 Example explicit native build:
@@ -55,15 +55,21 @@ instruction set.
 
 ## CUDA Requirements
 
-The CUDA extension builds only when:
+CUDA kernel builds require `nvcc` and the CUDA toolkit. The optional Python
+Torch CUDA extension additionally requires:
 
 - `torch` imports in the build Python environment.
 - Torch CMake metadata is discoverable through `torch.utils.cmake_prefix_path`.
-- `nvcc` is available.
+- Python development-module headers are available.
 
-With `LIBGGUF_BUILD_CUDA_KERNELS=AUTO`, the build skips CUDA when those requirements are missing. With `LIBGGUF_BUILD_CUDA_KERNELS=ON`, missing CUDA requirements are a build error.
+With `LIBGGUF_BUILD_CUDA_KERNELS=AUTO`, the build skips CUDA when `nvcc` or the
+CUDA toolkit is missing. With `LIBGGUF_BUILD_CUDA_KERNELS=ON`, missing `nvcc` or
+CUDA toolkit support is a build error. If CUDA is available but Torch metadata is
+not, the internal native CUDA target can still build while the Python Torch
+extension is skipped.
 
-The CUDA target is a Torch extension installed as `libgguf.libgguf_cuda._C_gguf`.
+The installed Python CUDA target is a Torch extension at
+`libgguf.libgguf_cuda._C_gguf`.
 
 When installing through pip, build isolation can hide an already installed Torch from CMake. For an editable CUDA extension build, install the build backend and Torch first, then build without isolation:
 

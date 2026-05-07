@@ -22,7 +22,7 @@ cmake -S . -B build -DLIBGGUF_BUILD_BENCHMARKS=ON
 cmake --build build --config Release
 ```
 
-Control CUDA extension builds:
+Control CUDA kernel target builds:
 
 ```bash
 cmake -S . -B build -DLIBGGUF_BUILD_CUDA_KERNELS=ON

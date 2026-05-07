@@ -42,12 +42,13 @@ minutes until wheel smoke coverage is explicitly enabled.
 
 ## Optional CUDA Builds
 
-The CUDA extension is optional and controlled by
+CUDA kernel targets are optional and controlled by
 `LIBGGUF_BUILD_CUDA_KERNELS=AUTO|ON|OFF`. With the default `AUTO`, CMake builds
-`libgguf.libgguf_cuda._C_gguf` only when Torch, Torch CMake metadata, and `nvcc`
-are visible in the build environment. Use `ON` when the extension is required;
-missing CUDA requirements then fail the build instead of silently producing a
-CPU-only install.
+CUDA targets only when `nvcc` and the CUDA toolkit are visible in the build
+environment. The Python extension `libgguf.libgguf_cuda._C_gguf` additionally
+requires Torch and Torch CMake metadata. Use `ON` when CUDA kernel targets are
+required; missing `nvcc` or CUDA toolkit support then fails the build instead of
+silently producing a CPU-only install.
 
 PEP 517 build isolation can hide an already installed Torch package from CMake.
 For local editable CUDA builds, install the build backend and Torch first, then

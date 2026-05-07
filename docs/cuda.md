@@ -24,11 +24,12 @@ The CUDA API is experimental. It expects CUDA tensors and qtypes passed as integ
 
 ## Build Requirements
 
-The extension builds when all of these are available:
+The internal CUDA kernel target builds with `nvcc` and the CUDA toolkit. The
+Python Torch extension builds when these are also available:
 
 - importable `torch`;
 - Torch CMake metadata;
-- `nvcc`.
+- Python development-module headers.
 
 CMake option:
 
@@ -36,7 +37,10 @@ CMake option:
 -DLIBGGUF_BUILD_CUDA_KERNELS=AUTO
 ```
 
-`AUTO` skips CUDA when requirements are missing. `ON` turns missing requirements into a build error. `OFF` disables the CUDA extension.
+`AUTO` skips CUDA when `nvcc` or the CUDA toolkit is missing. `ON` turns missing
+CUDA toolkit requirements into a build error. When CUDA is available but Torch
+metadata is missing, CMake can still build the internal native CUDA target while
+skipping the Python Torch extension. `OFF` disables CUDA targets.
 
 CUDA compilation uses `--fmad=false` to help preserve byte-sensitive behavior.
 
@@ -78,7 +82,8 @@ The test suite includes CUDA exactness checks when CUDA is available.
 
 ## Current Limitations
 
-- CUDA is optional and depends on local Torch/CUDA build discovery.
+- CUDA is optional and depends on local CUDA toolkit discovery.
+- The Python Torch extension additionally depends on local Torch build discovery.
 - The native safetensors-to-GGUF converter does not yet route tensors through CUDA quantization.
 - Source dtype GPU input paths for F16/BF16 conversion are planned.
 - IQ quant kernels are exact on checked rows but remain an active performance optimization area.
