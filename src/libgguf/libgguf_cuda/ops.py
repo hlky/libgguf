@@ -138,6 +138,23 @@ if hasattr(torch.ops, "_C_gguf") and hasattr(torch.ops._C_gguf, "quantize"):
             raise RuntimeError(
                 f"CUDA quantize requires imatrix for GGML quantization type: {quant_type}"
             )
+        if quantize_requires_imatrix(qtype):
+            if imatrix.device.type not in ("cuda", "meta"):
+                raise RuntimeError("CUDA quantize imatrix must be a CUDA tensor")
+            if imatrix.device != W.device:
+                raise RuntimeError(
+                    "CUDA quantize imatrix must be on the same device as input"
+                )
+            if imatrix.dtype != torch.float32:
+                raise RuntimeError("CUDA quantize imatrix must be float32")
+            if imatrix.dim() != 1:
+                raise RuntimeError("CUDA quantize imatrix must be one-dimensional")
+            if imatrix.numel() < W.shape[-1]:
+                raise RuntimeError(
+                    "CUDA quantize imatrix must have at least input width elements"
+                )
+            if not imatrix.is_contiguous():
+                raise RuntimeError("CUDA quantize imatrix must be contiguous")
         row_size = W.shape[-1] * type_size // block_size
         return torch.empty((*W.shape[:-1], row_size), dtype=torch.uint8, device=W.device)
 

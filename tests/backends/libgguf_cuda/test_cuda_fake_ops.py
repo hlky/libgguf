@@ -201,6 +201,94 @@ def test_cuda_quantize_fake_meta_rejects_missing_required_imatrix(
             libgguf_cuda.quantize(rows, int(qtype))
 
 
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_quantize_fake_meta_rejects_required_cpu_imatrix(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = CUDA_IMATRIX_QTYPES[0]
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        rows = torch.empty((1, block_size), device=device, dtype=torch.float32)
+        imatrix = torch.empty((block_size,), device="cpu", dtype=torch.float32)
+        with pytest.raises(RuntimeError, match="imatrix must be a CUDA tensor"):
+            libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+def test_cuda_quantize_fake_rejects_required_imatrix_on_different_device() -> None:
+    require_cuda_ops()
+    fake_tensor_mode = require_fake_tensor_mode()
+
+    qtype = CUDA_IMATRIX_QTYPES[0]
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    with fake_tensor_mode():
+        rows = torch.empty((1, block_size), device="cuda", dtype=torch.float32)
+        imatrix = torch.empty((block_size,), device="meta", dtype=torch.float32)
+        with pytest.raises(RuntimeError, match="same device as input"):
+            libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_quantize_fake_meta_rejects_required_imatrix_bad_dtype(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = CUDA_IMATRIX_QTYPES[0]
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        rows = torch.empty((1, block_size), device=device, dtype=torch.float32)
+        imatrix = torch.empty((block_size,), device=device, dtype=torch.float16)
+        with pytest.raises(RuntimeError, match="imatrix must be float32"):
+            libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_quantize_fake_meta_rejects_required_imatrix_bad_rank(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = CUDA_IMATRIX_QTYPES[0]
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        rows = torch.empty((1, block_size), device=device, dtype=torch.float32)
+        imatrix = torch.empty((1, block_size), device=device, dtype=torch.float32)
+        with pytest.raises(RuntimeError, match="one-dimensional"):
+            libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_quantize_fake_meta_rejects_required_imatrix_short_length(
+    mode: str,
+) -> None:
+    require_cuda_ops()
+
+    qtype = CUDA_IMATRIX_QTYPES[0]
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        rows = torch.empty((1, block_size * 2), device=device, dtype=torch.float32)
+        imatrix = torch.empty((block_size,), device=device, dtype=torch.float32)
+        with pytest.raises(RuntimeError, match="at least input width elements"):
+            libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_quantize_fake_meta_rejects_required_imatrix_non_contiguous(
+    mode: str,
+) -> None:
+    require_cuda_ops()
+
+    qtype = CUDA_IMATRIX_QTYPES[0]
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        rows = torch.empty((1, block_size), device=device, dtype=torch.float32)
+        imatrix = torch.empty((block_size, 2), device=device, dtype=torch.float32)[:, 0]
+        assert not imatrix.is_contiguous()
+        with pytest.raises(RuntimeError, match="imatrix must be contiguous"):
+            libgguf_cuda.quantize(rows, int(qtype), imatrix)
+
+
 @pytest.mark.parametrize("qtype", CUDA_IMATRIX_QTYPES, ids=qtype_id)
 def test_cuda_quantize_fake_accepts_required_imatrix(qtype: GGMLQuantizationType) -> None:
     require_cuda_ops()
