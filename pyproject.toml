@@ -28,3 +28,4 @@ minimum-version = "0.12"
 cmake.version = ">=3.18"
 cmake.build-type = "Release"
 wheel.packages = ["src/libgguf"]
+wheel.exclude = ["libgguf/libgguf_*/tests/**"]
