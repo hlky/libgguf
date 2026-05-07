@@ -220,7 +220,7 @@ def test_cuda_quantize_fake_accepts_required_imatrix(qtype: GGMLQuantizationType
 
 
 @pytest.mark.parametrize("qtype", CUDA_DEQUANT_QTYPES, ids=qtype_id)
-@pytest.mark.parametrize("dtype", (None, torch.float32, torch.float16))
+@pytest.mark.parametrize("dtype", (None, torch.float32, torch.float16, torch.bfloat16))
 def test_cuda_dequantize_meta_dtype_device_and_shape(
     dtype: torch.dtype | None, qtype: GGMLQuantizationType
 ) -> None:
@@ -266,3 +266,109 @@ def test_cuda_dequantize_fake_respects_explicit_dtype() -> None:
     assert actual.device.type == "cuda"
     assert actual.dtype == torch.float32
     assert tuple(actual.shape) == (2, 32)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_dequantize_fake_meta_rejects_bad_input_dtype(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = GGMLQuantizationType.Q4_0
+    _, row_size = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        encoded = torch.empty((2, row_size), device=device, dtype=torch.float32)
+        with pytest.raises(RuntimeError, match="uint8 input"):
+            libgguf_cuda.dequantize(encoded, int(qtype), 2, 32, None)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_dequantize_fake_meta_rejects_bad_output_dtype(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = GGMLQuantizationType.Q4_0
+    _, row_size = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        encoded = torch.empty((2, row_size), device=device, dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="float16, bfloat16, or float32"):
+            libgguf_cuda.dequantize(encoded, int(qtype), 2, 32, torch.int32)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_dequantize_fake_meta_rejects_unsupported_qtype(mode: str) -> None:
+    require_cuda_ops()
+
+    context, device = quantize_validation_context(mode)
+    with context:
+        encoded = torch.empty((2, 128), device=device, dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="Unsupported GGML quantization type"):
+            libgguf_cuda.dequantize(encoded, int(GGMLQuantizationType.F32), 2, 32, None)
+
+
+@pytest.mark.parametrize(
+    "m,n,match", ((0, 32, "positive row count"), (2, 0, "positive row width"))
+)
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_dequantize_fake_meta_rejects_invalid_shape_args(
+    mode: str, m: int, n: int, match: str
+) -> None:
+    require_cuda_ops()
+
+    qtype = GGMLQuantizationType.Q4_0
+    _, row_size = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        encoded = torch.empty((2, row_size), device=device, dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match=match):
+            libgguf_cuda.dequantize(encoded, int(qtype), m, n, None)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_dequantize_fake_meta_rejects_bad_output_width(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = GGMLQuantizationType.Q4_0
+    block_size, row_size = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        encoded = torch.empty((2, row_size), device=device, dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="divisible"):
+            libgguf_cuda.dequantize(encoded, int(qtype), 2, block_size + 1, None)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_dequantize_fake_meta_rejects_row_size_mismatch(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = GGMLQuantizationType.Q4_0
+    _, row_size = GGML_QUANT_SIZES[qtype]
+    context, device = quantize_validation_context(mode)
+    with context:
+        encoded = torch.empty((2, row_size + 1), device=device, dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match=r"input has .* bytes, expected"):
+            libgguf_cuda.dequantize(encoded, int(qtype), 2, 32, None)
+
+
+@pytest.mark.parametrize("mode", ("meta", "fake"))
+def test_cuda_dequantize_fake_meta_rejects_scalar_input(mode: str) -> None:
+    require_cuda_ops()
+
+    qtype = GGMLQuantizationType.BF16
+    context, device = quantize_validation_context(mode)
+    with context:
+        encoded = torch.empty((), device=device, dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match=r"input has .* bytes, expected"):
+            libgguf_cuda.dequantize(encoded, int(qtype), 1, 1, None)
+
+
+def test_cuda_dequantize_fake_rejects_cpu_input() -> None:
+    require_cuda_ops()
+    fake_tensor_mode = require_fake_tensor_mode()
+
+    qtype = GGMLQuantizationType.Q4_0
+    _, row_size = GGML_QUANT_SIZES[qtype]
+
+    with fake_tensor_mode():
+        encoded = torch.empty((2, row_size), device="cpu", dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="expects a CUDA tensor"):
+            libgguf_cuda.dequantize(encoded, int(qtype), 2, 32, None)
