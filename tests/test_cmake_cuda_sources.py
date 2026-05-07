@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CUDA_CSRC = ROOT / "src" / "libgguf" / "libgguf_cuda" / "csrc"
 CUDA_QUANTIZE_TEST = ROOT / "tests" / "backends" / "libgguf_cuda" / "test_cuda_quantize.py"
 CUDA_DEQUANTIZE_TEST = ROOT / "tests" / "backends" / "libgguf_cuda" / "test_cuda_dequantize.py"
+CUDA_FAKE_OPS_TEST = ROOT / "tests" / "backends" / "libgguf_cuda" / "test_cuda_fake_ops.py"
 CUDA_OPS = ROOT / "src" / "libgguf" / "libgguf_cuda" / "ops.py"
 GGML_METADATA = ROOT / "src" / "libgguf" / "_metadata.py"
 NATIVE_CONVERTER = ROOT / "csrc" / "quantize_gguf.cpp"
@@ -68,6 +69,26 @@ def _fake_quantize_qtypes() -> set[str]:
     raise AssertionError(f"fake quantize qtype allowlist was not found in {CUDA_OPS}")
 
 
+def _c_function_cases(path: Path, function_name: str) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(
+        rf"\b{re.escape(function_name)}\s*\([^)]*\)\s*\{{(?P<body>.*?)\n\}}",
+        text,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        raise AssertionError(f"{function_name} was not found in {path}")
+    return set(re.findall(r"\bcase\s+GGML_TYPE_([A-Z0-9_]+)\s*:", match.group("body")))
+
+
+def _cuda_launch_declaration_qtypes(path: Path, prefix: str) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    return {
+        name.upper()
+        for name in re.findall(rf"\bgguf_cuda_{prefix}_launch_([a-z0-9_]+)\s*\(", text)
+    }
+
+
 def _ggml_type_value_names() -> dict[int, str]:
     module = ast.parse(GGML_METADATA.read_text(encoding="utf-8"), filename=str(GGML_METADATA))
     for node in module.body:
@@ -110,6 +131,18 @@ def _native_converter_doc_qtypes(path: Path) -> set[str]:
     raise AssertionError(f"native CUDA converter qtype set was not found in {path}")
 
 
+def _cuda_extension_doc_qtypes(path: Path) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(
+        r"CUDA quantize/dequantize kernels are present for:\n(?P<body>.*?)\nThere is also a BF16",
+        text,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        raise AssertionError(f"CUDA extension qtype coverage list was not found in {path}")
+    return set(re.findall(r"`([A-Z][A-Z0-9_]+)`", match.group("body")))
+
+
 def test_cuda_build_sources_are_listed_in_cmake() -> None:
     actual_sources = set(CUDA_CSRC.glob("*.cu")) | set(CUDA_CSRC.glob("*.cpp"))
     listed_sources = _listed_cuda_build_sources()
@@ -122,7 +155,19 @@ def test_cuda_quantize_source_qtypes_match_support_contracts() -> None:
     source_qtypes = _cuda_qtype_sources("cuda_quantize")
 
     assert source_qtypes == _python_assignment_qtypes(CUDA_QUANTIZE_TEST, "CUDA_QUANT_QTYPES")
+    assert source_qtypes == _python_assignment_qtypes(CUDA_FAKE_OPS_TEST, "CUDA_QUANT_QTYPES")
     assert source_qtypes == _fake_quantize_qtypes()
+    assert source_qtypes == _c_function_cases(
+        CUDA_CSRC / "cuda_quantize_kernels.cu", "gguf_cuda_quantize_row_size_for_type"
+    )
+    assert source_qtypes == _c_function_cases(
+        CUDA_CSRC / "cuda_quantize_kernels.cu", "gguf_cuda_quantize_block_size_for_type"
+    )
+    assert source_qtypes == _c_function_cases(
+        CUDA_CSRC / "cuda_quantize_kernels.cu", "gguf_cuda_quantize_row"
+    )
+    assert source_qtypes == _cuda_launch_declaration_qtypes(CUDA_CSRC / "cuda_quantize_kernels.h", "quantize")
+    assert source_qtypes == _cuda_extension_doc_qtypes(CUDA_DOC)
 
 
 def test_cuda_dequantize_source_qtypes_match_support_contracts() -> None:
@@ -130,8 +175,11 @@ def test_cuda_dequantize_source_qtypes_match_support_contracts() -> None:
     generic_test_qtypes = _python_assignment_qtypes(CUDA_DEQUANTIZE_TEST, "CUDA_DEQUANT_QTYPES")
 
     assert source_qtypes - {"BF16"} == generic_test_qtypes
+    assert source_qtypes == _python_assignment_qtypes(CUDA_FAKE_OPS_TEST, "CUDA_DEQUANT_QTYPES")
     assert "BF16" in source_qtypes
     assert source_qtypes == _dequant_dispatch_qtypes()
+    assert source_qtypes == _cuda_launch_declaration_qtypes(CUDA_CSRC / "cuda_dequantize_kernels.h", "dequantize")
+    assert source_qtypes - {"BF16"} == _cuda_extension_doc_qtypes(CUDA_DOC)
 
 
 def test_native_converter_cuda_qtypes_match_docs() -> None:

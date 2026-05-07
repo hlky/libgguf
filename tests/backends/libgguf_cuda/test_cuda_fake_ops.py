@@ -45,6 +45,33 @@ CUDA_QUANT_QTYPES = (
 CUDA_IMATRIX_QTYPES = tuple(
     qtype for qtype in CUDA_QUANT_QTYPES if libgguf.quantize_requires_imatrix(qtype)
 )
+CUDA_DEQUANT_QTYPES = (
+    GGMLQuantizationType.Q1_0,
+    GGMLQuantizationType.Q4_0,
+    GGMLQuantizationType.Q4_1,
+    GGMLQuantizationType.Q5_0,
+    GGMLQuantizationType.Q5_1,
+    GGMLQuantizationType.Q8_0,
+    GGMLQuantizationType.Q2_K,
+    GGMLQuantizationType.Q3_K,
+    GGMLQuantizationType.Q4_K,
+    GGMLQuantizationType.Q5_K,
+    GGMLQuantizationType.Q6_K,
+    GGMLQuantizationType.IQ2_XXS,
+    GGMLQuantizationType.IQ2_XS,
+    GGMLQuantizationType.IQ2_S,
+    GGMLQuantizationType.IQ3_XXS,
+    GGMLQuantizationType.IQ3_S,
+    GGMLQuantizationType.IQ1_S,
+    GGMLQuantizationType.IQ1_M,
+    GGMLQuantizationType.IQ4_NL,
+    GGMLQuantizationType.IQ4_XS,
+    GGMLQuantizationType.TQ1_0,
+    GGMLQuantizationType.TQ2_0,
+    GGMLQuantizationType.MXFP4,
+    GGMLQuantizationType.NVFP4,
+    GGMLQuantizationType.BF16,
+)
 
 
 def qtype_id(qtype: GGMLQuantizationType) -> str:
@@ -192,19 +219,21 @@ def test_cuda_quantize_fake_accepts_required_imatrix(qtype: GGMLQuantizationType
     assert tuple(actual.shape) == (3, width * type_size // block_size)
 
 
+@pytest.mark.parametrize("qtype", CUDA_DEQUANT_QTYPES, ids=qtype_id)
 @pytest.mark.parametrize("dtype", (None, torch.float32, torch.float16))
-def test_cuda_dequantize_meta_dtype_device_and_shape(dtype: torch.dtype | None) -> None:
+def test_cuda_dequantize_meta_dtype_device_and_shape(
+    dtype: torch.dtype | None, qtype: GGMLQuantizationType
+) -> None:
     require_cuda_ops()
 
-    qtype = GGMLQuantizationType.Q4_0
-    _, row_size = GGML_QUANT_SIZES[qtype]
+    block_size, row_size = GGML_QUANT_SIZES[qtype]
     encoded = torch.empty((5, row_size * 2), device="meta", dtype=torch.uint8)
 
-    actual = libgguf_cuda.dequantize(encoded, int(qtype), 5, 64, dtype)
+    actual = libgguf_cuda.dequantize(encoded, int(qtype), 5, block_size * 2, dtype)
 
     assert actual.device.type == "meta"
     assert actual.dtype == (dtype or torch.float16)
-    assert tuple(actual.shape) == (5, 64)
+    assert tuple(actual.shape) == (5, block_size * 2)
 
 
 def test_cuda_dequantize_fake_defaults_dtype_to_float16() -> None:
