@@ -362,7 +362,8 @@ def test_native_executable_cuda_backend_cpu_only_failure_is_clear(tmp_path: Path
     assert "CUDA backend requested" in result.stderr
 
 
-def test_native_executable_cuda_backend_matches_cpu_when_available(tmp_path: Path) -> None:
+@pytest.mark.parametrize("qtype", ["Q4_0", "Q8_0", "Q2_K", "Q3_K", "Q4_K", "Q5_K", "Q6_K"])
+def test_native_executable_cuda_backend_matches_cpu_when_available(tmp_path: Path, qtype: str) -> None:
     exe = _native_exe()
     key = "double_layers.3.modX.1.weight"
     rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
@@ -371,7 +372,7 @@ def test_native_executable_cuda_backend_matches_cpu_when_available(tmp_path: Pat
     actual = tmp_path / "actual.gguf"
     _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
 
-    convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
+    convert_safetensors_to_gguf_native(src, expected, qtype, policy="uniform", overwrite=True)
     result = subprocess.run(
         [
             str(exe),
@@ -380,7 +381,7 @@ def test_native_executable_cuda_backend_matches_cpu_when_available(tmp_path: Pat
             "--dst",
             str(actual),
             "--qtype",
-            "Q4_0",
+            qtype,
             "--policy",
             "uniform",
             "--backend",
