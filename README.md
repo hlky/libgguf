@@ -23,8 +23,8 @@ The repository currently contains native GGUF row kernels, Python bindings, NumP
 - Extended NumPy GGUF quantization/dequantization backend.
 - Extended Torch GGUF quantization/dequantization backend.
 - Optional CUDA quantization and dequantization kernels exposed through a Torch extension.
-- Native low-memory safetensors-to-GGUF converter.
-- Experimental Python conversion CLIs for native, NumPy-backed, Torch-loaded, and Torch-native workflows.
+- Native low-memory safetensors-to-GGUF conversion executable.
+- Experimental/internal Python conversion helper modules for native, NumPy-backed, Torch-loaded, and Torch-native workflows.
 - Experimental GGUF metadata, tensor descriptor inspection, and structural validation API/CLI.
 - Deterministic policy-based tensor planning for real image-model GGUF conversion.
 - Benchmark suite for native, Torch, and CUDA paths.
@@ -49,8 +49,8 @@ The repository currently contains native GGUF row kernels, Python bindings, NumP
 | `libgguf_numpy` | NumPy quant/dequant implementation for parity testing and integration | active |
 | `libgguf_torch` | Torch-native quant/dequant implementation for parity testing and integration | active |
 | `libgguf_cuda` | Optional Torch CUDA extension with direct quant/dequant kernels | experimental |
-| native `quantize_gguf` | Low-memory C++ safetensors-to-GGUF converter | active, Q/K-focused |
-| Python CLI experiments | Conversion frontends over native bindings, safetensors loaders, and Torch backends | experimental |
+| `libgguf_quantize_gguf` | Low-memory C++ safetensors-to-GGUF conversion executable | active, Q/K-focused |
+| Python conversion helpers | Helper modules over native bindings, safetensors loaders, and Torch backends | experimental/internal |
 
 ## Installation
 
@@ -60,7 +60,7 @@ Editable development install:
 python -m pip install -e .
 ```
 
-Conversion dependencies:
+Python conversion helper dependencies:
 
 ```bash
 python -m pip install -e ".[quantize]"
@@ -116,10 +116,6 @@ y = gguf_cuda.dequantize(q, int(qtype), rows, width, torch.float16)
 
 Python entry points:
 
-- `quantize-gguf`: safetensors/ckpt loader with native bindings.
-- `quantize-gguf-pt`: safetensors/ckpt loader through Torch with native bindings.
-- `quantize-gguf-native`: safetensors-only native loading path with low-memory payload writing.
-- `quantize-gguf-torch`: safetensors/ckpt loader with `libgguf_torch` quantization.
 - `gguf-inspect`: GGUF metadata and tensor descriptor inspection.
 - `gguf-validate`: structural GGUF validation without reading tensor payload bytes.
 
@@ -130,9 +126,11 @@ Native executable:
 Common conversion shape:
 
 ```bash
-quantize-gguf --src model.safetensors --qtype Q4_K_M --dst model-Q4_K_M.gguf
-quantize-gguf-native --src model.safetensors --qtype Q4_K_M --dst model-Q4_K_M.gguf --scratch-bytes 33554432
+libgguf_quantize_gguf --src model.safetensors --qtype Q4_K_M --dst model-Q4_K_M.gguf
+libgguf_quantize_gguf --src model.safetensors --qtype Q4_K_M --dst model-Q4_K_M.gguf --scratch-bytes 33554432
 ```
+
+Python conversion helper modules remain experimental/internal and require the `quantize` extra when used directly.
 
 See [docs/cli.md](docs/cli.md) for implemented options.
 

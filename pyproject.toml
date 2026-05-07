@@ -17,10 +17,6 @@ quantize = ["gguf", "safetensors", "torch", "tqdm"]
 test = ["gguf", "huggingface_hub", "pytest", "requests", "safetensors", "torch", "tqdm"]
 
 [project.scripts]
-quantize-gguf = "libgguf.quantize_gguf:main"
-quantize-gguf-native = "libgguf.quantize_gguf_native:main"
-quantize-gguf-pt = "libgguf.quantize_gguf_pt:main"
-quantize-gguf-torch = "libgguf.quantize_gguf_torch:main"
 gguf-inspect = "libgguf.inspect:main"
 gguf-validate = "libgguf.inspect:validate_main"
 

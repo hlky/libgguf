@@ -16,10 +16,6 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
 ROOT = Path(__file__).resolve().parents[1]
 
 EXPECTED_SCRIPT_NAMES = {
-    "quantize-gguf",
-    "quantize-gguf-native",
-    "quantize-gguf-pt",
-    "quantize-gguf-torch",
     "gguf-inspect",
     "gguf-validate",
 }
@@ -50,7 +46,7 @@ def _assert_success(result: subprocess.CompletedProcess[str]) -> None:
 def test_project_scripts_include_expected_entry_points() -> None:
     scripts = _project_scripts()
 
-    assert EXPECTED_SCRIPT_NAMES <= scripts.keys()
+    assert scripts.keys() == EXPECTED_SCRIPT_NAMES
     assert scripts["gguf-inspect"] == "libgguf.inspect:main"
     assert scripts["gguf-validate"] == "libgguf.inspect:validate_main"
 
