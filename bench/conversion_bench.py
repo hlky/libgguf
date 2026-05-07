@@ -38,6 +38,10 @@ BYTE_KEYS = {
     "cuda_max_input",
     "cuda_max_output",
 }
+COMPARISON_NOTE = (
+    "One-run comparison; read and write timings are storage/cache sensitive. "
+    "total_speedup is CPU total / CUDA total. encode_speedup is CPU encode / CUDA encode."
+)
 
 
 def utc_timestamp() -> str:
@@ -185,6 +189,226 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def load_aggregate(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        raise ValueError(f"aggregate file does not exist: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON in {path}: {exc.msg}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid aggregate in {path}: top-level JSON must be an object")
+    if not isinstance(payload.get("config"), dict):
+        raise ValueError(f"invalid aggregate in {path}: missing object field 'config'")
+    results = payload.get("results")
+    if not isinstance(results, list):
+        raise ValueError(f"invalid aggregate in {path}: missing array field 'results'")
+
+    seen: set[str] = set()
+    for index, row in enumerate(results):
+        if not isinstance(row, dict):
+            raise ValueError(f"invalid aggregate in {path}: results[{index}] must be an object")
+        qtype = row.get("qtype")
+        if not isinstance(qtype, str) or not qtype:
+            raise ValueError(f"invalid aggregate in {path}: results[{index}] is missing qtype")
+        if qtype in seen:
+            raise ValueError(f"invalid aggregate in {path}: duplicate qtype {qtype!r}")
+        seen.add(qtype)
+    return payload
+
+
+def numeric_value(row: dict[str, Any] | None, key: str) -> float | None:
+    if row is None:
+        return None
+    value = row.get(key)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def int_value(row: dict[str, Any] | None, key: str) -> int | None:
+    if row is None:
+        return None
+    value = row.get(key)
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
+
+
+def bool_value(row: dict[str, Any] | None, key: str) -> bool | None:
+    if row is None:
+        return None
+    value = row.get(key)
+    return value if isinstance(value, bool) else None
+
+
+def speedup(cpu_value: float | None, cuda_value: float | None) -> float | None:
+    if cpu_value is None or cuda_value is None or cuda_value == 0:
+        return None
+    return cpu_value / cuda_value
+
+
+def rows_by_qtype(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {row["qtype"]: row for row in payload["results"]}
+
+
+def qtype_join_order(cpu_payload: dict[str, Any], cuda_payload: dict[str, Any]) -> list[str]:
+    cpu_order = [row["qtype"] for row in cpu_payload["results"]]
+    cuda_qtypes = {row["qtype"] for row in cuda_payload["results"]}
+    return [*cpu_order, *sorted(cuda_qtypes.difference(cpu_order))]
+
+
+def compare_aggregates(cpu_payload: dict[str, Any], cuda_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    cpu_rows = rows_by_qtype(cpu_payload)
+    cuda_rows = rows_by_qtype(cuda_payload)
+    joined: list[dict[str, Any]] = []
+    for qtype in qtype_join_order(cpu_payload, cuda_payload):
+        cpu_row = cpu_rows.get(qtype)
+        cuda_row = cuda_rows.get(qtype)
+        cpu_total = numeric_value(cpu_row, "total_s")
+        cuda_total = numeric_value(cuda_row, "total_s")
+        cpu_encode = numeric_value(cpu_row, "encode_s")
+        cuda_encode = numeric_value(cuda_row, "encode_s")
+        output_size = int_value(cpu_row, "output_size_bytes")
+        if output_size is None:
+            output_size = int_value(cuda_row, "output_size_bytes")
+        joined.append(
+            {
+                "qtype": qtype,
+                "cpu_total_s": cpu_total,
+                "cuda_total_s": cuda_total,
+                "total_speedup_cuda_vs_cpu": speedup(cpu_total, cuda_total),
+                "cpu_read_s": numeric_value(cpu_row, "read_s"),
+                "cuda_read_s": numeric_value(cuda_row, "read_s"),
+                "cpu_encode_s": cpu_encode,
+                "cuda_encode_s": cuda_encode,
+                "encode_speedup_cuda_vs_cpu": speedup(cpu_encode, cuda_encode),
+                "cpu_write_s": numeric_value(cpu_row, "write_s"),
+                "cuda_write_s": numeric_value(cuda_row, "write_s"),
+                "output_size_bytes": output_size,
+                "output_size_gb": (output_size / 1_000_000_000.0) if output_size is not None else None,
+                "cpu_output_deleted": bool_value(cpu_row, "output_deleted"),
+                "cuda_output_deleted": bool_value(cuda_row, "output_deleted"),
+            }
+        )
+    return joined
+
+
+def first_present_config(cpu_payload: dict[str, Any], cuda_payload: dict[str, Any], key: str) -> Any:
+    cpu_value = cpu_payload["config"].get(key)
+    if cpu_value is not None:
+        return cpu_value
+    return cuda_payload["config"].get(key)
+
+
+def comparison_payload(cpu_path: Path, cuda_path: Path, cpu_payload: dict[str, Any], cuda_payload: dict[str, Any]) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "benchmark": "CPU vs CUDA conversion qtype comparison",
+        "cpu_results": str(cpu_path),
+        "cuda_results": str(cuda_path),
+        "note": COMPARISON_NOTE,
+    }
+    for key in ("src", "policy", "runs_per_qtype"):
+        value = first_present_config(cpu_payload, cuda_payload, key)
+        if value is not None:
+            config[key] = value
+    return {
+        "config": config,
+        "results": compare_aggregates(cpu_payload, cuda_payload),
+    }
+
+
+def format_seconds(value: Any) -> str:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return f"{float(value):.3f}".rstrip("0").rstrip(".")
+    return ""
+
+
+def format_speedup(value: Any) -> str:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return f"{float(value):.2f}".rstrip("0").rstrip(".") + "x"
+    return ""
+
+
+def format_gb(value: Any) -> str:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return f"{float(value):.2f}".rstrip("0").rstrip(".")
+    return ""
+
+
+def markdown_path(path: Path, base: Path) -> str:
+    return os.path.relpath(path, base)
+
+
+def comparison_markdown(payload: dict[str, Any], *, cpu_path: Path, cuda_path: Path, out_path: Path) -> str:
+    config = payload["config"]
+    lines = ["# CPU vs CUDA Conversion Qtype Comparison", ""]
+    if config.get("src") is not None:
+        lines.append(f"- Source: `{config['src']}`")
+    if config.get("policy") is not None:
+        lines.append(f"- Policy: {config['policy']}")
+    if config.get("runs_per_qtype") is not None:
+        lines.append(f"- Runs: {config['runs_per_qtype']} per qtype per backend")
+    lines.append("- Caveat: storage cache/order affects `read_s` and end-to-end totals; compare `encode_s` for converter work.")
+    lines.extend(
+        [
+            "",
+            "| qtype | CPU total s | CUDA total s | total speedup | CPU encode s | CUDA encode s | encode speedup | output GB |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for row in payload["results"]:
+        lines.append(
+            "| "
+            f"`{row['qtype']}` | "
+            f"{format_seconds(row.get('cpu_total_s'))} | "
+            f"{format_seconds(row.get('cuda_total_s'))} | "
+            f"{format_speedup(row.get('total_speedup_cuda_vs_cpu'))} | "
+            f"{format_seconds(row.get('cpu_encode_s'))} | "
+            f"{format_seconds(row.get('cuda_encode_s'))} | "
+            f"{format_speedup(row.get('encode_speedup_cuda_vs_cpu'))} | "
+            f"{format_gb(row.get('output_size_gb'))} |"
+        )
+    lines.extend(
+        [
+            "",
+            "Saved artifacts:",
+            "",
+            f"- CPU aggregate: `{markdown_path(cpu_path, out_path.parent)}`",
+            f"- CUDA aggregate: `{markdown_path(cuda_path, out_path.parent)}`",
+            f"- Joined comparison: `aggregate.json` and this `{out_path.name}`",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def run_compare(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Compare CPU and CUDA conversion aggregate benchmark results.")
+    parser.add_argument("--cpu", type=Path, required=True, help="CPU aggregate JSON path.")
+    parser.add_argument("--cuda", type=Path, required=True, help="CUDA aggregate JSON path.")
+    parser.add_argument("--out", type=Path, required=True, help="Markdown summary path to write.")
+    args = parser.parse_args(argv)
+
+    try:
+        cpu_payload = load_aggregate(args.cpu)
+        cuda_payload = load_aggregate(args.cuda)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    payload = comparison_payload(args.cpu, args.cuda, cpu_payload, cuda_payload)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    aggregate_path = args.out.parent / "aggregate.json"
+    aggregate_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    args.out.write_text(comparison_markdown(payload, cpu_path=args.cpu, cuda_path=args.cuda, out_path=args.out), encoding="utf-8")
+    print(args.out)
+    print(aggregate_path)
+    return 0
+
+
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fieldnames = [
         "run",
@@ -255,6 +479,10 @@ def split_passthrough_args(argv: list[str] | None) -> tuple[list[str], list[str]
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == "compare":
+        return run_compare(raw_argv[1:])
+
     parser = argparse.ArgumentParser(description="Benchmark libgguf_quantize_gguf end-to-end conversion.")
     parser.add_argument("--src", type=Path, required=True, help="Local .safetensors input path.")
     parser.add_argument("--qtype", required=True, help="Output qtype/file type, for example Q4_K_M or Q8_0.")
@@ -286,7 +514,7 @@ def main(argv: list[str] | None = None) -> int:
             "Arguments after '--' are also forwarded."
         ),
     )
-    benchmark_argv, passthrough_args = split_passthrough_args(argv)
+    benchmark_argv, passthrough_args = split_passthrough_args(raw_argv)
     args = parser.parse_args(benchmark_argv)
     extra_args = [*args.converter_arg, *passthrough_args]
 

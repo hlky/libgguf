@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from bench import conversion_bench
 
 
@@ -217,3 +219,113 @@ def test_main_returns_failure_for_failed_converter(tmp_path: Path) -> None:
     assert payload["summary"]["failed_runs"] == 1
     assert payload["results"][0]["returncode"] == 7
     assert payload["results"][0]["error"] == "nope"
+
+
+def write_aggregate(path: Path, *, config: dict[str, object], results: list[dict[str, object]]) -> Path:
+    path.write_text(json.dumps({"config": config, "results": results}), encoding="utf-8")
+    return path
+
+
+def test_compare_writes_markdown_and_joined_aggregate_with_speedups(tmp_path: Path) -> None:
+    cpu_path = write_aggregate(
+        tmp_path / "cpu.json",
+        config={"src": "/models/flux.safetensors", "policy": "dynamic", "runs_per_qtype": 1},
+        results=[
+            {
+                "qtype": "Q4_K_M",
+                "total_s": 40.0,
+                "encode_s": 30.0,
+                "read_s": 5.0,
+                "write_s": 2.0,
+                "output_size_bytes": 4_000_000_000,
+                "output_deleted": True,
+            },
+            {
+                "qtype": "Q2_K",
+                "total_s": 10.0,
+                "encode_s": 6.0,
+                "read_s": 1.0,
+                "write_s": 1.0,
+                "output_size_bytes": 2_000_000_000,
+                "output_deleted": False,
+            },
+        ],
+    )
+    cuda_path = write_aggregate(
+        tmp_path / "cuda.json",
+        config={"policy": "dynamic", "runs_per_qtype": 1},
+        results=[
+            {
+                "qtype": "Q8_0",
+                "total_s": 3.0,
+                "encode_s": 1.5,
+                "read_s": 0.5,
+                "write_s": 0.25,
+                "output_size_bytes": 8_000_000_000,
+                "output_deleted": True,
+            },
+            {
+                "qtype": "Q4_K_M",
+                "total_s": 8.0,
+                "encode_s": 3.0,
+                "read_s": 1.25,
+                "write_s": 0.75,
+                "output_size_bytes": 4_000_000_000,
+                "output_deleted": True,
+            },
+            {
+                "qtype": "Q3_K_M",
+                "total_s": 4.0,
+                "encode_s": 2.0,
+                "read_s": 0.75,
+                "write_s": 0.5,
+                "output_size_bytes": 3_000_000_000,
+                "output_deleted": True,
+            },
+            {
+                "qtype": "Q2_K",
+                "total_s": 0.0,
+                "encode_s": 0.0,
+                "read_s": 0.25,
+                "write_s": 0.25,
+                "output_size_bytes": 2_000_000_000,
+                "output_deleted": True,
+            },
+        ],
+    )
+    out_path = tmp_path / "comparison" / "summary.md"
+
+    code = conversion_bench.main(["compare", "--cpu", str(cpu_path), "--cuda", str(cuda_path), "--out", str(out_path)])
+
+    assert code == 0
+    joined = json.loads((out_path.parent / "aggregate.json").read_text(encoding="utf-8"))
+    assert [row["qtype"] for row in joined["results"]] == ["Q4_K_M", "Q2_K", "Q3_K_M", "Q8_0"]
+    assert joined["config"]["cpu_results"] == str(cpu_path)
+    assert joined["config"]["cuda_results"] == str(cuda_path)
+    assert joined["config"]["src"] == "/models/flux.safetensors"
+    assert joined["results"][0]["total_speedup_cuda_vs_cpu"] == 5.0
+    assert joined["results"][0]["encode_speedup_cuda_vs_cpu"] == 10.0
+    assert joined["results"][0]["output_size_gb"] == 4.0
+    assert joined["results"][1]["total_speedup_cuda_vs_cpu"] is None
+    assert joined["results"][2]["cpu_total_s"] is None
+    assert joined["results"][2]["cuda_total_s"] == 4.0
+
+    markdown = out_path.read_text(encoding="utf-8")
+    assert markdown.startswith("# CPU vs CUDA Conversion Qtype Comparison\n")
+    assert "| `Q4_K_M` | 40 | 8 | 5x | 30 | 3 | 10x | 4 |" in markdown
+    assert "| `Q2_K` | 10 | 0 |  | 6 | 0 |  | 2 |" in markdown
+    assert "| `Q3_K_M` |  | 4 |  |  | 2 |  | 3 |" in markdown
+    assert "- CPU aggregate: `../cpu.json`" in markdown
+    assert "- CUDA aggregate: `../cuda.json`" in markdown
+
+
+def test_compare_rejects_invalid_aggregate_missing_qtype(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cpu_path = write_aggregate(tmp_path / "cpu.json", config={}, results=[{"total_s": 1.0}])
+    cuda_path = write_aggregate(tmp_path / "cuda.json", config={}, results=[])
+
+    with pytest.raises(SystemExit) as exc_info:
+        conversion_bench.main(["compare", "--cpu", str(cpu_path), "--cuda", str(cuda_path), "--out", str(tmp_path / "summary.md")])
+
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "missing qtype" in captured.err
