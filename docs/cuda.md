@@ -96,7 +96,9 @@ The converter backend currently enables CUDA for `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`,
 
 The native converter defaults to `--backend auto`. Auto mode routes simple Q qtypes (`Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, `Q8_0`) to CPU. K qtypes (`Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`, including file-type aliases such as `Q4_K_M` after tensor qtype resolution) prefer CUDA when native CUDA is available and usable, and otherwise fall back to CPU. Auto mode does not initialize CUDA when no planned tensor prefers CUDA.
 
-`--verify-cuda-tensors N|all` encodes the first `N` CUDA-routed tensors, or every CUDA-routed tensor, through both CUDA and CPU and compares the encoded bytes. `--verify-cuda-large-tensors N` verifies the `N` largest CUDA-routed tensors by encoded byte size, with deterministic name/index tie-breaking; `0` disables the large-tensor selector. When both flags are supplied, the converter verifies their union and reports each verified CUDA tensor once in `cuda_verified`. `--timings` reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets, plus metadata and tensor counts.
+`--cuda-vram-bytes N` sets the CUDA device input/output chunk budget in bytes, while `--cuda-batch-mb N` is the same budget expressed in MiB using `1024*1024` bytes per MiB. Both flags set the same budget; if both are present, the later option wins. A value of `0` keeps the existing `--scratch-bytes` chunk sizing.
+
+`--verify-cuda-tensors N|all` encodes the first `N` CUDA-routed tensors, or every CUDA-routed tensor, through both CUDA and CPU and compares the encoded bytes. `--verify-cuda-large-tensors N` verifies the `N` largest CUDA-routed tensors by encoded byte size, with deterministic name/index tie-breaking; `0` disables the large-tensor selector. When both flags are supplied, the converter verifies their union and reports each verified CUDA tensor once in `cuda_verified`. `--timings` reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets, plus metadata and tensor counts including `cuda_chunks`.
 
 ## Ecosystem Context
 

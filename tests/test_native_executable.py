@@ -400,6 +400,43 @@ def test_native_executable_cuda_vram_bytes_rejects_explicit_cpu_backend(tmp_path
     assert "--cuda-vram-bytes requires --backend cuda or auto" in result.stderr
 
 
+def test_native_executable_cuda_batch_mb_rejects_explicit_cpu_backend(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.zeros((2, 256), dtype=np.float32)
+    src = tmp_path / "model.safetensors"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--backend", "cpu", "--cuda-batch-mb", "1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "--cuda-vram-bytes requires --backend cuda or auto" in result.stderr
+
+
+@pytest.mark.parametrize("value", ["some", "-1", "18446744073709551616", "18446744073709551615"])
+def test_native_executable_cuda_batch_mb_rejects_bad_value(tmp_path: Path, value: str) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.zeros((2, 256), dtype=np.float32)
+    src = tmp_path / "model.safetensors"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--cuda-batch-mb", value],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "--cuda-batch-mb" in result.stderr
+
+
 def test_native_executable_backend_auto_simple_qtype_uses_cpu(tmp_path: Path) -> None:
     exe = _native_exe()
     key = "double_layers.3.modX.1.weight"
@@ -585,6 +622,58 @@ def test_native_executable_cuda_backend_matches_cpu_when_available(tmp_path: Pat
     assert "cuda_vram=4096" in result.stderr
     assert "cuda_max_input=" in result.stderr
     assert "cuda_max_output=" in result.stderr
+
+
+def test_native_executable_cuda_batch_mb_sets_cuda_vram_and_chunks_when_available(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
+    result = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            "Q4_0",
+            "--policy",
+            "uniform",
+            "--backend",
+            "cuda",
+            "--cuda-batch-mb",
+            "1",
+            "--timings",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    unavailable = (
+        "built without native CUDA support",
+        "failed to initialize CUDA backend",
+        "CUDA driver",
+        "CUDA-capable device",
+    )
+    if result.returncode != 0 and any(fragment in result.stderr for fragment in unavailable):
+        pytest.skip("native CUDA converter support is unavailable")
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes() == expected.read_bytes()
+    assert "cuda_vram=1048576" in result.stderr
+    chunks = [
+        int(token.split("=", 1)[1])
+        for token in result.stderr.split()
+        if token.startswith("cuda_chunks=")
+    ]
+    assert chunks and chunks[0] > 0
 
 
 def test_native_executable_verify_cuda_all_checks_all_cuda_tensors_when_available(tmp_path: Path) -> None:

@@ -173,6 +173,7 @@ struct timing_totals {
   uint64_t tensors = 0;
   uint64_t cuda_tensors = 0;
   uint64_t cuda_verified_tensors = 0;
+  uint64_t cuda_chunks = 0;
   uint64_t cuda_max_input_bytes = 0;
   uint64_t cuda_max_output_bytes = 0;
 };
@@ -1814,6 +1815,7 @@ public:
     cuda_slot &slot = slot_at(slot_index);
     const size_t input_bytes = (size_t)(row_count * plan.n_per_row * sizeof(float));
     if (timings) {
+      timings->cuda_chunks += 1;
       timings->cuda_max_input_bytes = std::max<uint64_t>(timings->cuda_max_input_bytes, (uint64_t)input_bytes);
       timings->cuda_max_output_bytes = std::max<uint64_t>(timings->cuda_max_output_bytes, (uint64_t)output_bytes);
     }
@@ -2239,6 +2241,7 @@ void print_help() {
   std::puts("  --verify-cuda-large-tensors N");
   std::puts("                           Compare the N largest CUDA tensors against CPU bytes");
   std::puts("  --cuda-vram-bytes N        CUDA device chunk budget in bytes (0 uses --scratch-bytes)");
+  std::puts("  --cuda-batch-mb N          CUDA device chunk budget in MiB (alias for --cuda-vram-bytes)");
   std::puts("  --timings                  Print conversion timing breakdown to stderr");
   std::puts("  --help                     Show this help");
 }
@@ -2338,14 +2341,13 @@ cli_options parse_args(int argc, char **argv) {
       options.verify_cuda_large_tensors =
           parse_non_negative_integer(need_value("--verify-cuda-large-tensors"), "--verify-cuda-large-tensors");
     } else if (arg == "--cuda-vram-bytes") {
-      std::string value = need_value("--cuda-vram-bytes");
-      char *end = nullptr;
-      errno = 0;
-      unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
-      if (errno != 0 || end == value.c_str() || *end != '\0') {
-        fail("--cuda-vram-bytes must be a non-negative integer");
+      options.cuda_vram_bytes = parse_non_negative_integer(need_value("--cuda-vram-bytes"), "--cuda-vram-bytes");
+    } else if (arg == "--cuda-batch-mb") {
+      const uint64_t mib = parse_non_negative_integer(need_value("--cuda-batch-mb"), "--cuda-batch-mb");
+      if (mib > std::numeric_limits<uint64_t>::max() / (1024ULL * 1024ULL)) {
+        fail("--cuda-batch-mb is too large");
       }
-      options.cuda_vram_bytes = (uint64_t)parsed;
+      options.cuda_vram_bytes = mib * 1024ULL * 1024ULL;
     } else if (arg == "--timings") {
       options.timings = true;
     } else {
@@ -2488,7 +2490,7 @@ conversion_result convert(const cli_options &options) {
     timings.total_s = elapsed_seconds(total_begin, steady_clock::now());
     std::fprintf(
         stderr,
-        "Timings: total=%.3fs metadata=%.3fs read=%.3fs cpu_convert=%.3fs h2d=%.3fs cuda_quant=%.3fs d2h=%.3fs write=%.3fs tensors=%llu cuda_tensors=%llu cuda_verified=%llu threads=%u scratch=%llu cuda_vram=%llu cuda_max_input=%llu cuda_max_output=%llu\n",
+        "Timings: total=%.3fs metadata=%.3fs read=%.3fs cpu_convert=%.3fs h2d=%.3fs cuda_quant=%.3fs d2h=%.3fs write=%.3fs tensors=%llu cuda_tensors=%llu cuda_verified=%llu cuda_chunks=%llu threads=%u scratch=%llu cuda_vram=%llu cuda_max_input=%llu cuda_max_output=%llu\n",
         timings.total_s,
         timings.metadata_s,
         timings.read_s,
@@ -2500,6 +2502,7 @@ conversion_result convert(const cli_options &options) {
         (unsigned long long)timings.tensors,
         (unsigned long long)timings.cuda_tensors,
         (unsigned long long)timings.cuda_verified_tensors,
+        (unsigned long long)timings.cuda_chunks,
         worker_threads,
         (unsigned long long)options.scratch_bytes,
         (unsigned long long)options.cuda_vram_bytes,

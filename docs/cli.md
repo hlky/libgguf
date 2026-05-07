@@ -45,6 +45,7 @@ Implemented native options:
 - `--verify-cuda-tensors N|all`: for the first `N` tensors encoded on CUDA, or all CUDA-routed tensors, also encode with CPU and compare the encoded bytes.
 - `--verify-cuda-large-tensors N`: for the `N` largest CUDA-routed tensors by encoded byte size, also encode with CPU and compare the encoded bytes. Combines with `--verify-cuda-tensors` as a union.
 - `--cuda-vram-bytes N`: when `--backend cuda` or `--backend auto` routes tensors to CUDA, use `N` bytes as the CUDA device input/output chunk budget. The default `0` keeps the existing `--scratch-bytes` chunk sizing. Normal CUDA conversion uses two pinned host staging slots, so host RAM can temporarily use up to about `2 * N` in addition to source read buffers.
+- `--cuda-batch-mb N`: MiB alias for `--cuda-vram-bytes`, using `1024*1024` bytes per MiB. Both flags set the same CUDA device chunk budget; when both are present, the later option wins.
 - `--timings`: print conversion timing breakdown to stderr.
 - `--help`: show native help.
 
@@ -52,7 +53,7 @@ The native executable currently supports Q/K output families and storage overrid
 
 The CUDA converter backend is experimental and is linked only when the native CUDA target is built. A CPU-only executable accepts the CLI flags but fails clearly if `--backend cuda` is requested. The current CUDA converter qtype set is `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, and `Q6_K`; other planned or kernel-level qtypes require `--cuda-fallback cpu` or fail for explicit CUDA. In default `auto` mode, simple Q qtypes such as `Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, and `Q8_0` use CPU, K qtypes prefer CUDA when native CUDA is available and usable, and unsupported or unavailable CUDA paths fall back to CPU.
 
-With `--timings`, the native converter reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets. The `metadata` field is also printed to separate GGUF descriptor writes from tensor payload writes. For CUDA runs, the timing line also includes the configured CUDA VRAM budget plus the largest device input/output buffers used.
+With `--timings`, the native converter reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets. The `metadata` field is also printed to separate GGUF descriptor writes from tensor payload writes. For CUDA runs, the timing line also includes the configured CUDA VRAM budget, the number of CUDA chunks processed, plus the largest device input/output buffers used.
 
 ## GGUF Inspection
 

@@ -38,6 +38,9 @@ BYTE_KEYS = {
     "cuda_max_input",
     "cuda_max_output",
 }
+COUNT_KEYS = {
+    "cuda_chunks",
+}
 COMPARISON_NOTE = (
     "One-run comparison; read and write timings are storage/cache sensitive. "
     "total_speedup is CPU total / CUDA total. encode_speedup is CPU encode / CUDA encode."
@@ -77,6 +80,8 @@ def parse_timings(stderr: str) -> dict[str, float]:
             timings[f"{key}_s"] = value
         elif key in BYTE_KEYS:
             timings[f"{key}_bytes"] = int(float(match.group("value")))
+        elif key in COUNT_KEYS:
+            timings[key] = int(float(match.group("value")))
     return timings
 
 
@@ -159,6 +164,7 @@ def run_conversion(
         "cuda_vram_bytes": timings.get("cuda_vram_bytes"),
         "cuda_max_input_bytes": timings.get("cuda_max_input_bytes"),
         "cuda_max_output_bytes": timings.get("cuda_max_output_bytes"),
+        "cuda_chunks": timings.get("cuda_chunks"),
         "output_size_bytes": output_size,
         "output_deleted": output_deleted,
         "qtype_counts": parse_key_value_counts(result.stdout, "Tensor types:"),
@@ -429,6 +435,7 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "cuda_vram_bytes",
         "cuda_max_input_bytes",
         "cuda_max_output_bytes",
+        "cuda_chunks",
         "output_size_bytes",
         "output_deleted",
         "qtype_counts_json",
