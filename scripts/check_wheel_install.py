@@ -63,7 +63,7 @@ def _smoke_python(venv_python: Path, smoke_dir: Path) -> None:
     code = r"""
     import numpy as np
     import libgguf
-    from libgguf import GGMLQuantizationType
+    from libgguf import GGMLQuantizationType, load_imatrix, quantize_requires_imatrix
 
     rows = np.arange(64, dtype=np.float32).reshape(2, 32) / np.float32(16.0)
     encoded = libgguf.quantize_rows(rows, GGMLQuantizationType.Q8_0)
@@ -74,6 +74,25 @@ def _smoke_python(venv_python: Path, smoke_dir: Path) -> None:
     assert decoded.dtype == np.float32
     assert decoded.shape == rows.shape
     assert np.all(np.isfinite(decoded))
+
+    assert load_imatrix is libgguf.load_imatrix
+    assert quantize_requires_imatrix is libgguf.quantize_requires_imatrix
+
+    storage_rows = np.array([[0.0, -0.0, 1.0, -2.0], [0.5, -0.5, 3.5, 65504.0]], dtype=np.float32)
+    bf16 = libgguf.store_rows(storage_rows, GGMLQuantizationType.BF16)
+    storage_bits = storage_rows.view(np.uint32)
+    expected_bf16 = ((storage_bits + (0x7FFF + ((storage_bits >> 16) & 1))) >> 16).astype(np.uint16)
+    assert bf16.dtype == np.uint8
+    assert bf16.shape == (2, libgguf.row_size(GGMLQuantizationType.BF16, 4))
+    assert np.array_equal(bf16.view(np.uint16), expected_bf16)
+
+    weighted_qtype = GGMLQuantizationType.IQ2_XXS
+    weighted_rows = np.linspace(-1.0, 1.0, 256, dtype=np.float32).reshape(1, 256)
+    imatrix = np.linspace(0.25, 1.75, 256, dtype=np.float32)
+    weighted = libgguf.quantize_rows(weighted_rows, weighted_qtype, imatrix=imatrix)
+    assert libgguf.quantize_requires_imatrix(weighted_qtype)
+    assert weighted.dtype == np.uint8
+    assert weighted.shape == (1, libgguf.row_size(weighted_qtype, 256))
     print("python smoke ok")
     """
     _run([str(venv_python), "-c", textwrap.dedent(code)], cwd=smoke_dir)
