@@ -10,6 +10,43 @@ Hardware:
 
 ## Commands
 
+Native conversion benchmark:
+
+```bash
+python bench/conversion_bench.py \
+  --src /models/FLUX.1-dev/flux1-dev.safetensors \
+  --qtype Q4_K_M \
+  --policy dynamic \
+  --runs 3 \
+  --converter ./build/cmake/ninja-release/libgguf_quantize_gguf
+```
+
+The conversion benchmark runs `libgguf_quantize_gguf` end-to-end with `--timings`,
+writes one GGUF output per repeated run, and stores `summary.json` plus
+`summary.csv` under `bench/results/<timestamp>/`. Reports include
+native timing fields when printed by the converter, Python wall time, output
+file size, tensor qtype counts, fallback counts, stdout/stderr, and the exact
+command used for each run.
+
+Use a local safetensors path for FLUX.1-dev or any other model. The benchmark
+does not download model files automatically; place the file on local storage
+first and point `--src` at it. Use `--run-name local_flux_q4km` when you want a
+stable results directory name, and keep ad hoc machine-specific outputs local
+unless they are intentionally promoted into curated benchmark artifacts.
+
+For future CPU/CUDA converter comparisons, `--backend` is a report label:
+
+```bash
+python bench/conversion_bench.py \
+  --src /models/model.safetensors \
+  --qtype Q4_K_M \
+  --backend native \
+  --runs 3
+```
+
+When a CUDA-enabled conversion path exists, run the same command with the CUDA
+converter/flags and `--backend cuda` so the JSON/CSV rows are comparable.
+
 CUDA quantization benchmark:
 
 ```bash
