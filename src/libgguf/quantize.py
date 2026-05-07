@@ -831,7 +831,7 @@ def _open_safetensors_metadata_source(path: Path) -> Iterator[tuple[Mapping[str,
     if not _is_safetensors_path(path):
         raise ValueError("Native GGUF conversion only supports .safetensors inputs")
 
-    with safe_open(os.fspath(path), framework="np") as handle:
+    with safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
         keys = list(handle.keys())
         key_map, _ = _strip_prefix_keys(keys)
 
