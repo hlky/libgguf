@@ -12,7 +12,7 @@ Start here:
 - [Qtypes](qtypes.md): GGUF qtype families and storage types.
 - [Policy](policy.md): deterministic tensor planning for image-model conversion.
 - [Benchmarks](benchmarks.md): representative RTX 3090 benchmark tables and metric definitions.
-- [Correctness](correctness.md): byte exactness, decoded-output checks, and planned golden fixtures.
+- [Correctness](correctness.md): byte exactness, decoded-output checks, and frozen golden fixtures.
 - [Support Matrix](support-matrix.md): conservative backend support overview.
 - [Ecosystem](ecosystem.md): upstream and adjacent project context.
 - [Roadmap](roadmap.md): planned reader/writer, deeper validator, converter, CUDA, packaging, and integration work.

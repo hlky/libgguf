@@ -1,6 +1,6 @@
 # libgguf
 
-Standalone GGUF read/write, byte-exact quantization, and CUDA-accelerated conversion for C++, Python, NumPy, Torch, and CUDA.
+Standalone GGUF read/write, byte-exact quantization, and CUDA-accelerated row kernels for C++, Python, NumPy, Torch, and CUDA.
 
 libgguf vendors and adapts GGUF/GGML quantization kernels from llama.cpp into a reusable standalone library and toolkit. The goal is to make GGUF infrastructure available directly to conversion tools and downstream projects without requiring a two-stage route through llama.cpp binaries or partial Python/Torch-only implementations.
 
@@ -207,7 +207,7 @@ See [docs/benchmarks.md](docs/benchmarks.md) for detailed tables and metrics.
 
 ## Correctness
 
-The native CPU path is the reference path. CUDA, NumPy, and Torch implementations are tested for byte exactness where supported: same input, qtype, and shape should produce identical encoded bytes. Dequantization checks compare decoded output for a fixed destination dtype. Frozen golden fixtures are planned to supplement generated CPU-reference checks.
+The native CPU path is the reference path. CUDA, NumPy, and Torch implementations are tested for byte exactness where supported: same input, qtype, and shape should produce identical encoded bytes. Dequantization checks compare decoded output for a fixed destination dtype. Frozen golden fixtures supplement generated CPU-reference checks.
 
 See [docs/correctness.md](docs/correctness.md).
 
@@ -217,7 +217,7 @@ libgguf is not an official llama.cpp project. It adapts GGUF/GGML reference beha
 
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) and [gguf-py](https://github.com/ggml-org/llama.cpp/tree/master/gguf-py) are the upstream GGUF/GGML ecosystem references for format behavior, constants, Python writer/reader patterns, and reference quantization behavior.
 - [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) is the existing community ComfyUI GGUF inference/custom-node integration. libgguf may replace or support parts of that stack with reusable native, Python, Torch, and CUDA backend infrastructure.
-- [ComfyUI-GGUF tools](https://github.com/city96/ComfyUI-GGUF/tree/main/tools) show the current conversion workflow that routes through Python tooling plus patched llama.cpp quantization. libgguf's native and Python conversion tools aim to make that flow more direct and reusable.
+- [ComfyUI-GGUF tools](https://github.com/city96/ComfyUI-GGUF/tree/main/tools) show the current conversion workflow that routes through Python tooling plus patched llama.cpp quantization. libgguf's native conversion executable and Python import-level helper APIs aim to make that flow more direct and reusable.
 - [Diffusers GGUF docs](https://huggingface.co/docs/diffusers/main/quantization/gguf) describe current Diffusers GGUF loading through `from_single_file` model classes, low-memory `torch.uint8` storage, dynamic dequantization during forward, and optional CUDA kernels through the [kernels](https://github.com/huggingface/kernels) package. Diffusers is a potential optional backend/integration target for libgguf, not currently claimed as supported here.
 - Public model repositories such as [city96/FLUX.1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf) are useful real-world compatibility targets for conversion and inference testing.
 - [Unsloth Dynamic GGUF](https://docs.unsloth.ai/basics/unsloth-dynamic-2.0-ggufs) is relevant policy background for tensor-level qtype decisions. libgguf's `dynamic` policy is deterministic planning work inspired by this class of approach, not a claim of matching Unsloth results.
@@ -231,7 +231,7 @@ See [docs/ecosystem.md](docs/ecosystem.md) for the fuller reference map.
 - CUDA integration into the native converter.
 - Source dtype GPU input path for F16/BF16.
 - Support matrix automation.
-- Golden exactness fixtures.
+- Broader frozen exactness coverage.
 - CUDA IQ quant polish.
 - Packaging and wheels.
 - Diffusers optional backend/integration exploration.

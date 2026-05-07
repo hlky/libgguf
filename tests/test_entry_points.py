@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import textwrap
@@ -28,6 +29,15 @@ RETIRED_QUANTIZE_MODULES = (
     "quantize_pt",
     "quantize_torch_pt",
 )
+
+RETIRED_DOC_PATTERNS = {
+    "quantize_gguf": re.compile(r"(?<!libgguf_)\bquantize_gguf\b(?!\.cpp)"),
+    **{
+        name: re.compile(rf"\b{re.escape(name)}\b")
+        for name in RETIRED_QUANTIZE_MODULES
+        if name != "quantize_gguf"
+    },
+}
 
 
 def _project_scripts() -> dict[str, str]:
@@ -64,6 +74,18 @@ def test_retired_quantize_modules_are_not_in_source_package() -> None:
     package_dir = ROOT / "src" / "libgguf"
     for module_name in RETIRED_QUANTIZE_MODULES:
         assert not (package_dir / f"{module_name}.py").exists()
+
+
+def test_public_docs_do_not_advertise_retired_python_quantize_clis() -> None:
+    docs = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+    offenders: list[str] = []
+    for path in docs:
+        text = path.read_text(encoding="utf-8")
+        for name, pattern in RETIRED_DOC_PATTERNS.items():
+            if pattern.search(text):
+                offenders.append(f"{path.relative_to(ROOT)} mentions {name}")
+
+    assert offenders == []
 
 
 def test_inspect_entry_point_targets_resolve_without_conversion_extras() -> None:

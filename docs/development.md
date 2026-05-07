@@ -34,7 +34,7 @@ cmake -S . -B build -DLIBGGUF_BUILD_CUDA_KERNELS=ON
 - `csrc/`: native C++ implementation.
 - `csrc/common/`: shared tables, CPU feature probing, storage helpers, and quantization helpers.
 - `csrc/quant/`: scalar row quantizers plus x86 SIMD variants in `sse2/`, `sse4_1/`, and `avx2/`.
-- `csrc/dequant/`: scalar row dequantizers, dispatch glue, and the same x86 SIMD variant layout.
+- `csrc/dequant/`: scalar row dequantizers, backend-specific glue/test hooks, and the same x86 SIMD variant layout.
 - `csrc/quantize_gguf.cpp`: native GGUF quantization/conversion executable.
 - `src/libgguf/`: public Python package, row APIs, conversion helpers, and inspection/validation CLIs.
 - `src/libgguf/libgguf_numpy/`, `src/libgguf/libgguf_torch/`, `src/libgguf/libgguf_cuda/`: optional backend packages.
