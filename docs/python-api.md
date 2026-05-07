@@ -59,7 +59,7 @@ Public row APIs:
 
 `store_rows` handles storage qtypes `F32`, `F16`, and `BF16` for any positive row width. Storage qtypes should be written with `store_rows`, not decoded with `dequantize_rows`.
 
-For qtypes that require imatrix weights, passing `imatrix=None` to high-level `quantize_rows` computes weights from the input rows. Explicit `imatrix` values must be one-dimensional, float32-compatible, and have length exactly equal to the row width.
+For qtypes that require imatrix weights, passing `imatrix=None` to high-level `quantize_rows` computes weights from the input rows. Explicit `imatrix` values must be one-dimensional, float32-compatible, and have length exactly equal to the row width. The qtypes that require imatrix weights are: `IQ2_XXS`, `IQ2_XS`, `IQ1_S`.
 
 ## Imatrix
 

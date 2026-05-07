@@ -12,11 +12,14 @@ CUDA_DEQUANTIZE_TEST = ROOT / "tests" / "backends" / "libgguf_cuda" / "test_cuda
 CUDA_FAKE_OPS_TEST = ROOT / "tests" / "backends" / "libgguf_cuda" / "test_cuda_fake_ops.py"
 CUDA_OPS = ROOT / "src" / "libgguf" / "libgguf_cuda" / "ops.py"
 GGML_METADATA = ROOT / "src" / "libgguf" / "_metadata.py"
+NATIVE_API = ROOT / "csrc" / "libgguf.cpp"
 NATIVE_CONVERTER = ROOT / "csrc" / "quantize_gguf.cpp"
 CLI_DOC = ROOT / "docs" / "cli.md"
 CUDA_DOC = ROOT / "docs" / "cuda.md"
+PYTHON_API_DOC = ROOT / "docs" / "python-api.md"
 
 NATIVE_CONVERTER_CUDA_QTYPES = {"Q4_0", "Q8_0", "Q2_K", "Q3_K", "Q4_K", "Q5_K", "Q6_K"}
+IMATRIX_QTYPES = {"IQ2_XXS", "IQ2_XS", "IQ1_S"}
 
 
 def _listed_cuda_build_sources() -> set[Path]:
@@ -53,9 +56,68 @@ def _python_assignment_qtypes(path: Path, assignment_name: str) -> set[str]:
     raise AssertionError(f"{assignment_name} was not found in {path}")
 
 
+def _is_quantize_requires_imatrix_call(node: ast.AST, loop_variable: str) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "quantize_requires_imatrix"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "libgguf"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == loop_variable
+    )
+
+
+def _python_cuda_imatrix_qtypes(path: Path) -> set[str]:
+    module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in module.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "CUDA_IMATRIX_QTYPES" for target in node.targets):
+            continue
+        if _qtype_attrs(node.value):
+            return _qtype_attrs(node.value)
+        if not (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "tuple"
+            and len(node.value.args) == 1
+            and isinstance(node.value.args[0], ast.GeneratorExp)
+        ):
+            raise AssertionError(f"CUDA_IMATRIX_QTYPES has an unsupported shape in {path}")
+        generator = node.value.args[0]
+        if not (
+            isinstance(generator.elt, ast.Name)
+            and len(generator.generators) == 1
+            and isinstance(generator.generators[0].target, ast.Name)
+            and isinstance(generator.generators[0].iter, ast.Name)
+            and generator.generators[0].iter.id == "CUDA_QUANT_QTYPES"
+            and len(generator.generators[0].ifs) == 1
+        ):
+            raise AssertionError(f"CUDA_IMATRIX_QTYPES has an unsupported generator in {path}")
+        loop_variable = generator.generators[0].target.id
+        if generator.elt.id != loop_variable or not _is_quantize_requires_imatrix_call(
+            generator.generators[0].ifs[0], loop_variable
+        ):
+            raise AssertionError(f"CUDA_IMATRIX_QTYPES does not use libgguf.quantize_requires_imatrix in {path}")
+        return _python_assignment_qtypes(path, "CUDA_QUANT_QTYPES") & IMATRIX_QTYPES
+    raise AssertionError(f"CUDA_IMATRIX_QTYPES was not found in {path}")
+
+
 def _fake_quantize_qtypes() -> set[str]:
     module = ast.parse(CUDA_OPS.read_text(encoding="utf-8"), filename=str(CUDA_OPS))
-    for node in ast.walk(module):
+    fake_quantize = next(
+        (
+            node
+            for node in ast.walk(module)
+            if isinstance(node, ast.FunctionDef) and node.name == "_quantize_fake"
+        ),
+        None,
+    )
+    if fake_quantize is None:
+        raise AssertionError(f"fake quantize implementation was not found in {CUDA_OPS}")
+    for node in ast.walk(fake_quantize):
         if not isinstance(node, ast.Compare):
             continue
         if not (
@@ -79,6 +141,18 @@ def _c_function_cases(path: Path, function_name: str) -> set[str]:
     if match is None:
         raise AssertionError(f"{function_name} was not found in {path}")
     return set(re.findall(r"\bcase\s+GGML_TYPE_([A-Z0-9_]+)\s*:", match.group("body")))
+
+
+def _c_referenced_qtypes(path: Path, function_name: str) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(
+        rf"\b{re.escape(function_name)}\s*\([^)]*\)\s*\{{(?P<body>.*?)\n\}}",
+        text,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        raise AssertionError(f"{function_name} was not found in {path}")
+    return set(re.findall(r"\bGGML_TYPE_([A-Z0-9_]+)\b", match.group("body")))
 
 
 def _cuda_launch_declaration_qtypes(path: Path, prefix: str) -> set[str]:
@@ -143,6 +217,14 @@ def _cuda_extension_doc_qtypes(path: Path) -> set[str]:
     return set(re.findall(r"`([A-Z][A-Z0-9_]+)`", match.group("body")))
 
 
+def _imatrix_doc_qtypes(path: Path) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"The qtypes that require imatrix weights are: (?P<qtypes>[^.]+)\.", text)
+    if match is None:
+        raise AssertionError(f"imatrix qtype contract was not found in {path}")
+    return set(re.findall(r"`([A-Z][A-Z0-9_]+)`", match.group("qtypes")))
+
+
 def test_cuda_build_sources_are_listed_in_cmake() -> None:
     actual_sources = set(CUDA_CSRC.glob("*.cu")) | set(CUDA_CSRC.glob("*.cpp"))
     listed_sources = _listed_cuda_build_sources()
@@ -168,6 +250,17 @@ def test_cuda_quantize_source_qtypes_match_support_contracts() -> None:
     )
     assert source_qtypes == _cuda_launch_declaration_qtypes(CUDA_CSRC / "cuda_quantize_kernels.h", "quantize")
     assert source_qtypes == _cuda_extension_doc_qtypes(CUDA_DOC)
+
+
+def test_imatrix_qtypes_match_native_cuda_tests_and_docs() -> None:
+    assert _c_referenced_qtypes(NATIVE_API, "libgguf_quantize_requires_imatrix") == IMATRIX_QTYPES
+    assert (
+        _c_function_cases(CUDA_CSRC / "cuda_quantize_kernels.cu", "gguf_cuda_quantize_type_needs_imatrix")
+        == IMATRIX_QTYPES
+    )
+    assert _python_cuda_imatrix_qtypes(CUDA_QUANTIZE_TEST) == IMATRIX_QTYPES
+    assert _python_cuda_imatrix_qtypes(CUDA_FAKE_OPS_TEST) == IMATRIX_QTYPES
+    assert _imatrix_doc_qtypes(PYTHON_API_DOC) == IMATRIX_QTYPES
 
 
 def test_cuda_dequantize_source_qtypes_match_support_contracts() -> None:
