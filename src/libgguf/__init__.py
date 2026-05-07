@@ -237,6 +237,7 @@ _INSPECT_EXPORTS = frozenset(
         "GGUFValidationIssue",
         "GGUFValidationResult",
         "inspect_gguf",
+        "open_gguf",
         "read_gguf_header",
         "validate_gguf",
     }
@@ -274,6 +275,7 @@ __all__ = [
     "GGUFValidationIssue",
     "GGUFValidationResult",
     "inspect_gguf",
+    "open_gguf",
     "read_gguf_header",
     "validate_gguf",
     "row_size",

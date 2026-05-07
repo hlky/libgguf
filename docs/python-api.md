@@ -63,17 +63,19 @@ weights = libgguf.load_imatrix("imatrix.dat")
 
 `load_imatrix(path)` reads llama.cpp imatrix data for conversion and row quantization paths.
 
-## GGUF Inspection
+## GGUF Reader And Inspection
 
 ```python
-info = libgguf.inspect_gguf("model.gguf")
+info = libgguf.open_gguf("model.gguf")
 print(info.metadata["general.architecture"].value)
-print(info.tensors[0].name, info.tensors[0].shape, info.tensors[0].qtype)
-payload = info.read_tensor_bytes(info.tensors[0])
+for tensor in info.iter_tensors():
+    print(tensor.name, tensor.shape, tensor.qtype)
+payload = info.read_tensor_bytes("model.layers.0.weight", offset=0, size=128)
 ```
 
-Public inspection APIs:
+Public reader and inspection APIs:
 
+- `open_gguf(path, *, max_array_values=None) -> GGUFFile`
 - `inspect_gguf(path, *, max_array_values=None) -> GGUFFile`
 - `read_gguf_header(path, *, max_array_values=None) -> GGUFFile`
 - `validate_gguf(path, *, max_array_values=0) -> GGUFValidationResult`
@@ -84,7 +86,7 @@ Public inspection APIs:
 - `GGUFValidationResult`
 - `GGUFFormatError`
 
-The inspector reads GGUF metadata and tensor descriptors when parsing. Tensor descriptors include the qtype, stored shape, relative tensor offset, absolute payload offset, and computed payload byte length when the qtype is known. `GGUFFile.get_tensor(name)` returns a descriptor by name, and `GGUFFile.read_tensor_bytes(tensor_or_name, *, offset=0, size=None)` can read raw payload bytes for one tensor without decoding it.
+`open_gguf`, `inspect_gguf`, and `read_gguf_header` are aliases for the same lightweight reader. They read GGUF metadata and tensor descriptors when parsing, without reading tensor payload bytes. Tensor descriptors include the qtype, stored shape, relative tensor offset, absolute payload offset, and computed payload byte length when the qtype is known. `GGUFFile.iter_tensors()` preserves GGUF tensor order, `GGUFFile.get_tensor(name)` returns the first descriptor with that name, and `GGUFFile.read_tensor_bytes(tensor_or_name, *, offset=0, size=None)` reads raw payload bytes for one tensor without decoding it.
 
 The validator builds on the inspector and also avoids tensor payload reads. It checks common structural issues such as missing common metadata, unknown qtypes, invalid row widths, duplicate tensor names, payload ranges that exceed the file size, and overlapping known tensor ranges. `GGUFValidationResult.ok` is false only when errors are present; warnings alone do not make the result invalid.
 

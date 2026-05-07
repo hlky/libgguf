@@ -7,7 +7,7 @@ import math
 import os
 from pathlib import Path
 import struct
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Iterator
 
 from ._metadata import GGMLQuantizationType, GGML_QUANT_SIZES, LlamaFileType
 
@@ -136,6 +136,11 @@ class GGUFFile:
             if tensor.name == name:
                 return tensor
         return None
+
+    def iter_tensors(self) -> Iterator[GGUFTensorInfo]:
+        """Iterate over tensor descriptors in GGUF order."""
+
+        return iter(self.tensors)
 
     def read_tensor_bytes(
         self,
@@ -346,6 +351,7 @@ def inspect_gguf(path: str | os.PathLike[str], *, max_array_values: int | None =
 
 
 read_gguf_header = inspect_gguf
+open_gguf = inspect_gguf
 
 
 def validate_gguf(path: str | os.PathLike[str], *, max_array_values: int | None = 0) -> GGUFValidationResult:
@@ -878,6 +884,7 @@ __all__ = [
     "GGUFValidationIssue",
     "GGUFValidationResult",
     "inspect_gguf",
+    "open_gguf",
     "read_gguf_header",
     "validate_gguf",
     "validate_main",

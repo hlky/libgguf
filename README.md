@@ -4,7 +4,7 @@ Standalone GGUF read/write, byte-exact quantization, and CUDA-accelerated conver
 
 libgguf vendors and adapts GGUF/GGML quantization kernels from llama.cpp into a reusable standalone library and toolkit. The goal is to make GGUF infrastructure available directly to conversion tools and downstream projects without requiring a two-stage route through llama.cpp binaries or partial Python/Torch-only implementations.
 
-The repository currently contains native GGUF row kernels, Python bindings, NumPy and Torch backends, an optional CUDA Torch extension, safetensors-to-GGUF conversion paths, public GGUF inspection and structural validation tools, benchmark tools, and tensor planning policy for real image-model conversion workflows. First-class public GGUF reader and writer APIs are planned; today, GGUF read/write logic is present primarily through converter paths.
+The repository currently contains native GGUF row kernels, Python bindings, NumPy and Torch backends, an optional CUDA Torch extension, safetensors-to-GGUF conversion paths, public lightweight GGUF reading/inspection and structural validation tools, benchmark tools, and tensor planning policy for real image-model conversion workflows. A fuller writer API is planned; today, GGUF writing logic is present primarily through converter paths.
 
 ## Status
 
@@ -25,10 +25,10 @@ The repository currently contains native GGUF row kernels, Python bindings, NumP
 - Optional CUDA quantization and dequantization kernels exposed through a Torch extension.
 - Native low-memory safetensors-to-GGUF conversion executable.
 - Experimental/internal Python conversion helper API for safetensors/ckpt workflows.
-- Experimental GGUF metadata, tensor descriptor inspection, and structural validation API/CLI.
+- Experimental public GGUF reader API for metadata, tensor descriptors, tensor iteration, raw tensor byte reads, and structural validation.
 - Deterministic policy-based tensor planning for real image-model GGUF conversion.
 - Benchmark suite for native, Torch, and CUDA paths.
-- Planned first-class GGUF reader/writer APIs.
+- Planned fuller GGUF writer API.
 
 ## Why libgguf
 
@@ -39,6 +39,7 @@ The repository currently contains native GGUF row kernels, Python bindings, NumP
 - SIMD/threaded native CPU backend.
 - Low-memory native converter path for safetensors-to-GGUF conversion.
 - Multiple backend implementations for parity testing and integration.
+- Lightweight GGUF reader API for metadata, tensor descriptors, and raw tensor bytes.
 
 ## Backends
 
@@ -135,6 +136,24 @@ The Python conversion helper API remains experimental/internal and requires the 
 
 See [docs/cli.md](docs/cli.md) for implemented options.
 
+## GGUF Reader
+
+The experimental public reader API opens GGUF files without reading tensor
+payloads until requested:
+
+```python
+import libgguf
+
+info = libgguf.open_gguf("model.gguf")
+for tensor in info.iter_tensors():
+    print(tensor.name, tensor.shape, tensor.qtype)
+
+raw = info.read_tensor_bytes(info.tensors[0], offset=0, size=128)
+```
+
+`open_gguf`, `inspect_gguf`, and `read_gguf_header` currently share the same
+lightweight implementation. See [docs/python-api.md](docs/python-api.md).
+
 ## Quantization Policy
 
 Conversion uses deterministic tensor planning, not magic. Current policies are:
@@ -207,7 +226,7 @@ See [docs/ecosystem.md](docs/ecosystem.md) for the fuller reference map.
 
 ## Roadmap
 
-- First-class GGUF reader/writer API.
+- Fuller GGUF writer API.
 - Deeper GGUF validator coverage.
 - CUDA integration into the native converter.
 - Source dtype GPU input path for F16/BF16.

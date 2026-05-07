@@ -83,7 +83,7 @@ def test_inspect_gguf_reads_metadata_and_tensor_descriptors_without_payload(tmp_
     gguf_path = tmp_path / "minimal.gguf"
     header_end = _minimal_gguf(gguf_path)
 
-    info = libgguf.inspect_gguf(gguf_path, max_array_values=2)
+    info = libgguf.open_gguf(gguf_path, max_array_values=2)
 
     assert info.version == 3
     assert info.tensor_count == 1
@@ -108,6 +108,7 @@ def test_inspect_gguf_reads_metadata_and_tensor_descriptors_without_payload(tmp_
         "nbytes": 288,
     }
     assert info.tensor_type_counts == {"Q4_0": 1}
+    assert libgguf.read_gguf_header(gguf_path).to_dict() == libgguf.inspect_gguf(gguf_path).to_dict()
 
 
 def test_gguf_file_get_tensor_and_read_tensor_bytes(tmp_path: Path) -> None:
@@ -123,6 +124,7 @@ def test_gguf_file_get_tensor_and_read_tensor_bytes(tmp_path: Path) -> None:
 
     assert info.get_tensor("blocks.0.attn_v.weight") == tensor
     assert info.get_tensor("missing.weight") is None
+    assert list(info.iter_tensors()) == list(info.tensors)
     assert info.read_tensor_bytes(tensor) == payload
     assert info.read_tensor_bytes("blocks.0.attn_v.weight", offset=10, size=5) == payload[10:15]
 
@@ -138,6 +140,10 @@ def test_gguf_file_read_tensor_bytes_rejects_invalid_requests(tmp_path: Path) ->
         info.read_tensor_bytes("missing.weight")
     with pytest.raises(ValueError, match="offset must be non-negative"):
         info.read_tensor_bytes(tensor, offset=-1)
+    with pytest.raises(ValueError, match="size must be non-negative"):
+        info.read_tensor_bytes(tensor, size=-1)
+    with pytest.raises(ValueError, match="offset extends past tensor payload"):
+        info.read_tensor_bytes(tensor, offset=tensor.nbytes + 1)
     with pytest.raises(ValueError, match="requested byte range extends past tensor payload"):
         info.read_tensor_bytes(tensor, offset=tensor.nbytes - 1, size=2)
     with pytest.raises(ValueError, match="not part of this GGUFFile"):
@@ -327,7 +333,10 @@ def test_validate_gguf_errors_for_duplicate_tensor_names(tmp_path: Path) -> None
     )
 
     result = libgguf.validate_gguf(gguf_path)
+    info = libgguf.open_gguf(gguf_path)
 
+    assert [tensor.name for tensor in info.iter_tensors()] == ["duplicate.weight", "duplicate.weight"]
+    assert info.get_tensor("duplicate.weight") == info.tensors[0]
     assert not result.ok
     assert [issue.code for issue in result.errors] == ["tensor_duplicate_name"]
     assert result.errors[0].tensor_name == "duplicate.weight"
