@@ -779,12 +779,34 @@ def remote_gguf_header(repo_id: str, filename: str, initial_bytes: int = 1024 * 
 
 
 def local_gguf_header(path: Path, initial_bytes: int = 1024 * 1024) -> dict[str, Any]:
-    LOGGER.debug("Reading local GGUF header for %s", path)
-    def read_prefix(size: int) -> bytes:
-        with path.open("rb") as handle:
-            return handle.read(size)
+    from libgguf.inspect import inspect_gguf
 
-    header = _gguf_header_from_prefix(read_prefix, initial_bytes=initial_bytes)
+    LOGGER.debug("Reading local GGUF header for %s", path)
+    info = inspect_gguf(path)
+    metadata = {key: value.to_dict() for key, value in info.metadata.items()}
+    for value in metadata.values():
+        value.pop("truncated", None)
+        if (
+            value.get("type") == "ARRAY"
+            and value.get("array_type") != "STRING"
+            and value.get("length", 0) > 128
+        ):
+            value["value"] = f"<{value['length']} items>"
+    header = {
+        "version": info.version,
+        "tensor_count": info.tensor_count,
+        "metadata": metadata,
+        "tensors": [
+            {
+                "name": tensor.name,
+                "shape": list(tensor.shape),
+                "qtype": tensor.qtype,
+                "qtype_value": tensor.qtype_value,
+                "offset": tensor.offset,
+            }
+            for tensor in info.tensors
+        ],
+    }
     LOGGER.debug("Read local GGUF header for %s: %d tensors", path, len(header["tensors"]))
     return header
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import struct
+import subprocess
+import sys
 from pathlib import Path
 
 import gguf
@@ -13,20 +15,65 @@ def _gguf_string(value: str) -> bytes:
     return struct.pack("<Q", len(raw)) + raw
 
 
-def _minimal_gguf(path: Path, qtype: int) -> None:
+def _minimal_gguf(path: Path, qtype: int, *, long_numeric_metadata: bool = False) -> None:
     data = bytearray()
     data += b"GGUF"
-    data += struct.pack("<IQQ", 3, 1, 2)
+    data += struct.pack("<IQQ", 3, 1, 3 if long_numeric_metadata else 2)
     data += _gguf_string("general.architecture")
     data += struct.pack("<I", 8)
     data += _gguf_string("test-arch")
     data += _gguf_string("general.quantization_version")
     data += struct.pack("<II", 4, 2)
+    if long_numeric_metadata:
+        data += _gguf_string("test.long_array")
+        data += struct.pack("<IIQ", 9, 4, 129)
+        data += struct.pack("<" + "I" * 129, *range(129))
     data += _gguf_string("blocks.0.attn_v.weight")
     data += struct.pack("<I", 2)
     data += struct.pack("<QQ", 256, 2)
     data += struct.pack("<IQ", qtype, 0)
     path.write_bytes(data)
+
+
+def test_importing_compare_does_not_import_libgguf() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys\n"
+                "import scripts.compare_hf_gguf\n"
+                "imported = [name for name in sys.modules if name == 'libgguf' or name.startswith('libgguf.')]\n"
+                "if imported:\n"
+                "    raise SystemExit(f'libgguf imported at module import: {imported}')\n"
+            ),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_gguf_header_from_prefix_grows_until_header_available(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "minimal.gguf"
+    _minimal_gguf(gguf_path, int(gguf.GGMLQuantizationType.Q4_0))
+    data = gguf_path.read_bytes()
+    calls: list[int] = []
+
+    def fetch_prefix(size: int) -> bytes:
+        calls.append(size)
+        return data[:size]
+
+    header = compare._gguf_header_from_prefix(fetch_prefix, initial_bytes=16)
+
+    assert calls[0] == 16
+    assert len(calls) > 1
+    assert calls == [16 * (2**index) for index in range(len(calls))]
+    assert header["tensor_count"] == 1
+    assert header["tensors"][0]["name"] == "blocks.0.attn_v.weight"
 
 
 def test_qtype_filtering_excludes_float_iq_and_ud_from_standard() -> None:
@@ -65,6 +112,20 @@ def test_local_gguf_header_extracts_metadata_and_tensor_qtypes(tmp_path: Path) -
             "offset": 0,
         }
     ]
+
+
+def test_local_gguf_header_preserves_large_numeric_array_summary(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "minimal.gguf"
+    _minimal_gguf(gguf_path, int(gguf.GGMLQuantizationType.Q4_0), long_numeric_metadata=True)
+
+    header = compare.local_gguf_header(gguf_path, initial_bytes=64)
+
+    assert header["metadata"]["test.long_array"] == {
+        "type": "ARRAY",
+        "array_type": "UINT32",
+        "length": 129,
+        "value": "<129 items>",
+    }
 
 
 def test_standard_entries_skip_excluded_and_ud_variants() -> None:
