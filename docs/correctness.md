@@ -28,7 +28,11 @@ Current checks generate CPU reference outputs at test time and compare other imp
 - CUDA dequantization decoded-output parity when CUDA is available;
 - converter policy and native executable behavior.
 
-Frozen golden fixtures are planned so correctness does not rely only on generated references from the current source tree. The `bench/check_exact.py` helper provides the current deterministic hash/check workflow and can write JSON fixtures for review.
+Frozen golden fixtures live at `tests/golden/manifest.json` so native CPU
+encoded-byte drift is visible even when generated reference tests still agree
+with the current source tree. Generated CPU-reference tests remain useful for
+backend parity; the frozen manifest is specifically for native CPU storage hash
+stability.
 
 ## Exactness Checker Command
 
@@ -45,6 +49,13 @@ python bench/check_exact.py --qtypes Q4_K,Q5_K,IQ2_XS --shapes 4x4096 \
   --write-json reports/exactness/qk_iq2xs.json
 python bench/check_exact.py --qtypes Q4_K,Q5_K,IQ2_XS --shapes 4x4096 \
   --expect-json reports/exactness/qk_iq2xs.json
+```
+
+Check or update frozen goldens:
+
+```bash
+python scripts/update_golden.py --check
+python scripts/update_golden.py
 ```
 
 ## Recommended Edge Cases

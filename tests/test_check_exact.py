@@ -36,6 +36,30 @@ TINY_Q4_K_RESULTS = [
 ]
 
 
+def _dummy_golden_manifest() -> dict[str, object]:
+    return {
+        "version": check_exact.GOLDEN_MANIFEST_VERSION,
+        "generator": "scripts/update_golden.py",
+        "fixture": check_exact.GOLDEN_FIXTURE,
+        "qtypes": list(check_exact.GOLDEN_QTYPES),
+        "shapes": [check_exact._shape_id(shape) for shape in check_exact.GOLDEN_SHAPES],
+        "patterns": list(check_exact.GOLDEN_PATTERNS),
+        "entries": [
+            {
+                "qtype": qtype,
+                "shape": check_exact._shape_id(shape),
+                "pattern": pattern,
+                "encoded_nbytes": 1,
+                "encoded_sha256": "0" * 64,
+                "decoded_all_finite": True,
+            }
+            for qtype in check_exact.GOLDEN_QTYPES
+            for shape in check_exact.GOLDEN_SHAPES
+            for pattern in check_exact.GOLDEN_PATTERNS
+        ],
+    }
+
+
 def _run_check_exact(*args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     # Keep src/ off PYTHONPATH here so normal wheel installs do not shadow the
@@ -95,6 +119,47 @@ def test_run_checks_is_deterministic_for_tiny_q4_k_case() -> None:
 
     assert first == TINY_Q4_K_RESULTS
     assert second == first
+
+
+def test_golden_patterns_are_stable_and_distinct() -> None:
+    positive = check_exact._case_rows("absmax_tie_positive_first", 1, 8, seed=1)
+    negative = check_exact._case_rows("absmax_tie_negative_first", 1, 8, seed=1)
+    first_normal = check_exact._case_rows("random_normal_seed0", 1, 8, seed=1)
+    second_normal = check_exact._case_rows("random_normal_seed0", 1, 8, seed=999)
+
+    np_positive = positive[0, :4].tolist()
+    np_negative = negative[0, :4].tolist()
+    assert np_positive == [1.5, -1.5, 0.5, -0.5]
+    assert np_negative == [-1.5, 1.5, -0.5, 0.5]
+    assert np_positive != np_negative
+    assert first_normal.tolist() == second_normal.tolist()
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda manifest: manifest.update(version=2),
+        lambda manifest: manifest.update(qtypes=["Q4_0"]),
+        lambda manifest: manifest.update(patterns=["zeros"]),
+        lambda manifest: manifest["entries"].pop(),
+        lambda manifest: manifest["entries"].append(dict(manifest["entries"][0])),
+        lambda manifest: manifest["entries"][0].update(qtype="Q4_1"),
+    ],
+)
+def test_golden_manifest_validation_rejects_invalid_manifest(mutate) -> None:
+    manifest = _dummy_golden_manifest()
+    mutate(manifest)
+
+    with pytest.raises(ValueError):
+        check_exact._entries_from_manifest(manifest)
+
+
+def test_frozen_golden_manifest_matches_native_cpu() -> None:
+    manifest = ROOT / "tests" / "golden" / "manifest.json"
+    observed = check_exact.golden_manifest()
+    expected = check_exact._load_manifest(manifest)
+
+    assert check_exact._compare_entries(observed, expected) == []
 
 
 def test_json_fixture_round_trip_writes_and_compares_expected_results(tmp_path: Path) -> None:
