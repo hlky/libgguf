@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import argparse
+import configparser
+from email.parser import Parser
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import sys
 import tempfile
 import textwrap
 import venv
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +54,130 @@ def _build_wheel(python: str, tmp_dir: Path, no_build_isolation: bool) -> Path:
         names = ", ".join(wheel.name for wheel in wheels) or "none"
         raise RuntimeError(f"expected one libgguf wheel in {wheelhouse}, found: {names}")
     return wheels[0]
+
+
+def _check_wheel_archive(wheel: Path) -> None:
+    print(f"+ inspect wheel archive {wheel}")
+    with zipfile.ZipFile(wheel) as archive:
+        names = archive.namelist()
+        paths = [PurePosixPath(name) for name in names]
+        entries = set(names)
+
+        dist_info_dirs = sorted(
+            {
+                path.parts[0]
+                for path in paths
+                if len(path.parts) > 1
+                and path.parts[0].startswith("libgguf-")
+                and path.parts[0].endswith(".dist-info")
+            }
+        )
+        errors: list[str] = []
+        if len(dist_info_dirs) != 1:
+            found = ", ".join(dist_info_dirs) or "none"
+            errors.append(f"expected one libgguf dist-info directory, found: {found}")
+            dist_info = None
+        else:
+            dist_info = dist_info_dirs[0]
+
+        required_package_files = (
+            "libgguf/__init__.py",
+            "libgguf/_metadata.py",
+            "libgguf/imatrix.py",
+            "libgguf/inspect.py",
+            "libgguf/quantize.py",
+            "libgguf/libgguf_numpy/__init__.py",
+            "libgguf/libgguf_torch/__init__.py",
+            "libgguf/libgguf_cuda/__init__.py",
+        )
+        for filename in required_package_files:
+            if filename not in entries:
+                errors.append(f"missing package file: {filename}")
+
+        extension_files = [
+            name
+            for name in names
+            if name.startswith("libgguf/_libgguf.") and PurePosixPath(name).suffix in {".so", ".pyd"}
+        ]
+        if len(extension_files) != 1:
+            found = ", ".join(extension_files) or "none"
+            errors.append(f"expected one native extension libgguf/_libgguf.*(.so|.pyd), found: {found}")
+
+        native_scripts = [
+            name
+            for name in names
+            if len(PurePosixPath(name).parts) == 3
+            and PurePosixPath(name).parts[0].startswith("libgguf-")
+            and PurePosixPath(name).parts[0].endswith(".data")
+            and PurePosixPath(name).parts[1] == "scripts"
+            and PurePosixPath(name).parts[2] in {"libgguf_quantize_gguf", "libgguf_quantize_gguf.exe"}
+        ]
+        if len(native_scripts) != 1:
+            found = ", ".join(native_scripts) or "none"
+            errors.append(f"expected one native executable script entry for libgguf_quantize_gguf, found: {found}")
+
+        packaged_backend_tests = [
+            name
+            for name in names
+            if len(PurePosixPath(name).parts) >= 4
+            and PurePosixPath(name).parts[0] == "libgguf"
+            and PurePosixPath(name).parts[1].startswith("libgguf_")
+            and PurePosixPath(name).parts[2] == "tests"
+        ]
+        if packaged_backend_tests:
+            errors.append("packaged backend tests found: " + ", ".join(sorted(packaged_backend_tests)))
+
+        if dist_info is not None:
+            required_dist_info_files = {
+                f"{dist_info}/METADATA",
+                f"{dist_info}/WHEEL",
+                f"{dist_info}/RECORD",
+                f"{dist_info}/entry_points.txt",
+            }
+            for filename in sorted(required_dist_info_files):
+                if filename not in entries:
+                    errors.append(f"missing dist-info file: {filename}")
+
+            metadata_name = f"{dist_info}/METADATA"
+            if metadata_name in entries:
+                metadata = Parser().parsestr(archive.read(metadata_name).decode("utf-8"))
+                if metadata.get("Name") != "libgguf":
+                    errors.append(f"METADATA Name is {metadata.get('Name')!r}, expected 'libgguf'")
+                if not metadata.get("Version"):
+                    errors.append("METADATA Version is missing")
+                if metadata.get("Requires-Python") != ">=3.10":
+                    errors.append(
+                        f"METADATA Requires-Python is {metadata.get('Requires-Python')!r}, expected '>=3.10'"
+                    )
+
+            wheel_metadata_name = f"{dist_info}/WHEEL"
+            if wheel_metadata_name in entries:
+                wheel_metadata = Parser().parsestr(archive.read(wheel_metadata_name).decode("utf-8"))
+                if not wheel_metadata.get("Wheel-Version"):
+                    errors.append("WHEEL Wheel-Version is missing")
+                if not wheel_metadata.get_all("Tag"):
+                    errors.append("WHEEL Tag is missing")
+
+            entry_points_name = f"{dist_info}/entry_points.txt"
+            if entry_points_name in entries:
+                parser = configparser.ConfigParser()
+                parser.optionxform = str
+                parser.read_string(archive.read(entry_points_name).decode("utf-8"))
+                console_scripts = parser["console_scripts"] if parser.has_section("console_scripts") else {}
+                expected_console_scripts = {
+                    "gguf-inspect": "libgguf.inspect:main",
+                    "gguf-validate": "libgguf.inspect:validate_main",
+                }
+                for script_name, target in expected_console_scripts.items():
+                    actual = console_scripts.get(script_name)
+                    if actual != target:
+                        errors.append(f"console script {script_name!r} is {actual!r}, expected {target!r}")
+
+        if errors:
+            message = "\n".join(f"- {error}" for error in errors)
+            raise RuntimeError(f"wheel archive contract failed:\n{message}")
+
+    print("Wheel archive contract passed")
 
 
 def _create_venv(venv_dir: Path) -> Path:
@@ -147,6 +274,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         wheel = _build_wheel(args.python, temp_parent, args.no_build_isolation)
+        _check_wheel_archive(wheel)
         venv_python = _create_venv(temp_parent / "venv")
         _run([str(venv_python), "-m", "pip", "install", str(wheel)], cwd=temp_parent)
         smoke_dir = temp_parent / "smoke"
