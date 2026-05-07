@@ -46,6 +46,8 @@ def _parse_qtypes(values: str) -> list[GGMLQuantizationType]:
             qtypes.append(GGMLQuantizationType[name])
         except KeyError as exc:
             raise argparse.ArgumentTypeError(f"unknown qtype: {name}") from exc
+    if not qtypes:
+        raise argparse.ArgumentTypeError("at least one qtype is required")
     return qtypes
 
 
@@ -59,6 +61,8 @@ def _parse_shapes(values: str) -> list[tuple[int, int]]:
         if rows <= 0 or width <= 0:
             raise argparse.ArgumentTypeError(f"shape must be positive: {value}")
         shapes.append((rows, width))
+    if not shapes:
+        raise argparse.ArgumentTypeError("at least one shape is required")
     return shapes
 
 
@@ -154,6 +158,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     cases = _parse_csv(args.cases)
+    if not cases:
+        raise SystemExit("at least one case is required")
     results = _run_checks(args.qtypes, args.shapes, cases)
     result_dicts = [asdict(result) for result in results]
 
