@@ -427,9 +427,12 @@ def load_state_dict(path: str | os.PathLike[str]) -> dict[str, Any]:
         if len(state_dict) < 20:
             raise RuntimeError(f"pt subkey load failed: {state_dict.keys()}")
     else:
-        from safetensors.numpy import load_file
+        try:
+            from safetensors.torch import load_file
+        except ImportError as exc:
+            raise ImportError("Loading safetensors through the Python converter requires torch.") from exc
 
-        state_dict = load_file(path_str)
+        state_dict = load_file(path_str, device="cpu")
     return strip_prefix(state_dict)
 
 
@@ -783,7 +786,7 @@ def _open_tensor_source(path: Path) -> Iterator[tuple[Mapping[str, str], TensorS
     if _is_safetensors_path(path):
         data_start, header = _read_safetensors_header(path)
         file_bytes = np.memmap(path, dtype=np.uint8, mode="r")
-        with safe_open(os.fspath(path), framework="np") as handle:
+        with safe_open(os.fspath(path), framework="pt", device="cpu") as handle:
             keys = list(handle.keys())
             key_map, _ = _strip_prefix_keys(keys)
 

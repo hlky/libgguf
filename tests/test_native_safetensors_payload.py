@@ -205,6 +205,7 @@ def test_native_converter_matches_python_converter_for_tiny_safetensors(tmp_path
 
     assert native_out.read_bytes() == py_out.read_bytes()
 
+
 def test_native_converter_allows_scalar_tensors_outside_selected_prefix(tmp_path: Path) -> None:
     key = "model.double_layers.3.modX.1.weight"
     rows = np.linspace(-2.0, 2.0, 64, dtype=np.float32).reshape(2, 32)

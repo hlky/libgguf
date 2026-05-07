@@ -2,15 +2,20 @@ import json
 import struct
 
 import numpy as np
+import pytest
 
 from libgguf._metadata import GGMLQuantizationType
 from libgguf.quantize import (
     _load_bf16_safetensors_tensor,
+    _open_safetensors_metadata_source,
     _open_tensor_source,
     _read_safetensors_header,
     _to_numpy_for_qtype,
     _unquantized_tensor_data,
+    load_state_dict,
 )
+
+torch = pytest.importorskip("torch")
 
 
 def test_unquantized_f32_and_f16_reuse_matching_arrays() -> None:
@@ -68,3 +73,54 @@ def test_safetensors_source_uses_header_dtype_with_bf16_memmap_view(tmp_path) ->
     assert shape == (2, 2)
     assert dtype == "BF16"
     np.testing.assert_array_equal(loaded, bf16)
+
+
+def test_safetensors_source_loads_non_bf16_tensors_through_torch(tmp_path) -> None:
+    from safetensors.torch import save_file
+
+    path = tmp_path / "x.safetensors"
+    tensor = torch.arange(6, dtype=torch.float32).reshape(2, 3)
+    save_file({"model.x": tensor}, path)
+
+    with _open_tensor_source(path) as (key_map, source):
+        shape, dtype = source.tensor_meta("x")
+        loaded = source.load_tensor("x")
+
+    assert key_map == {"x": "model.x"}
+    assert shape == (2, 3)
+    assert dtype == "F32"
+    assert isinstance(loaded, torch.Tensor)
+    assert loaded.dtype == torch.float32
+    assert loaded.device.type == "cpu"
+    np.testing.assert_array_equal(loaded.numpy(), tensor.numpy())
+
+
+def test_load_state_dict_uses_torch_safetensors_loader(tmp_path) -> None:
+    from safetensors.torch import save_file
+
+    path = tmp_path / "x.safetensors"
+    tensor = torch.arange(4, dtype=torch.float16).reshape(2, 2)
+    save_file({"model.x": tensor}, path)
+
+    loaded = load_state_dict(path)
+
+    assert set(loaded) == {"x"}
+    assert isinstance(loaded["x"], torch.Tensor)
+    assert loaded["x"].dtype == torch.float16
+    np.testing.assert_array_equal(loaded["x"].numpy(), tensor.numpy())
+
+
+def test_native_safetensors_metadata_source_stays_metadata_only(tmp_path) -> None:
+    from safetensors.torch import save_file
+
+    path = tmp_path / "x.safetensors"
+    save_file({"model.x": torch.arange(4, dtype=torch.float32)}, path)
+
+    with _open_safetensors_metadata_source(path) as (key_map, source):
+        shape, dtype = source.tensor_meta("x")
+        with pytest.raises(RuntimeError, match="Metadata-only"):
+            source.load_tensor("x")
+
+    assert key_map == {"x": "model.x"}
+    assert shape == (4,)
+    assert dtype == "F32"
