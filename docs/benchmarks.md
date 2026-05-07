@@ -30,7 +30,9 @@ and timings are recorded. Reports include
 native timing fields when printed by the converter (`read`, `cpu_convert`,
 `h2d`, `cuda_quant`, `d2h`, `write`, and `total`), Python wall time, output file
 size, tensor qtype counts, fallback counts, stdout/stderr, and the exact command
-used for each run.
+used for each run. CUDA converter timing summaries also record `cuda_chunks`,
+`cuda_pipeline`, `cuda_vram_bytes`, `cuda_max_input_bytes`, and
+`cuda_max_output_bytes` when those fields are printed by the native converter.
 
 Use a local safetensors path for FLUX.1-dev or any other model. The benchmark
 does not download model files automatically; place the file on local storage
@@ -59,8 +61,54 @@ python bench/conversion_bench.py \
   --qtype Q4_K_M \
   --backend cuda \
   --runs 3 \
-  -- --backend cuda --verify-cuda-tensors 1
+  -- --backend cuda --cuda-batch-mb 1024 --cuda-pipeline 1
 ```
+
+Useful CUDA converter flags for benchmark and correctness sweeps:
+
+- `--cuda-batch-mb N`: sets the CUDA planning budget in MiB; stderr timing
+  output reports the derived `cuda_vram` byte budget plus the largest input and
+  output staging buffers as `cuda_max_input` and `cuda_max_output`.
+- `--cuda-pipeline 0|1`: selects the CUDA scheduling path; the benchmark records
+  the emitted `cuda_pipeline` value beside `cuda_chunks` so pipeline variants can
+  be compared directly.
+- `--verify-cuda-tensors all`: verifies every CUDA-routed tensor against the CPU
+  encoding path.
+- `--verify-cuda-large-tensors N`: additionally verifies the `N` largest
+  CUDA-routed tensors by encoded byte size.
+- `--verify-cuda-random-tensors N --seed S`: additionally verifies a stable
+  seeded random sample of CUDA-routed tensors.
+
+When comparing CPU and CUDA aggregate JSON files with
+`python bench/conversion_bench.py compare`, joined JSON includes CUDA chunk,
+pipeline, VRAM budget, and maximum buffer fields when present. Markdown
+comparison output adds a CUDA execution details table for rows that contain
+those fields. Older aggregate files that do not contain these optional fields
+remain valid inputs.
+
+### Flux CUDA Pipeline Benchmark
+
+The following full-model run was captured on 2026-05-07 with
+`/workspace/models/flux1-dev/flux1-dev.safetensors`, `Q4_K_M`, dynamic policy,
+`--backend cuda --cuda-fallback cpu --cuda-batch-mb 1024`, and one run per
+pipeline mode. Outputs were written under `/tmp` and deleted after timing and
+size capture. This benchmark isolates the value of the existing two-slot CUDA
+host pipeline on a real conversion workload; it is a one-run development
+snapshot, so storage cache/order can still affect totals.
+
+Artifacts:
+
+- `bench/results/flux1_dev_cuda_q4km_pipeline0_20260507T205848Z/summary.json`
+- `bench/results/flux1_dev_cuda_q4km_pipeline1_20260507T205848Z/summary.json`
+
+| mode | total s | wall s | read s | cpu convert s | h2d s | cuda quant s | d2h s | write s | cuda chunks | output GB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `--cuda-pipeline 0` | 108.144 | 108.299 | 54.782 | 3.804 | 3.953 | 0.435 | 1.066 | 1.303 | 304 | 7.16 |
+| `--cuda-pipeline 1` | 29.284 | 29.642 | 16.947 | 3.579 | 2.025 | 0.412 | 0.336 | 1.289 | 304 | 7.16 |
+
+Pipeline-on speedup for this run was `3.69x` by native `total_s` and `3.65x`
+by Python wall time. The result shows the current host pipeline is materially
+worth keeping and benchmarking before deeper cross-tensor batching work.
 
 ## Recommended Converter Backend By Qtype
 

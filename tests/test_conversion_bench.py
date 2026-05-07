@@ -13,7 +13,8 @@ def test_parse_timings_accepts_native_and_variant_units() -> None:
         "Timings: total=1.250s metadata=10ms read: 250us "
         "cpu_convert=20ms h2d=30us cuda_quant=0.5 seconds d2h=40us "
         "quant=0.75s write=0.125sec tensors=2 "
-        "cuda_chunks=3 cuda_vram=1073741824 cuda_max_input=264241152 cuda_max_output=37158912\n"
+        "cuda_chunks=3 cuda_pipeline=1 cuda_vram=1073741824 "
+        "cuda_max_input=264241152 cuda_max_output=37158912\n"
     )
 
     assert conversion_bench.parse_timings(stderr) == {
@@ -27,6 +28,7 @@ def test_parse_timings_accepts_native_and_variant_units() -> None:
         "quant_s": 0.75,
         "write_s": 0.125,
         "cuda_chunks": 3,
+        "cuda_pipeline": 1,
         "cuda_vram_bytes": 1073741824,
         "cuda_max_input_bytes": 264241152,
         "cuda_max_output_bytes": 37158912,
@@ -57,7 +59,7 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
                 "print('Architecture: flux')",
                 "print('File type: Q4_K_M')",
                 "print('Tensor types: Q4_K=2, Q8_0=1')",
-                "print('Timings: total=1.234s metadata=0.010s read=0.020s cpu_convert=0.030s h2d=0.040s cuda_quant=0.900s d2h=0.050s write=0.200s tensors=3 cuda_chunks=5 threads=2 scratch=4096 cuda_vram=8192 cuda_max_input=4096 cuda_max_output=1024', file=sys.stderr)",
+                "print('Timings: total=1.234s metadata=0.010s read=0.020s cpu_convert=0.030s h2d=0.040s cuda_quant=0.900s d2h=0.050s write=0.200s tensors=3 cuda_chunks=5 cuda_pipeline=1 threads=2 scratch=4096 cuda_vram=8192 cuda_max_input=4096 cuda_max_output=1024', file=sys.stderr)",
             ]
         ),
         encoding="utf-8",
@@ -112,6 +114,7 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
     assert payload["results"][0]["cuda_max_input_bytes"] == 4096
     assert payload["results"][0]["cuda_max_output_bytes"] == 1024
     assert payload["results"][0]["cuda_chunks"] == 5
+    assert payload["results"][0]["cuda_pipeline"] == 1
     assert payload["results"][0]["qtype_counts"] == {"Q4_K": 2, "Q8_0": 1}
     assert payload["results"][0]["output_size_bytes"] == len(b"GGUF fake output")
     assert payload["results"][0]["output_deleted"] is True
@@ -125,6 +128,7 @@ def test_main_runs_fake_converter_and_writes_json_csv(tmp_path: Path) -> None:
     assert "cuda_quant_s" in csv_text
     assert "cuda_vram_bytes" in csv_text
     assert "cuda_chunks" in csv_text
+    assert "cuda_pipeline" in csv_text
     assert "output_deleted" in csv_text
 
 
@@ -264,6 +268,11 @@ def test_compare_writes_markdown_and_joined_aggregate_with_speedups(tmp_path: Pa
                 "encode_s": 1.5,
                 "read_s": 0.5,
                 "write_s": 0.25,
+                "cuda_chunks": 7,
+                "cuda_pipeline": 1,
+                "cuda_vram_bytes": 8192,
+                "cuda_max_input_bytes": 4096,
+                "cuda_max_output_bytes": 1024,
                 "output_size_bytes": 8_000_000_000,
                 "output_deleted": True,
             },
@@ -273,6 +282,11 @@ def test_compare_writes_markdown_and_joined_aggregate_with_speedups(tmp_path: Pa
                 "encode_s": 3.0,
                 "read_s": 1.25,
                 "write_s": 0.75,
+                "cuda_chunks": 5,
+                "cuda_pipeline": 0,
+                "cuda_vram_bytes": 4096,
+                "cuda_max_input_bytes": 2048,
+                "cuda_max_output_bytes": 512,
                 "output_size_bytes": 4_000_000_000,
                 "output_deleted": True,
             },
@@ -308,6 +322,11 @@ def test_compare_writes_markdown_and_joined_aggregate_with_speedups(tmp_path: Pa
     assert joined["config"]["src"] == "/models/flux.safetensors"
     assert joined["results"][0]["total_speedup_cuda_vs_cpu"] == 5.0
     assert joined["results"][0]["encode_speedup_cuda_vs_cpu"] == 10.0
+    assert joined["results"][0]["cuda_chunks"] == 5
+    assert joined["results"][0]["cuda_pipeline"] == 0
+    assert joined["results"][0]["cuda_vram_bytes"] == 4096
+    assert joined["results"][0]["cuda_max_input_bytes"] == 2048
+    assert joined["results"][0]["cuda_max_output_bytes"] == 512
     assert joined["results"][0]["output_size_gb"] == 4.0
     assert joined["results"][1]["total_speedup_cuda_vs_cpu"] is None
     assert joined["results"][2]["cpu_total_s"] is None
@@ -316,6 +335,8 @@ def test_compare_writes_markdown_and_joined_aggregate_with_speedups(tmp_path: Pa
     markdown = out_path.read_text(encoding="utf-8")
     assert markdown.startswith("# CPU vs CUDA Conversion Qtype Comparison\n")
     assert "| `Q4_K_M` | 40 | 8 | 5x | 30 | 3 | 10x | 4 |" in markdown
+    assert "| `Q4_K_M` | 5 | 0 | 4096 | 2048 | 512 |" in markdown
+    assert "| `Q8_0` | 7 | 1 | 8192 | 4096 | 1024 |" in markdown
     assert "| `Q2_K` | 10 | 0 |  | 6 | 0 |  | 2 |" in markdown
     assert "| `Q3_K_M` |  | 4 |  |  | 2 |  | 3 |" in markdown
     assert "- CPU aggregate: `../cpu.json`" in markdown

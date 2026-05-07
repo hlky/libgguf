@@ -40,6 +40,7 @@ BYTE_KEYS = {
 }
 COUNT_KEYS = {
     "cuda_chunks",
+    "cuda_pipeline",
 }
 COMPARISON_NOTE = (
     "One-run comparison; read and write timings are storage/cache sensitive. "
@@ -165,6 +166,7 @@ def run_conversion(
         "cuda_max_input_bytes": timings.get("cuda_max_input_bytes"),
         "cuda_max_output_bytes": timings.get("cuda_max_output_bytes"),
         "cuda_chunks": timings.get("cuda_chunks"),
+        "cuda_pipeline": timings.get("cuda_pipeline"),
         "output_size_bytes": output_size,
         "output_deleted": output_deleted,
         "qtype_counts": parse_key_value_counts(result.stdout, "Tensor types:"),
@@ -294,6 +296,11 @@ def compare_aggregates(cpu_payload: dict[str, Any], cuda_payload: dict[str, Any]
                 "encode_speedup_cuda_vs_cpu": speedup(cpu_encode, cuda_encode),
                 "cpu_write_s": numeric_value(cpu_row, "write_s"),
                 "cuda_write_s": numeric_value(cuda_row, "write_s"),
+                "cuda_chunks": int_value(cuda_row, "cuda_chunks"),
+                "cuda_pipeline": int_value(cuda_row, "cuda_pipeline"),
+                "cuda_vram_bytes": int_value(cuda_row, "cuda_vram_bytes"),
+                "cuda_max_input_bytes": int_value(cuda_row, "cuda_max_input_bytes"),
+                "cuda_max_output_bytes": int_value(cuda_row, "cuda_max_output_bytes"),
                 "output_size_bytes": output_size,
                 "output_size_gb": (output_size / 1_000_000_000.0) if output_size is not None else None,
                 "cpu_output_deleted": bool_value(cpu_row, "output_deleted"),
@@ -378,6 +385,40 @@ def comparison_markdown(payload: dict[str, Any], *, cpu_path: Path, cuda_path: P
             f"{format_speedup(row.get('encode_speedup_cuda_vs_cpu'))} | "
             f"{format_gb(row.get('output_size_gb'))} |"
         )
+    cuda_metric_rows = [
+        row
+        for row in payload["results"]
+        if any(
+            row.get(key) is not None
+            for key in (
+                "cuda_chunks",
+                "cuda_pipeline",
+                "cuda_vram_bytes",
+                "cuda_max_input_bytes",
+                "cuda_max_output_bytes",
+            )
+        )
+    ]
+    if cuda_metric_rows:
+        lines.extend(
+            [
+                "",
+                "CUDA execution details:",
+                "",
+                "| qtype | CUDA chunks | CUDA pipeline | CUDA VRAM bytes | max input bytes | max output bytes |",
+                "| --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for row in cuda_metric_rows:
+            lines.append(
+                "| "
+                f"`{row['qtype']}` | "
+                f"{row.get('cuda_chunks') if row.get('cuda_chunks') is not None else ''} | "
+                f"{row.get('cuda_pipeline') if row.get('cuda_pipeline') is not None else ''} | "
+                f"{row.get('cuda_vram_bytes') if row.get('cuda_vram_bytes') is not None else ''} | "
+                f"{row.get('cuda_max_input_bytes') if row.get('cuda_max_input_bytes') is not None else ''} | "
+                f"{row.get('cuda_max_output_bytes') if row.get('cuda_max_output_bytes') is not None else ''} |"
+            )
     lines.extend(
         [
             "",
@@ -436,6 +477,7 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "cuda_max_input_bytes",
         "cuda_max_output_bytes",
         "cuda_chunks",
+        "cuda_pipeline",
         "output_size_bytes",
         "output_deleted",
         "qtype_counts_json",
