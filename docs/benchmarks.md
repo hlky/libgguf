@@ -62,6 +62,26 @@ python bench/conversion_bench.py \
   -- --backend cuda --verify-cuda-tensors 1
 ```
 
+## Recommended Converter Backend By Qtype
+
+These recommendations are grounded in the curated Flux CPU-vs-CUDA conversion
+artifact at
+`bench/results/flux1_dev_cpu_vs_cuda_qtypes_20260507T1745Z/summary.md`.
+The measured numbers are representative development results, not universal
+performance claims; storage, model mix, hardware, and build options can shift
+end-to-end totals.
+
+`--backend auto` encodes these current recommendations. It falls back to CPU
+when CUDA is unavailable, unsupported for the selected qtype, or not linked into
+the native converter.
+
+| qtype family | Recommended backend | Notes |
+| --- | --- | --- |
+| Simple Q: `Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, `Q8_0` | CPU | Flux comparison shows CPU faster for sampled simple Q qtypes such as `Q4_0` and `Q8_0`. |
+| K qtypes: `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K` | CUDA when available; otherwise `auto`/CPU fallback | Flux comparison shows CUDA encode wins for sampled K qtypes. File-type aliases such as `Q4_K_M` and `Q5_K_M` route through the K-family recommendation. |
+| IQ, TQ, MX, NV families | Experimental / depends | CUDA kernels exist for several qtypes, but native converter support and policy coverage should be checked before treating CUDA as the default. |
+| Storage types: `F16`, `BF16`, `F32` | CPU / direct storage | These are storage/direct-copy paths rather than CUDA quantization wins. |
+
 CUDA quantization benchmark:
 
 ```bash
