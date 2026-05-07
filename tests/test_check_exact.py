@@ -38,7 +38,9 @@ TINY_Q4_K_RESULTS = [
 
 def _run_check_exact(*args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
-    pythonpath = [str(ROOT / "src"), str(ROOT)]
+    # Keep src/ off PYTHONPATH here so normal wheel installs do not shadow the
+    # installed native extension when the CLI is exercised in a subprocess.
+    pythonpath = [str(ROOT)]
     if env.get("PYTHONPATH"):
         pythonpath.append(env["PYTHONPATH"])
     env["PYTHONPATH"] = os.pathsep.join(pythonpath)
