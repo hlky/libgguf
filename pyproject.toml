@@ -13,8 +13,8 @@ dependencies = ["numpy"]
 
 [project.optional-dependencies]
 cuda = ["torch"]
-quantize = ["gguf", "safetensors", "torch"]
-test = ["pytest"]
+quantize = ["gguf", "safetensors", "torch", "tqdm"]
+test = ["gguf", "huggingface_hub", "pytest", "requests", "safetensors", "torch", "tqdm"]
 
 [project.scripts]
 quantize-gguf = "libgguf.quantize_gguf:main"

@@ -25,8 +25,8 @@ The optional extras are:
 | Extra | Dependencies | Purpose |
 | --- | --- | --- |
 | `cuda` | `torch` | Build/use the optional Torch CUDA extension when CUDA tooling is present. |
-| `quantize` | `gguf`, `safetensors`, `torch` | Python conversion CLIs and safetensors/ckpt loading. |
-| `test` | `pytest` | Test runner. |
+| `quantize` | `gguf`, `safetensors`, `torch`, `tqdm` | Python conversion CLIs and safetensors/ckpt loading. |
+| `test` | `gguf`, `huggingface_hub`, `pytest`, `requests`, `safetensors`, `torch`, `tqdm` | Test runner and test-only script dependencies. |
 
 ## Native Build
 
@@ -58,3 +58,11 @@ The CUDA extension builds only when:
 With `LIBGGUF_BUILD_CUDA_KERNELS=AUTO`, the build skips CUDA when those requirements are missing. With `LIBGGUF_BUILD_CUDA_KERNELS=ON`, missing CUDA requirements are a build error.
 
 The CUDA target is a Torch extension installed as `libgguf.libgguf_cuda._C_gguf`.
+
+When installing through pip, build isolation can hide an already installed Torch from CMake. For an editable CUDA extension build, install the build backend and Torch first, then build without isolation:
+
+```bash
+python -m pip install scikit-build-core cmake ninja torch
+python -m pip install -e ".[cuda]" --no-build-isolation \
+  --config-settings=cmake.define.LIBGGUF_BUILD_CUDA_KERNELS=ON
+```

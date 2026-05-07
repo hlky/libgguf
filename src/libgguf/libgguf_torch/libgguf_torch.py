@@ -45,6 +45,13 @@ from libgguf.libgguf_numpy.libgguf_numpy import (
 )
 import torch
 
+try:
+    _compile_disable = torch.compiler.disable
+except AttributeError:
+    import torch._dynamo
+
+    _compile_disable = torch._dynamo.disable
+
 TORCH_COMPATIBLE_QTYPES = (None, GGMLQuantizationType.F32, GGMLQuantizationType.F16)
 
 
@@ -95,7 +102,7 @@ def quantize(data, qtype):
     if qtype == GGMLQuantizationType.F32:
         return data.to(torch.float32)
     if qtype == GGMLQuantizationType.F16:
-        return data.to(torch.float16)
+        return _canonicalize_f16_nans(data.to(torch.float16))
     block_size, type_size = GGML_QUANT_SIZES[qtype]
     if data.shape[-1] % block_size != 0:
         raise ValueError(
@@ -112,6 +119,14 @@ def quantize(data, qtype):
     blocks = rows.reshape((n_blocks, block_size))
     blocks = quantize_blocks(blocks, block_size, type_size)
     return blocks.reshape(quant_shape_to_byte_shape(tuple(data.shape), qtype))
+
+
+def _canonicalize_f16_nans(x):
+    return torch.where(
+        torch.isnan(x),
+        torch.full((), float("nan"), dtype=x.dtype, device=x.device),
+        x,
+    )
 
 
 def to_uint32(x):
@@ -136,6 +151,7 @@ def split_block_dims(blocks, *args):
     return torch.split(blocks, dims, dim=1)
 
 
+@_compile_disable
 def _fp16_to_bytes(x):
     x = x.to(torch.float16).contiguous()
     return x.reshape(-1).view(torch.uint8).reshape(*x.shape[:-1], x.shape[-1] * 2)

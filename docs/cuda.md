@@ -40,6 +40,14 @@ CMake option:
 
 CUDA compilation uses `--fmad=false` to help preserve byte-sensitive behavior.
 
+When building through pip, PEP 517 build isolation may use a temporary Python environment where `torch` is not importable, causing `AUTO` to skip the extension. For a local editable CUDA build, install Torch and the build backend first, then disable build isolation:
+
+```bash
+python -m pip install scikit-build-core cmake ninja torch
+python -m pip install -e ".[cuda]" --no-build-isolation \
+  --config-settings=cmake.define.LIBGGUF_BUILD_CUDA_KERNELS=ON
+```
+
 ## Qtype Coverage
 
 CUDA quantize/dequantize kernels are present for:

@@ -28,14 +28,23 @@ Current checks generate CPU reference outputs at test time and compare other imp
 - CUDA dequantization decoded-output parity when CUDA is available;
 - converter policy and native executable behavior.
 
-Frozen golden fixtures are planned so correctness does not rely only on generated references from the current source tree.
+Frozen golden fixtures are planned so correctness does not rely only on generated references from the current source tree. The `bench/check_exact.py` helper provides the current deterministic hash/check workflow and can write JSON fixtures for review.
 
-## Planned Golden Fixture Command
+## Exactness Checker Command
 
-The command below is planned documentation for a future fixture checker; it does not currently exist in the repo:
+Run deterministic edge-case row checks:
 
 ```bash
 python bench/check_exact.py --qtypes Q4_K,Q5_K,IQ2_XS --shapes 4x4096
+```
+
+Write or compare a JSON fixture:
+
+```bash
+python bench/check_exact.py --qtypes Q4_K,Q5_K,IQ2_XS --shapes 4x4096 \
+  --write-json reports/exactness/qk_iq2xs.json
+python bench/check_exact.py --qtypes Q4_K,Q5_K,IQ2_XS --shapes 4x4096 \
+  --expect-json reports/exactness/qk_iq2xs.json
 ```
 
 ## Recommended Edge Cases

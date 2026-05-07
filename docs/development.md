@@ -36,6 +36,12 @@ pytest
 
 CUDA tests are skipped when CUDA/Torch extension support is unavailable.
 
+Check generated docs:
+
+```bash
+python scripts/generate_support_matrix.py --check
+```
+
 ## Benchmarks
 
 Torch backend:
