@@ -26,3 +26,7 @@ env/
 .vscode/
 .idea/
 .cache/
+
+# Local benchmark/research outputs
+bench/results/local_*
+reports/exactness/
