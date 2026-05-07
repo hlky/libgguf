@@ -152,6 +152,205 @@ def test_native_executable_threads_and_timings_flags_preserve_output(tmp_path: P
     assert actual.read_bytes() == expected.read_bytes()
     assert "Timings:" in result.stderr
     assert "threads=2" in result.stderr
+    assert "cpu_convert=" in result.stderr
+    assert "h2d=" in result.stderr
+    assert "cuda_quant=" in result.stderr
+    assert "d2h=" in result.stderr
+
+
+def test_native_executable_help_lists_backend_flags() -> None:
+    exe = _native_exe()
+
+    result = subprocess.run([str(exe), "--help"], check=False, capture_output=True, text=True)
+
+    assert result.returncode == 0
+    assert "--backend cpu|cuda" in result.stdout
+    assert "--cuda-fallback cpu" in result.stdout
+    assert "--verify-cuda-tensors N" in result.stdout
+
+
+def test_native_executable_backend_cpu_preserves_default_output(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
+    result = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            "Q4_0",
+            "--policy",
+            "uniform",
+            "--backend",
+            "cpu",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes() == expected.read_bytes()
+
+
+def test_native_executable_verify_cuda_requires_cuda_backend(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.zeros((2, 256), dtype=np.float32)
+    src = tmp_path / "model.safetensors"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--verify-cuda-tensors", "1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "--verify-cuda-tensors requires --backend cuda" in result.stderr
+
+
+def test_native_executable_cuda_backend_cpu_only_failure_is_clear(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.zeros((2, 256), dtype=np.float32)
+    src = tmp_path / "model.safetensors"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    result = subprocess.run(
+        [str(exe), "--src", str(src), "--qtype", "Q4_0", "--backend", "cuda"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode == 0 or "built without native CUDA support" not in result.stderr:
+        pytest.skip("native CUDA converter support is present or failed before CPU-only support check")
+    assert "CUDA backend requested" in result.stderr
+
+
+def test_native_executable_cuda_backend_matches_cpu_when_available(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    convert_safetensors_to_gguf_native(src, expected, "Q4_0", policy="uniform", overwrite=True)
+    result = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            "Q4_0",
+            "--policy",
+            "uniform",
+            "--backend",
+            "cuda",
+            "--verify-cuda-tensors",
+            "1",
+            "--timings",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    unavailable = (
+        "built without native CUDA support",
+        "failed to initialize CUDA backend",
+        "CUDA driver",
+        "CUDA-capable device",
+    )
+    if result.returncode != 0 and any(fragment in result.stderr for fragment in unavailable):
+        pytest.skip("native CUDA converter support is unavailable")
+    assert result.returncode == 0, result.stderr
+    assert actual.read_bytes() == expected.read_bytes()
+    assert "cuda_tensors=1" in result.stderr
+    assert "cuda_verified=1" in result.stderr
+
+
+def test_native_executable_cuda_unsupported_qtype_requires_fallback_when_available(tmp_path: Path) -> None:
+    exe = _native_exe()
+    key = "double_layers.3.modX.1.weight"
+    rows = np.linspace(-2.0, 2.0, 512, dtype=np.float32).reshape(2, 256)
+    src = tmp_path / "model.safetensors"
+    expected = tmp_path / "expected.gguf"
+    actual = tmp_path / "actual.gguf"
+    _write_safetensors(src, {key: ("F32", rows.shape, rows.tobytes())})
+
+    unsupported = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--qtype",
+            "Q4_1",
+            "--policy",
+            "uniform",
+            "--backend",
+            "cuda",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    unavailable = (
+        "built without native CUDA support",
+        "failed to initialize CUDA backend",
+        "CUDA driver",
+        "CUDA-capable device",
+    )
+    if any(fragment in unsupported.stderr for fragment in unavailable):
+        pytest.skip("native CUDA converter support is unavailable")
+    assert unsupported.returncode != 0
+    assert "does not support Q4_1" in unsupported.stderr
+    assert "--cuda-fallback cpu" in unsupported.stderr
+
+    convert_safetensors_to_gguf_native(src, expected, "Q4_1", policy="uniform", overwrite=True)
+    fallback = subprocess.run(
+        [
+            str(exe),
+            "--src",
+            str(src),
+            "--dst",
+            str(actual),
+            "--qtype",
+            "Q4_1",
+            "--policy",
+            "uniform",
+            "--backend",
+            "cuda",
+            "--cuda-fallback",
+            "cpu",
+            "--overwrite",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert fallback.returncode == 0, fallback.stderr
+    assert actual.read_bytes() == expected.read_bytes()
 
 
 def test_native_executable_handles_small_scratch_for_bf16_fused_path(tmp_path: Path) -> None:

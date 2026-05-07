@@ -39,6 +39,10 @@
 #include "common/libgguf_internal.h"
 #include "libgguf.h"
 
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+#include "libgguf_cuda_native.h"
+#endif
+
 extern "C" void libgguf_quantize_gguf_f16_to_f32_f16c(const ggml_fp16_t *src, uint64_t count, float *dst);
 
 namespace {
@@ -74,6 +78,11 @@ enum native_source_dtype {
   NATIVE_DTYPE_BF16,
 };
 
+enum converter_backend {
+  CONVERTER_BACKEND_CPU,
+  CONVERTER_BACKEND_CUDA,
+};
+
 struct cli_options {
   std::string src;
   std::string dst;
@@ -87,6 +96,9 @@ struct cli_options {
   unsigned int threads = 0;
   bool timings = false;
   bool overwrite = false;
+  converter_backend backend = CONVERTER_BACKEND_CPU;
+  bool cuda_fallback_cpu = false;
+  uint64_t verify_cuda_tensors = 0;
 };
 
 struct tensor_meta {
@@ -148,10 +160,15 @@ struct conversion_result {
 struct timing_totals {
   double metadata_s = 0.0;
   double read_s = 0.0;
-  double quant_s = 0.0;
+  double cpu_convert_s = 0.0;
+  double h2d_s = 0.0;
+  double cuda_quant_s = 0.0;
+  double d2h_s = 0.0;
   double write_s = 0.0;
   double total_s = 0.0;
   uint64_t tensors = 0;
+  uint64_t cuda_tensors = 0;
+  uint64_t cuda_verified_tensors = 0;
 };
 
 using steady_clock = std::chrono::steady_clock;
@@ -1635,16 +1652,140 @@ void measure_phase(timing_totals *timings, double timing_totals::*field, Fn &&fn
   timings->*field += elapsed_seconds(begin, end);
 }
 
+bool converter_cuda_supported_qtype(ggml_type qtype) {
+  switch (qtype) {
+  case GGML_TYPE_Q4_0:
+  case GGML_TYPE_Q8_0:
+  case GGML_TYPE_Q2_K:
+  case GGML_TYPE_Q3_K:
+  case GGML_TYPE_Q4_K:
+  case GGML_TYPE_Q5_K:
+  case GGML_TYPE_Q6_K:
+    return true;
+  default:
+    return false;
+  }
+}
+
+class cuda_converter_context;
+
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+std::string cuda_status_message(libgguf_cuda_context *ctx, int status, const std::string &prefix) {
+  std::string message = prefix;
+  if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+    const char *last_error = libgguf_cuda_last_error(ctx);
+    if (last_error && last_error[0]) {
+      message += ": ";
+      message += last_error;
+    }
+  }
+  return message;
+}
+
+void require_cuda_success(libgguf_cuda_context *ctx, int status, const std::string &prefix) {
+  if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+    fail(cuda_status_message(ctx, status, prefix));
+  }
+}
+
+class cuda_converter_context {
+public:
+  cuda_converter_context() {
+    libgguf_cuda_context *created = nullptr;
+    const int status = libgguf_cuda_context_create(0, &created);
+    if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+      std::string message = "failed to initialize CUDA backend";
+      if (created) {
+        const char *last_error = libgguf_cuda_last_error(created);
+        if (last_error && last_error[0]) {
+          message += ": ";
+          message += last_error;
+        }
+        libgguf_cuda_context_destroy(created);
+      }
+      fail(message);
+    }
+    ctx_ = created;
+    require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &input_), "failed to create CUDA input buffer");
+    require_cuda_success(ctx_, libgguf_cuda_buffer_create(ctx_, 0, &output_), "failed to create CUDA output buffer");
+  }
+
+  cuda_converter_context(const cuda_converter_context &) = delete;
+  cuda_converter_context &operator=(const cuda_converter_context &) = delete;
+
+  ~cuda_converter_context() {
+    if (output_) {
+      libgguf_cuda_buffer_destroy(ctx_, output_);
+    }
+    if (input_) {
+      libgguf_cuda_buffer_destroy(ctx_, input_);
+    }
+    if (ctx_) {
+      libgguf_cuda_context_destroy(ctx_);
+    }
+  }
+
+  bool supports(ggml_type qtype, uint64_t n_per_row) const {
+    return converter_cuda_supported_qtype(qtype) &&
+           libgguf_cuda_qtype_supported((int64_t)qtype) &&
+           !libgguf_cuda_qtype_needs_imatrix((int64_t)qtype) &&
+           libgguf_cuda_row_size((int64_t)qtype, (int64_t)n_per_row) > 0;
+  }
+
+  void quantize_chunk(
+      const tensor_plan &plan,
+      const float *host_input,
+      uint64_t row_count,
+      uint8_t *host_output,
+      size_t output_bytes,
+      timing_totals *timings) {
+    const size_t input_bytes = (size_t)(row_count * plan.n_per_row * sizeof(float));
+    measure_phase(timings, &timing_totals::h2d_s, [&]() {
+      require_cuda_success(ctx_, libgguf_cuda_buffer_resize(ctx_, input_, input_bytes), "failed to resize CUDA input buffer");
+      require_cuda_success(ctx_, libgguf_cuda_h2d(ctx_, input_, 0, host_input, input_bytes), "failed to copy tensor chunk to CUDA");
+      require_cuda_success(ctx_, libgguf_cuda_synchronize(ctx_), "failed to synchronize CUDA upload");
+    });
+    measure_phase(timings, &timing_totals::cuda_quant_s, [&]() {
+      require_cuda_success(ctx_, libgguf_cuda_buffer_resize(ctx_, output_, output_bytes), "failed to resize CUDA output buffer");
+      require_cuda_success(
+          ctx_,
+          libgguf_cuda_quantize_f32_rows(
+              ctx_,
+              (const float *)libgguf_cuda_buffer_const_data(input_),
+              nullptr,
+              libgguf_cuda_buffer_data(output_),
+              (int64_t)plan.qtype,
+              (int64_t)row_count,
+              (int64_t)plan.n_per_row),
+          "failed to quantize tensor chunk on CUDA");
+      require_cuda_success(ctx_, libgguf_cuda_synchronize(ctx_), "failed to synchronize CUDA quantization");
+    });
+    measure_phase(timings, &timing_totals::d2h_s, [&]() {
+      require_cuda_success(ctx_, libgguf_cuda_d2h(ctx_, host_output, output_, 0, output_bytes), "failed to copy tensor chunk from CUDA");
+      require_cuda_success(ctx_, libgguf_cuda_synchronize(ctx_), "failed to synchronize CUDA download");
+    });
+  }
+
+private:
+  libgguf_cuda_context *ctx_ = nullptr;
+  libgguf_cuda_buffer *input_ = nullptr;
+  libgguf_cuda_buffer *output_ = nullptr;
+};
+#endif
+
 void write_tensor_payload(
     FILE *out,
     const input_file &input,
     const tensor_plan &plan,
-    uint64_t scratch_bytes,
+    const cli_options &options,
     tensor_quant_worker_pool &native_pool,
+    cuda_converter_context *cuda_ctx,
+    uint64_t *verify_cuda_remaining,
     timing_totals *timings) {
   if (timings) {
     timings->tensors += 1;
   }
+  const uint64_t scratch_bytes = options.scratch_bytes;
   write_pre_tensor_padding(out, GGUF_DEFAULT_ALIGNMENT);
   if (qtype_matches_source(plan.source_dtype, plan.qtype)) {
     std::vector<uint8_t> buffer((size_t)std::min<uint64_t>(scratch_bytes, 8ull * 1024ull * 1024ull));
@@ -1676,6 +1817,26 @@ void write_tensor_payload(
   }
   const bool source_f32 = plan.source_dtype == NATIVE_DTYPE_F32;
   const bool native_quant = is_quantized_qtype(plan.qtype) && native_quantize_function(plan.qtype) != nullptr;
+  bool cuda_quant = false;
+  if (options.backend == CONVERTER_BACKEND_CUDA && is_quantized_qtype(plan.qtype)) {
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+    cuda_quant = cuda_ctx && cuda_ctx->supports(plan.qtype, plan.n_per_row);
+#else
+    (void)cuda_ctx;
+#endif
+    if (!cuda_quant && !options.cuda_fallback_cpu) {
+      fail(
+          "CUDA backend does not support " + qtype_name(plan.qtype) +
+          " for tensor " + plan.key + "; pass --cuda-fallback cpu to use CPU for unsupported tensors");
+    }
+  }
+  const bool verify_cuda = cuda_quant && verify_cuda_remaining && *verify_cuda_remaining > 0;
+  if (cuda_quant && timings) {
+    timings->cuda_tensors += 1;
+    if (verify_cuda) {
+      timings->cuda_verified_tensors += 1;
+    }
+  }
   const uint64_t row_work_bytes =
       plan.n_per_row * source_dtype_size(plan.source_dtype) +
       (source_f32 ? 0 : plan.n_per_row * sizeof(float)) +
@@ -1687,20 +1848,48 @@ void write_tensor_payload(
   rows_per_chunk = std::min<uint64_t>(rows_per_chunk, plan.n_rows);
 
   std::vector<float> scratch;
-  if (!source_f32 && !native_quant) {
+  if (!source_f32) {
     scratch.resize((size_t)(rows_per_chunk * plan.n_per_row));
   }
   std::vector<uint8_t> source_bytes;
   std::vector<uint8_t> encoded((size_t)(rows_per_chunk * row_size));
+  std::vector<uint8_t> verify_encoded;
+  if (verify_cuda) {
+    verify_encoded.resize(encoded.size());
+  }
   for (uint64_t row = 0; row < plan.n_rows; row += rows_per_chunk) {
     const uint64_t row_count = std::min<uint64_t>(rows_per_chunk, plan.n_rows - row);
     measure_phase(timings, &timing_totals::read_s, [&]() {
       read_source_chunk(input, plan, row, row_count, source_bytes);
     });
     const float *chunk_src = nullptr;
+    if (cuda_quant) {
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+      measure_phase(timings, &timing_totals::cpu_convert_s, [&]() {
+        if (source_f32) {
+          chunk_src = reinterpret_cast<const float *>(source_bytes.data());
+        } else {
+          decode_source_bytes_to_f32(plan, source_bytes.data(), row_count * plan.n_per_row, scratch.data());
+          chunk_src = scratch.data();
+        }
+      });
+      const size_t expected = (size_t)(row_count * (uint64_t)row_size);
+      cuda_ctx->quantize_chunk(plan, chunk_src, row_count, encoded.data(), expected, timings);
+      if (verify_cuda) {
+        const bool quant_ok = native_pool.run(plan, source_bytes.data(), row_count, verify_encoded.data(), nullptr, scratch_bytes);
+        if (!quant_ok || std::memcmp(encoded.data(), verify_encoded.data(), expected) != 0) {
+          fail("CUDA verification mismatch for " + plan.key + " at row " + std::to_string(row));
+        }
+      }
+      measure_phase(timings, &timing_totals::write_s, [&]() {
+        write_all_file(out, encoded.data(), expected);
+      });
+      continue;
+#endif
+    }
     if (native_quant) {
       bool quant_ok = false;
-      measure_phase(timings, &timing_totals::quant_s, [&]() {
+      measure_phase(timings, &timing_totals::cpu_convert_s, [&]() {
         quant_ok = native_pool.run(plan, source_bytes.data(), row_count, encoded.data(), nullptr, scratch_bytes);
       });
       if (!quant_ok) {
@@ -1713,7 +1902,7 @@ void write_tensor_payload(
     }
     size_t written = 0;
     const uint64_t expected = row_count * (uint64_t)row_size;
-    measure_phase(timings, &timing_totals::quant_s, [&]() {
+    measure_phase(timings, &timing_totals::cpu_convert_s, [&]() {
       if (source_f32) {
         chunk_src = reinterpret_cast<const float *>(source_bytes.data());
       } else {
@@ -1728,6 +1917,9 @@ void write_tensor_payload(
     measure_phase(timings, &timing_totals::write_s, [&]() {
       write_all_file(out, encoded.data(), expected);
     });
+  }
+  if (verify_cuda) {
+    *verify_cuda_remaining -= 1;
   }
   write_post_tensor_padding(out, plan.expected_nbytes, GGUF_DEFAULT_ALIGNMENT);
 }
@@ -1758,6 +1950,9 @@ void print_help() {
   std::puts("  --exclude PATTERN          Keep matching tensors unquantized");
   std::puts("  --scratch-bytes N          Native scratch buffer target in bytes");
   std::puts("  --threads N                Worker thread count (default: hardware or LIBGGUF_NUM_THREADS)");
+  std::puts("  --backend cpu|cuda         Conversion backend for quantized tensors (default: cpu)");
+  std::puts("  --cuda-fallback cpu        Use CPU for tensors unsupported by the CUDA converter");
+  std::puts("  --verify-cuda-tensors N    Compare the first N CUDA tensors against CPU bytes");
   std::puts("  --timings                  Print conversion timing breakdown to stderr");
   std::puts("  --help                     Show this help");
 }
@@ -1812,6 +2007,30 @@ cli_options parse_args(int argc, char **argv) {
         fail("--threads must be a positive integer");
       }
       options.threads = parsed;
+    } else if (arg == "--backend") {
+      std::string value = need_value("--backend");
+      if (value == "cpu") {
+        options.backend = CONVERTER_BACKEND_CPU;
+      } else if (value == "cuda") {
+        options.backend = CONVERTER_BACKEND_CUDA;
+      } else {
+        fail("--backend must be 'cpu' or 'cuda'");
+      }
+    } else if (arg == "--cuda-fallback") {
+      std::string value = need_value("--cuda-fallback");
+      if (value != "cpu") {
+        fail("--cuda-fallback must be 'cpu'");
+      }
+      options.cuda_fallback_cpu = true;
+    } else if (arg == "--verify-cuda-tensors") {
+      std::string value = need_value("--verify-cuda-tensors");
+      char *end = nullptr;
+      errno = 0;
+      unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+      if (errno != 0 || end == value.c_str() || *end != '\0') {
+        fail("--verify-cuda-tensors must be a non-negative integer");
+      }
+      options.verify_cuda_tensors = (uint64_t)parsed;
     } else if (arg == "--timings") {
       options.timings = true;
     } else {
@@ -1830,10 +2049,18 @@ cli_options parse_args(int argc, char **argv) {
   if (!ends_with(upper_ascii(options.src), ".SAFETENSORS")) {
     fail("native quantize_gguf only supports .safetensors inputs");
   }
+  if (options.verify_cuda_tensors > 0 && options.backend != CONVERTER_BACKEND_CUDA) {
+    fail("--verify-cuda-tensors requires --backend cuda");
+  }
   return options;
 }
 
 conversion_result convert(const cli_options &options) {
+#if !defined(LIBGGUF_HAS_CUDA_NATIVE)
+  if (options.backend == CONVERTER_BACKEND_CUDA) {
+    fail("CUDA backend requested, but this executable was built without native CUDA support");
+  }
+#endif
   const auto total_begin = steady_clock::now();
   auto [file_type_name, base_qtype_name] = parse_qtype(options.qtype);
   std::string dst = options.dst.empty() ? default_output_path(options.src, file_type_name) : options.dst;
@@ -1868,6 +2095,15 @@ conversion_result convert(const cli_options &options) {
   timing_totals *timings_ptr = options.timings ? &timings : nullptr;
   const unsigned int worker_threads = native_thread_limit(options.threads);
   tensor_quant_worker_pool native_pool(worker_threads);
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+  std::unique_ptr<cuda_converter_context> cuda_ctx;
+  if (options.backend == CONVERTER_BACKEND_CUDA) {
+    cuda_ctx.reset(new cuda_converter_context());
+  }
+#else
+  cuda_converter_context *cuda_ctx = nullptr;
+#endif
+  uint64_t verify_cuda_remaining = options.verify_cuda_tensors;
 
 #if defined(_WIN32)
   FILE *out = nullptr;
@@ -1886,7 +2122,19 @@ conversion_result convert(const cli_options &options) {
       timings.metadata_s += elapsed_seconds(metadata_begin, metadata_end);
     }
     for (const tensor_plan &plan : plans) {
-      write_tensor_payload(out, input, plan, options.scratch_bytes, native_pool, timings_ptr);
+      write_tensor_payload(
+          out,
+          input,
+          plan,
+          options,
+          native_pool,
+#if defined(LIBGGUF_HAS_CUDA_NATIVE)
+          cuda_ctx.get(),
+#else
+          cuda_ctx,
+#endif
+          &verify_cuda_remaining,
+          timings_ptr);
     }
     if (std::fclose(out) != 0) {
       out = nullptr;
@@ -1903,13 +2151,18 @@ conversion_result convert(const cli_options &options) {
     timings.total_s = elapsed_seconds(total_begin, steady_clock::now());
     std::fprintf(
         stderr,
-        "Timings: total=%.3fs metadata=%.3fs read=%.3fs quant=%.3fs write=%.3fs tensors=%llu threads=%u scratch=%llu\n",
+        "Timings: total=%.3fs metadata=%.3fs read=%.3fs cpu_convert=%.3fs h2d=%.3fs cuda_quant=%.3fs d2h=%.3fs write=%.3fs tensors=%llu cuda_tensors=%llu cuda_verified=%llu threads=%u scratch=%llu\n",
         timings.total_s,
         timings.metadata_s,
         timings.read_s,
-        timings.quant_s,
+        timings.cpu_convert_s,
+        timings.h2d_s,
+        timings.cuda_quant_s,
+        timings.d2h_s,
         timings.write_s,
         (unsigned long long)timings.tensors,
+        (unsigned long long)timings.cuda_tensors,
+        (unsigned long long)timings.cuda_verified_tensors,
         worker_threads,
         (unsigned long long)options.scratch_bytes);
   }

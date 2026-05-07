@@ -21,6 +21,7 @@ libgguf_quantize_gguf \
   --qtype Q4_K_M \
   --dst model-Q4_K_M.gguf \
   --policy comfy \
+  --backend cpu \
   --overwrite
 ```
 
@@ -37,10 +38,17 @@ Implemented native options:
 - `--exclude PATTERN`: keep matching tensors unquantized.
 - `--scratch-bytes N`: native scratch buffer target in bytes.
 - `--threads N`: worker thread count.
+- `--backend cpu|cuda`: backend for quantized tensor encoding. The default is `cpu`; safetensors reads and GGUF writes remain CPU-side for both backends.
+- `--cuda-fallback cpu`: when `--backend cuda` is selected, encode unsupported CUDA qtypes on CPU instead of failing.
+- `--verify-cuda-tensors N`: for the first `N` tensors encoded on CUDA, also encode with CPU and compare the encoded bytes.
 - `--timings`: print conversion timing breakdown to stderr.
 - `--help`: show native help.
 
 The native executable currently supports Q/K output families and storage overrides. Non-Q/K quantization families are rejected by the native executable even though the row APIs support broader qtype coverage.
+
+The CUDA converter backend is experimental and is linked only when the native CUDA target is built. A CPU-only executable accepts the CLI flags but fails clearly if `--backend cuda` is requested. The current CUDA converter qtype set is `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, and `Q6_K`; other planned or kernel-level qtypes require `--cuda-fallback cpu` or fail.
+
+With `--timings`, the native converter reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets. The `metadata` field is also printed to separate GGUF descriptor writes from tensor payload writes.
 
 ## GGUF Inspection
 

@@ -353,6 +353,15 @@ if(LIBGGUF_BUILD_TOOLS)
       "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
   )
   target_link_libraries(libgguf_quantize_gguf PRIVATE libgguf_objects)
+  if(TARGET libgguf_cuda_native)
+    target_compile_definitions(libgguf_quantize_gguf PRIVATE LIBGGUF_HAS_CUDA_NATIVE=1)
+    target_include_directories(
+      libgguf_quantize_gguf
+      PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
+    )
+    target_link_libraries(libgguf_quantize_gguf PRIVATE libgguf_cuda_native)
+  endif()
   if(MSVC)
     target_compile_options(
       libgguf_quantize_gguf

@@ -76,6 +76,27 @@ CUDA quantization targets byte-exact output versus the native CPU reference path
 
 The test suite includes CUDA exactness checks when CUDA is available.
 
+## Native Converter Backend
+
+The native `libgguf_quantize_gguf` executable can use the native CUDA target for tensor quantization:
+
+```bash
+libgguf_quantize_gguf \
+  --src model.safetensors \
+  --qtype Q4_K_M \
+  --backend cuda \
+  --cuda-fallback cpu \
+  --verify-cuda-tensors 2 \
+  --timings \
+  --overwrite
+```
+
+Safetensors reading, half/BF16-to-F32 preparation, tensor planning, and GGUF writing remain CPU-side. For CUDA-supported quantized tensors, the converter reuses CUDA input/output buffers across tensor chunks, uploads F32 rows, runs CUDA quantization, downloads encoded bytes, and writes through the existing GGUF writer.
+
+The converter backend currently enables CUDA for `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, and `Q6_K`. If a tensor resolves to another qtype under the existing policy/override rules, `--backend cuda` fails unless `--cuda-fallback cpu` is supplied. CPU-only builds still configure and build the executable; requesting `--backend cuda` in that executable fails with a clear build-support error.
+
+`--verify-cuda-tensors N` encodes the first `N` CUDA-routed tensors through both CUDA and CPU and compares the encoded bytes. `--timings` reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets, plus metadata and tensor counts.
+
 ## Ecosystem Context
 
 [Diffusers](https://huggingface.co/docs/diffusers/main/quantization/gguf) currently documents optional GGUF CUDA kernels through the external [kernels](https://github.com/huggingface/kernels) package, with a note that optimized kernels may introduce minor numerical or visual differences compared with the original GGUF implementation. libgguf's CUDA work is positioned differently: it targets byte-exact quantization where supported and decoded-output parity for dequantization. Diffusers is a potential optional backend/integration target, not currently a supported integration in this repository.
@@ -84,6 +105,5 @@ The test suite includes CUDA exactness checks when CUDA is available.
 
 - CUDA is optional and depends on local CUDA toolkit discovery.
 - The Python Torch extension additionally depends on local Torch build discovery.
-- The native safetensors-to-GGUF converter does not yet route tensors through CUDA quantization.
-- Source dtype GPU input paths for F16/BF16 conversion are planned.
+- The native converter CUDA backend is experimental and currently uploads F32 rows; F16/BF16 source tensors are converted to F32 on CPU before upload.
 - IQ quant kernels are exact on checked rows but remain an active performance optimization area.
