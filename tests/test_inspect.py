@@ -35,17 +35,23 @@ def _minimal_gguf(
     shape: tuple[int, ...] = (256, 2),
     tensors: list[tuple[str, tuple[int, ...], int, int]] | None = None,
     payload_size: int | None = None,
+    duplicate_architecture: bool = False,
 ) -> int:
     q4_0 = int(libgguf.GGMLQuantizationType.Q4_0)
     if tensors is None:
         tensors = [("blocks.0.attn_v.weight", shape, q4_0, 64)]
+    metadata_kv_count = 5 if duplicate_architecture else 4
 
     data = bytearray()
     data += b"GGUF"
-    data += struct.pack("<IQQ", 3, len(tensors), 4)
+    data += struct.pack("<IQQ", 3, len(tensors), metadata_kv_count)
     data += _gguf_string("general.architecture")
     data += struct.pack("<I", 8)
     data += _gguf_string("test-arch")
+    if duplicate_architecture:
+        data += _gguf_string("general.architecture")
+        data += struct.pack("<I", 8)
+        data += _gguf_string("duplicate-arch")
     data += _gguf_string("general.quantization_version")
     data += struct.pack("<II", 4, 2)
     data += _gguf_string("general.alignment")
@@ -85,6 +91,7 @@ def test_inspect_gguf_reads_metadata_and_tensor_descriptors_without_payload(tmp_
     assert info.data_offset == header_end + ((32 - header_end % 32) % 32)
     assert info.metadata["general.architecture"].value == "test-arch"
     assert info.metadata["general.quantization_version"].value == 2
+    assert info.metadata_key_counts["general.architecture"] == 1
     tokens = info.metadata["tokenizer.ggml.tokens"]
     assert tokens.value == ["a", "b"]
     assert tokens.length == 3
@@ -140,6 +147,22 @@ def test_validate_gguf_accepts_valid_file(tmp_path: Path) -> None:
     assert result.file is not None
     assert result.issues == ()
     assert result.to_dict()["valid"] is True
+
+
+def test_validate_gguf_errors_for_duplicate_metadata_keys(tmp_path: Path) -> None:
+    gguf_path = tmp_path / "duplicate-metadata.gguf"
+    _minimal_gguf(gguf_path, duplicate_architecture=True)
+
+    info = libgguf.inspect_gguf(gguf_path)
+    assert info.metadata["general.architecture"].value == "duplicate-arch"
+    assert info.metadata_key_counts["general.architecture"] == 2
+
+    result = libgguf.validate_gguf(gguf_path)
+
+    assert not result.ok
+    assert [issue.code for issue in result.errors] == ["metadata_duplicate_key"]
+    assert result.errors[0].metadata_key == "general.architecture"
+    assert result.errors[0].details == {"count": 2}
 
 
 def test_validate_gguf_warns_for_invalid_block_row_width(tmp_path: Path) -> None:

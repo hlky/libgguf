@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import math
 import os
@@ -120,6 +120,7 @@ class GGUFFile:
     alignment: int
     data_offset: int
     file_size: int
+    metadata_key_counts: dict[str, int] = field(default_factory=dict)
 
     @property
     def tensor_type_counts(self) -> dict[str, int]:
@@ -219,10 +220,12 @@ def inspect_gguf(path: str | os.PathLike[str], *, max_array_values: int | None =
             raise GGUFFormatError(f"unsupported GGUF version {version}")
 
         metadata: dict[str, GGUFMetadataValue] = {}
+        metadata_key_counts: dict[str, int] = {}
         alignment = GGUF_DEFAULT_ALIGNMENT
         for _ in range(int(metadata_kv_count)):
             key = _read_string(handle)
             value = _read_value(handle, max_array_values=max_array_values)
+            metadata_key_counts[key] = metadata_key_counts.get(key, 0) + 1
             metadata[key] = value
             if key == "general.alignment" and value.value_type in {"UINT32", "UINT64"}:
                 alignment = int(value.value)
@@ -273,6 +276,7 @@ def inspect_gguf(path: str | os.PathLike[str], *, max_array_values: int | None =
         alignment=alignment,
         data_offset=data_offset,
         file_size=gguf_path.stat().st_size,
+        metadata_key_counts=metadata_key_counts,
     )
 
 
@@ -316,6 +320,18 @@ def validate_gguf(path: str | os.PathLike[str], *, max_array_values: int | None 
         )
 
     issues: list[GGUFValidationIssue] = []
+
+    for key, count in sorted(info.metadata_key_counts.items()):
+        if count > 1:
+            issues.append(
+                GGUFValidationIssue(
+                    severity="error",
+                    code="metadata_duplicate_key",
+                    message=f"metadata key {key!r} appears {count} times",
+                    metadata_key=key,
+                    details={"count": count},
+                )
+            )
 
     if info.alignment <= 0:
         issues.append(
