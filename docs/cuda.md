@@ -85,7 +85,7 @@ libgguf_quantize_gguf \
   --src model.safetensors \
   --qtype Q4_K_M \
   --backend auto \
-  --verify-cuda-tensors 2 \
+  --verify-cuda-tensors all \
   --timings \
   --overwrite
 ```
@@ -96,7 +96,7 @@ The converter backend currently enables CUDA for `Q4_0`, `Q8_0`, `Q2_K`, `Q3_K`,
 
 The native converter defaults to `--backend auto`. Auto mode routes simple Q qtypes (`Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, `Q8_0`) to CPU. K qtypes (`Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`, including file-type aliases such as `Q4_K_M` after tensor qtype resolution) prefer CUDA when native CUDA is available and usable, and otherwise fall back to CPU. Auto mode does not initialize CUDA when no planned tensor prefers CUDA.
 
-`--verify-cuda-tensors N` encodes the first `N` CUDA-routed tensors through both CUDA and CPU and compares the encoded bytes. `--timings` reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets, plus metadata and tensor counts.
+`--verify-cuda-tensors N|all` encodes the first `N` CUDA-routed tensors, or every CUDA-routed tensor, through both CUDA and CPU and compares the encoded bytes. `--timings` reports `read`, `cpu_convert`, `h2d`, `cuda_quant`, `d2h`, `write`, and `total` buckets, plus metadata and tensor counts.
 
 ## Ecosystem Context
 

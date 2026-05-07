@@ -55,6 +55,7 @@ constexpr uint64_t NATIVE_DEFAULT_SCRATCH_BYTES = 32ull * 1024ull * 1024ull;
 constexpr int64_t QUANTIZATION_THRESHOLD = 1024;
 constexpr int64_t REARRANGE_THRESHOLD = 512;
 constexpr size_t MAX_TENSOR_NAME_LENGTH = 127;
+constexpr uint64_t VERIFY_CUDA_ALL_TENSORS = std::numeric_limits<uint64_t>::max();
 
 enum gguf_value_type : uint32_t {
   GGUF_TYPE_UINT8 = 0,
@@ -2146,7 +2147,7 @@ void write_tensor_payload(
       write_all_file(out, encoded.data(), expected);
     });
   }
-  if (verify_cuda) {
+  if (verify_cuda && verify_cuda_remaining && *verify_cuda_remaining != VERIFY_CUDA_ALL_TENSORS) {
     *verify_cuda_remaining -= 1;
   }
   write_post_tensor_padding(out, plan.expected_nbytes, GGUF_DEFAULT_ALIGNMENT);
@@ -2181,7 +2182,8 @@ void print_help() {
   std::puts("  --threads N                Worker thread count (default: hardware or LIBGGUF_NUM_THREADS)");
   std::puts("  --backend cpu|cuda|auto    Conversion backend for quantized tensors (default: auto)");
   std::puts("  --cuda-fallback cpu        Use CPU for tensors unsupported by the CUDA converter");
-  std::puts("  --verify-cuda-tensors N    Compare the first N CUDA tensors against CPU bytes");
+  std::puts("  --verify-cuda-tensors N|all");
+  std::puts("                           Compare CUDA tensors against CPU bytes");
   std::puts("  --cuda-vram-bytes N        CUDA device chunk budget in bytes (0 uses --scratch-bytes)");
   std::puts("  --timings                  Print conversion timing breakdown to stderr");
   std::puts("  --help                     Show this help");
@@ -2260,13 +2262,17 @@ cli_options parse_args(int argc, char **argv) {
       options.cuda_fallback_cpu = true;
     } else if (arg == "--verify-cuda-tensors") {
       std::string value = need_value("--verify-cuda-tensors");
-      char *end = nullptr;
-      errno = 0;
-      unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
-      if (errno != 0 || end == value.c_str() || *end != '\0') {
-        fail("--verify-cuda-tensors must be a non-negative integer");
+      if (value == "all") {
+        options.verify_cuda_tensors = VERIFY_CUDA_ALL_TENSORS;
+      } else {
+        char *end = nullptr;
+        errno = 0;
+        unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+        if (errno != 0 || end == value.c_str() || *end != '\0' || value[0] == '-') {
+          fail("--verify-cuda-tensors must be a non-negative integer or 'all'");
+        }
+        options.verify_cuda_tensors = (uint64_t)parsed;
       }
-      options.verify_cuda_tensors = (uint64_t)parsed;
     } else if (arg == "--cuda-vram-bytes") {
       std::string value = need_value("--cuda-vram-bytes");
       char *end = nullptr;

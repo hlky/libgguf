@@ -42,7 +42,7 @@ Implemented native options:
 - `--threads N`: worker thread count.
 - `--backend cpu|cuda|auto`: backend for quantized tensor encoding. The default is `auto`; safetensors reads and GGUF writes remain CPU-side for all backends.
 - `--cuda-fallback cpu`: when `--backend cuda` is selected, encode unsupported CUDA qtypes on CPU instead of failing.
-- `--verify-cuda-tensors N`: for the first `N` tensors encoded on CUDA, also encode with CPU and compare the encoded bytes.
+- `--verify-cuda-tensors N|all`: for the first `N` tensors encoded on CUDA, or all CUDA-routed tensors, also encode with CPU and compare the encoded bytes.
 - `--cuda-vram-bytes N`: when `--backend cuda` or `--backend auto` routes tensors to CUDA, use `N` bytes as the CUDA device input/output chunk budget. The default `0` keeps the existing `--scratch-bytes` chunk sizing. Normal CUDA conversion uses two pinned host staging slots, so host RAM can temporarily use up to about `2 * N` in addition to source read buffers.
 - `--timings`: print conversion timing breakdown to stderr.
 - `--help`: show native help.
