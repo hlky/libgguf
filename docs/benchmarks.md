@@ -40,7 +40,7 @@ first and point `--src` at it. Use `--run-name local_flux_q4km` when you want a
 stable results directory name, and keep ad hoc machine-specific outputs local
 unless they are intentionally promoted into curated benchmark artifacts.
 
-For future CPU/CUDA converter comparisons, `--backend` is a report label:
+For CPU/CUDA converter comparisons, `--backend` is a report label:
 
 ```bash
 python bench/conversion_bench.py \
@@ -50,8 +50,8 @@ python bench/conversion_bench.py \
   --runs 3
 ```
 
-When a CUDA-enabled conversion path exists, run the same command with the CUDA
-converter/flags and `--backend cuda` so the JSON/CSV rows are comparable.
+Run the same command with CUDA converter flags and `--backend cuda` so the
+JSON/CSV rows are comparable.
 Converter-specific flags can be placed after `--`, which is easier than
 repeating `--converter-arg` for flags that also begin with `--`:
 

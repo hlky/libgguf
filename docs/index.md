@@ -15,5 +15,5 @@ Start here:
 - [Correctness](correctness.md): byte exactness, decoded-output checks, and frozen golden fixtures.
 - [Support Matrix](support-matrix.md): conservative backend support overview.
 - [Ecosystem](ecosystem.md): upstream and adjacent project context.
-- [Roadmap](roadmap.md): planned reader/writer, deeper validator, converter, CUDA, packaging, and integration work.
+- [Roadmap](roadmap.md): current state, next work, and completed infrastructure milestones.
 - [Development](development.md): build, test, benchmark, and optimization notes.

@@ -229,10 +229,10 @@ See [docs/ecosystem.md](docs/ecosystem.md) for the fuller reference map.
 
 - Fuller GGUF writer API.
 - Deeper GGUF validator coverage.
-- CUDA integration into the native converter.
 - Source dtype GPU input path for F16/BF16.
-- Support matrix automation.
 - Broader frozen exactness coverage.
+- Broader native converter CUDA qtype coverage beyond the current Q/K-focused set.
+- Converter-level quality and compatibility sweeps for more image-model architectures.
 - CUDA IQ quant polish.
 - Packaging and wheels.
 - Diffusers optional backend/integration exploration.

@@ -62,6 +62,12 @@ def resolve_converter(path_or_name: str) -> str:
     return resolved
 
 
+def converter_command_prefix(converter: str) -> list[str]:
+    if Path(converter).suffix.lower() == ".py":
+        return [sys.executable, converter]
+    return [converter]
+
+
 def seconds_from(value: str, unit: str | None) -> float:
     number = float(value)
     normalized = (unit or "s").lower()
@@ -115,7 +121,7 @@ def run_conversion(
     delete_output: bool,
 ) -> dict[str, Any]:
     command = [
-        converter,
+        *converter_command_prefix(converter),
         "--src",
         str(src),
         "--dst",
@@ -353,7 +359,7 @@ def format_gb(value: Any) -> str:
 
 
 def markdown_path(path: Path, base: Path) -> str:
-    return os.path.relpath(path, base)
+    return Path(os.path.relpath(path, base)).as_posix()
 
 
 def comparison_markdown(payload: dict[str, Any], *, cpu_path: Path, cuda_path: Path, out_path: Path) -> str:

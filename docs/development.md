@@ -78,7 +78,7 @@ python scripts/generate_support_matrix.py --check
 
 `docs/support-matrix.md` is generated from source maps by
 `scripts/generate_support_matrix.py` and is intentionally tracked. Regenerate it
-with `python scripts/generate_support_matrix.py` when qtype/backend support
+with `python scripts/generate_support_matrix.py --write` when qtype/backend support
 changes, and verify it with `--check` before committing.
 
 Generated CUDA IQ lookup and neighbor headers under
