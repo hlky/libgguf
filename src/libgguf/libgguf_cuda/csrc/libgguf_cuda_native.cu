@@ -2,10 +2,13 @@
 
 #include <cuda_runtime.h>
 
+#include <limits>
 #include <new>
 #include <string>
 
+#include "cuda_dequantize_kernels.h"
 #include "cuda_quantize_kernels.h"
+#include "libgguf_internal.h"
 
 struct libgguf_cuda_context {
     int device = 0;
@@ -52,6 +55,79 @@ static int set_device(libgguf_cuda_context * ctx) {
         return set_cuda_error(ctx, error);
     }
     return LIBGGUF_CUDA_STATUS_SUCCESS;
+}
+
+static bool dequantize_dtype_supported(int output_dtype) {
+    return output_dtype == LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F32 ||
+        output_dtype == LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F16;
+}
+
+static at::ScalarType dequantize_dtype_to_scalar_type(int output_dtype) {
+    return output_dtype == LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F16 ? at::ScalarType::Half : at::ScalarType::Float;
+}
+
+static int64_t dequantize_block_size_for_type(int64_t qtype) {
+    if (qtype == GGML_TYPE_BF16) {
+        return 1;
+    }
+    return gguf_cuda_quantize_block_size_for_type(qtype);
+}
+
+static int64_t dequantize_row_size_for_type(int64_t qtype, int64_t n_per_row) {
+    if (n_per_row < 0) {
+        return 0;
+    }
+    if (qtype == GGML_TYPE_BF16) {
+        if (n_per_row > std::numeric_limits<int64_t>::max() / (int64_t)sizeof(uint16_t)) {
+            return 0;
+        }
+        return n_per_row * (int64_t)sizeof(uint16_t);
+    }
+    return gguf_cuda_quantize_row_size_for_type(qtype, n_per_row);
+}
+
+static int launch_dequantize_rows(
+    libgguf_cuda_context * ctx,
+    const void * device_input,
+    int64_t qtype,
+    int64_t rows,
+    int64_t n_per_row,
+    int output_dtype,
+    void * device_output,
+    cudaStream_t stream
+) {
+    if (!device_input || !device_output || rows < 0 || n_per_row <= 0) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "invalid dequantize arguments");
+    }
+    if (!dequantize_dtype_supported(output_dtype)) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_UNSUPPORTED_TYPE, "unsupported CUDA dequantize output dtype");
+    }
+    const int64_t block_size = dequantize_block_size_for_type(qtype);
+    if (block_size <= 0 || dequantize_row_size_for_type(qtype, n_per_row) <= 0) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_UNSUPPORTED_TYPE, "unsupported CUDA dequantization type");
+    }
+    if (n_per_row % block_size != 0) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "row width is not divisible by dequantization block size");
+    }
+    if (rows > std::numeric_limits<int>::max() / n_per_row) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT, "dequantize output element count exceeds int32 range");
+    }
+    if (rows == 0) {
+        return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
+    }
+    gguf_cuda_dequantize_row(
+        device_input,
+        device_output,
+        qtype,
+        (int)(rows * n_per_row),
+        dequantize_dtype_to_scalar_type(output_dtype),
+        stream
+    );
+    const cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        return set_cuda_error(ctx, error);
+    }
+    return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
 }
 
 extern "C" {
@@ -200,6 +276,18 @@ int64_t libgguf_cuda_row_size(int64_t qtype, int64_t n_per_row) {
         return 0;
     }
     return gguf_cuda_quantize_row_size_for_type(qtype, n_per_row);
+}
+
+int libgguf_cuda_dequantize_qtype_supported(int64_t qtype) {
+    return dequantize_block_size_for_type(qtype) > 0;
+}
+
+int64_t libgguf_cuda_dequantize_block_size(int64_t qtype) {
+    return dequantize_block_size_for_type(qtype);
+}
+
+int64_t libgguf_cuda_dequantize_row_size(int64_t qtype, int64_t n_per_row) {
+    return dequantize_row_size_for_type(qtype, n_per_row);
 }
 
 int libgguf_cuda_buffer_create(libgguf_cuda_context * ctx, size_t size, libgguf_cuda_buffer ** out) {
@@ -438,6 +526,46 @@ int libgguf_cuda_quantize_f32_rows(
         return set_cuda_error(ctx, error);
     }
     return set_error(ctx, LIBGGUF_CUDA_STATUS_SUCCESS, "");
+}
+
+int libgguf_cuda_dequantize_rows(
+    libgguf_cuda_context * ctx,
+    const void * device_input,
+    int64_t qtype,
+    int64_t rows,
+    int64_t n_per_row,
+    int output_dtype,
+    void * device_output
+) {
+    if (!ctx) {
+        return LIBGGUF_CUDA_STATUS_INVALID_ARGUMENT;
+    }
+    const int status = set_device(ctx);
+    if (status != LIBGGUF_CUDA_STATUS_SUCCESS) {
+        return status;
+    }
+    return launch_dequantize_rows(ctx, device_input, qtype, rows, n_per_row, output_dtype, device_output, ctx->stream);
+}
+
+int libgguf_cuda_dequantize_rows_on_stream(
+    const void * device_input,
+    int64_t qtype,
+    int64_t rows,
+    int64_t n_per_row,
+    int output_dtype,
+    void * device_output,
+    void * stream
+) {
+    return launch_dequantize_rows(
+        nullptr,
+        device_input,
+        qtype,
+        rows,
+        n_per_row,
+        output_dtype,
+        device_output,
+        reinterpret_cast<cudaStream_t>(stream)
+    );
 }
 
 }

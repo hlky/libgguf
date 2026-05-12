@@ -226,6 +226,35 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
       "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_tq2_0.cu"
       "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q6_k.cu"
     )
+    set(
+      LIBGGUF_CUDA_DEQUANT_KERNEL_SOURCES
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_kernels.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_0.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_1.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_0.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_1.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q8_0.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_bf16.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q1_0.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_tq1_0.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_tq2_0.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_mxfp4.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_nvfp4.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q2_k.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q3_k.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_k.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_k.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q6_k.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_xxs.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_xs.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_s.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq3_xxs.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq3_s.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq1_s.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq1_m.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq4_nl.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq4_xs.cu"
+    )
     add_library(libgguf_cuda_quant_objects OBJECT ${LIBGGUF_CUDA_QUANT_KERNEL_SOURCES})
     set_target_properties(
       libgguf_cuda_quant_objects
@@ -244,11 +273,30 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
     target_compile_definitions(libgguf_cuda_quant_objects PRIVATE LIBGGUF_CUDA_NO_C10=1)
     target_compile_options(libgguf_cuda_quant_objects PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
 
+    add_library(libgguf_cuda_dequant_objects OBJECT ${LIBGGUF_CUDA_DEQUANT_KERNEL_SOURCES})
+    set_target_properties(
+      libgguf_cuda_dequant_objects
+      PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+    )
+    target_include_directories(
+      libgguf_cuda_dequant_objects
+      PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
+    )
+    target_compile_definitions(libgguf_cuda_dequant_objects PRIVATE LIBGGUF_CUDA_NO_C10=1)
+    target_compile_options(libgguf_cuda_dequant_objects PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
+
     add_library(
       libgguf_cuda_native
       STATIC
       "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/libgguf_cuda_native.cu"
       $<TARGET_OBJECTS:libgguf_cuda_quant_objects>
+      $<TARGET_OBJECTS:libgguf_cuda_dequant_objects>
     )
     set_target_properties(
       libgguf_cuda_native
@@ -265,6 +313,7 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
     )
+    target_compile_definitions(libgguf_cuda_native PRIVATE LIBGGUF_CUDA_NO_C10=1)
     target_compile_options(libgguf_cuda_native PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     target_link_libraries(libgguf_cuda_native PUBLIC CUDA::cudart)
 
@@ -273,6 +322,7 @@ if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
         libgguf_cuda_C_gguf
         MODULE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/torch_bindings.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/libgguf_cuda_native.cu"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize.cu"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_kernels.cu"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_0.cu"

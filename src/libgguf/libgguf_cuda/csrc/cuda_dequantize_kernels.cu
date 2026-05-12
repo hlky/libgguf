@@ -1,7 +1,9 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+#ifndef LIBGGUF_CUDA_NO_C10
 #include <torch/all.h>
+#endif
 
 #include "cuda_dequantize_kernels.h"
 
@@ -90,6 +92,9 @@ void gguf_cuda_dequantize_row(
             gguf_cuda_dequantize_launch_q1_0(x, y, k, dtype, stream);
             return;
         default:
+#ifndef LIBGGUF_CUDA_NO_C10
             TORCH_CHECK(false, "Unsupported GGML quantization type for CUDA dequantize: ", type);
+#endif
+            return;
     }
 }

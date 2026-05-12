@@ -2,7 +2,11 @@
 
 #include <cstdint>
 
+#ifdef LIBGGUF_CUDA_NO_C10
+#include "dispatch_utils.h"
+#else
 #include <ATen/core/ScalarType.h>
+#endif
 #include <cuda_runtime.h>
 
 void gguf_cuda_dequantize_row(

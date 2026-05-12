@@ -15,6 +15,11 @@ enum libgguf_cuda_status {
     LIBGGUF_CUDA_STATUS_ALLOCATION_FAILED = 4,
 };
 
+enum libgguf_cuda_dequantize_dtype {
+    LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F32 = 0,
+    LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F16 = 1,
+};
+
 typedef struct libgguf_cuda_context libgguf_cuda_context;
 typedef struct libgguf_cuda_buffer libgguf_cuda_buffer;
 typedef struct libgguf_cuda_event libgguf_cuda_event;
@@ -38,6 +43,9 @@ int libgguf_cuda_qtype_supported(int64_t qtype);
 int libgguf_cuda_qtype_needs_imatrix(int64_t qtype);
 int64_t libgguf_cuda_block_size(int64_t qtype);
 int64_t libgguf_cuda_row_size(int64_t qtype, int64_t n_per_row);
+int libgguf_cuda_dequantize_qtype_supported(int64_t qtype);
+int64_t libgguf_cuda_dequantize_block_size(int64_t qtype);
+int64_t libgguf_cuda_dequantize_row_size(int64_t qtype, int64_t n_per_row);
 
 int libgguf_cuda_buffer_create(libgguf_cuda_context * ctx, size_t size, libgguf_cuda_buffer ** out);
 void libgguf_cuda_buffer_destroy(libgguf_cuda_context * ctx, libgguf_cuda_buffer * buffer);
@@ -76,6 +84,26 @@ int libgguf_cuda_quantize_f32_rows(
     int64_t qtype,
     int64_t rows,
     int64_t n_per_row
+);
+
+int libgguf_cuda_dequantize_rows(
+    libgguf_cuda_context * ctx,
+    const void * device_input,
+    int64_t qtype,
+    int64_t rows,
+    int64_t n_per_row,
+    int output_dtype,
+    void * device_output
+);
+
+int libgguf_cuda_dequantize_rows_on_stream(
+    const void * device_input,
+    int64_t qtype,
+    int64_t rows,
+    int64_t n_per_row,
+    int output_dtype,
+    void * device_output,
+    void * stream
 );
 
 #ifdef __cplusplus

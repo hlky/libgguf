@@ -22,6 +22,24 @@ Public wrapper functions:
 
 The CUDA API is experimental. It expects CUDA tensors and qtypes passed as integer enum values.
 
+## Native Dequantize ABI
+
+`libgguf_cuda_native.h` exposes an experimental C ABI for generated native code that already owns CUDA device buffers:
+
+```c
+int libgguf_cuda_dequantize_rows_on_stream(
+    const void * device_input,
+    int64_t qtype,
+    int64_t rows,
+    int64_t n_per_row,
+    int output_dtype,
+    void * device_output,
+    void * stream
+);
+```
+
+`output_dtype` is `LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F32` or `LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F16`. The `stream` argument is a `cudaStream_t` passed as `void *`; callers are responsible for ensuring the current CUDA device matches the input/output pointers. `libgguf_cuda_dequantize_rows(...)` provides the same operation on a `libgguf_cuda_context` and its owned stream.
+
 ## Build Requirements
 
 The internal CUDA kernel target builds with `nvcc` and the CUDA toolkit. The
