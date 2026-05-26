@@ -43,6 +43,39 @@ cmake -S . -B build -DLIBGGUF_BUILD_CUDA_KERNELS=ON
 
 Installed Python inspection/comparison CLIs are `gguf-inspect`, `gguf-validate`, and `gguf-compare`.
 
+## Upstream Reference Provenance
+
+The vendored scalar reference kernels in `csrc/dequant/dequant.cpp` and top-level `csrc/quant/*.cpp` match
+[ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) commit
+`dbe9c0c8ce65354c372f5d4ab507e5424a755e9f` for upstream source
+`ggml/src/ggml-quants.c`.
+
+That commit is:
+
+```text
+dbe9c0c8ce65354c372f5d4ab507e5424a755e9f  convert : support Gemma4ForCausalLM architecture (#23682)
+```
+
+Validate the pinned reference:
+
+```bash
+python scripts/validate_llamacpp_reference.py
+```
+
+The validator fetches the pinned llama.cpp commit into a temporary checkout when `--llama-cpp` is not supplied. To use an existing checkout:
+
+```bash
+python scripts/validate_llamacpp_reference.py --llama-cpp ../llama.cpp
+```
+
+To intentionally compare against current upstream or another ref, pass `--allow-different-commit`:
+
+```bash
+python scripts/validate_llamacpp_reference.py --ref origin/master --allow-different-commit
+```
+
+The check compares row dequantizers plus row and weighted quantizer helper bodies after normalizing libgguf's C++ adapter differences: upstream `_ref` suffixes, assert/diagnostic macros, `NULL`/`nullptr`, and required casts from `void *`. The single-compiled-backend wrappers and private `*_for_backend` test hooks are local infrastructure and are not part of the upstream-equivalence check.
+
 ## CPU SIMD and Backend Selection
 
 Native CPU backend selection is a build-time contract. CMake compiles one row backend via

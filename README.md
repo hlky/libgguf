@@ -242,6 +242,8 @@ See [docs/ecosystem.md](docs/ecosystem.md) for the fuller reference map.
 
 GGUF format behavior and quantization kernels are intended to stay compatible with llama.cpp/GGML/GGUF reference behavior where applicable. The NumPy backend extends gguf-py-style implementations, and the Torch backend extends ComfyUI-GGUF-style native Torch implementations. libgguf keeps those ideas in a standalone infrastructure package with native C++ and CUDA paths.
 
+The vendored scalar quant/dequant reference kernels are pinned and validated against llama.cpp commit `dbe9c0c8ce65354c372f5d4ab507e5424a755e9f`; see [docs/development.md](docs/development.md#upstream-reference-provenance) for the validation command.
+
 ## License
 
 Apache-2.0. Vendored or adapted code provenance should be documented in the relevant source files and expanded where appropriate.
