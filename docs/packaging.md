@@ -41,6 +41,24 @@ CI runs the same helper in a dedicated wheel install smoke job. Running it
 locally is still useful before packaging-sensitive changes because it exercises
 the installed wheel from outside the source tree.
 
+## GitHub Wheel Builds
+
+GitHub Actions now builds CPU-only wheels on pull requests, pushes to `main`,
+manual workflow dispatch, and release tags. The wheel matrix currently covers:
+
+- Linux `x86_64`
+- Windows `AMD64`
+- macOS `x86_64`
+- macOS `arm64`
+
+Those wheels are built with `cibuildwheel` using the portable CPU baseline:
+`LIBGGUF_BUILD_CUDA_KERNELS=OFF` and `LIBGGUF_CPU_BACKEND=REF`.
+
+Tagged releases publish the built wheels plus an sdist to PyPI through GitHub
+Trusted Publishing. The publish job only runs for `v*` tags, and it rejects a
+tag when it does not exactly match the package version declared in
+`pyproject.toml`.
+
 ## Optional CUDA Builds
 
 CUDA kernel targets are optional and controlled by
@@ -63,10 +81,10 @@ python -m pip install -e ".[cuda]" --no-build-isolation \
 
 ## Current Limitations
 
-- Wheels are local/source-built today; there is no committed multi-platform
-  wheel publishing pipeline.
-- CPU builds are the packaging baseline. CUDA-enabled wheels depend on the local
-  Torch/CUDA toolchain and are not yet produced as release artifacts.
-- The low-cost CI path is intended to validate source installs, generated docs,
-  exactness smoke checks, and the CPU test suite. It does not exercise GPU
-  runners, publish artifacts, or build a platform wheel matrix.
+- Published wheels are CPU-only and intentionally use the portable `REF`
+  backend instead of host-specific SIMD defaults.
+- CUDA-enabled wheels still depend on a build environment with Torch, `nvcc`,
+  and the CUDA toolkit visible together, and they are not yet produced as
+  release artifacts.
+- The primary test workflow remains low-cost Linux CPU CI. Cross-platform wheel
+  builds exist for packaging and release coverage, not broader GPU validation.

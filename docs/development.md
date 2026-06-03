@@ -131,9 +131,14 @@ baselines.
 
 ## CI
 
-The v1 GitHub Actions workflow is intentionally low-cost: Linux standard
-CPU runners only, with no GPU jobs, larger runners, schedules, artifacts,
-or caches by default.
+The primary test workflow is intentionally low-cost: Linux standard CPU runners
+only, with no GPU jobs, larger runners, or caches by default.
+
+A separate wheel workflow builds CPU release artifacts for Linux `x86_64`,
+Windows `AMD64`, macOS `x86_64`, and macOS `arm64`. Those wheels use the
+portable `REF` backend with `LIBGGUF_BUILD_CUDA_KERNELS=OFF`. Tagged `v*`
+releases publish the wheel matrix plus an sdist to PyPI through GitHub Trusted
+Publishing after verifying the tag matches the package version.
 
 For public repositories, standard GitHub-hosted runners are free. If the
 repository is private, workflow minutes and storage draw from the repository

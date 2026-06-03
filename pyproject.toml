@@ -30,3 +30,9 @@ cmake.version = ">=3.18"
 cmake.build-type = "Release"
 wheel.packages = ["src/libgguf"]
 wheel.exclude = ["libgguf/libgguf_*/tests/**"]
+
+[tool.cibuildwheel]
+build = "cp310-* cp311-* cp312-* cp313-*"
+skip = "pp* *-musllinux* cp31t-*"
+build-verbosity = 1
+environment = { LIBGGUF_BUILD_CUDA_KERNELS = "OFF", LIBGGUF_CPU_BACKEND = "REF" }

@@ -33,8 +33,8 @@ roadmap stays useful during active development.
 - Expand frozen exactness coverage across more qtypes, edge cases, CPU backends,
   and converter-level fixtures.
 - Continue CUDA IQ quantization optimization while preserving byte equality.
-- Build a wheel publishing plan, including explicit CPU backend choices and a
-  policy for optional CUDA artifacts.
+- Extend the CPU wheel publishing baseline with a policy and build path for
+  optional CUDA artifacts.
 - Run broader model-architecture conversion and compatibility sweeps for Flux,
   SD3, HiDream, Cosmos, Wan/HunyuanVideo, SDXL/SD1, LTXV, Aura, and Lumina2.
 - Explore optional Diffusers and ComfyUI-GGUF integration points once the public
@@ -47,6 +47,7 @@ roadmap stays useful during active development.
 - Generated support matrix and CI check.
 - Golden exactness manifest and update/check script.
 - Public lightweight reader/inspection/validation/comparison CLIs.
+- CPU wheel build matrix and tagged PyPI publishing workflow.
 
 The native converter already contains GGUF write and safetensors payload logic.
 The reader/writer roadmap item is about exposing a cleaner public API so
