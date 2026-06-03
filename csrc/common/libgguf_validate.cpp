@@ -2,6 +2,8 @@
 
 #if defined(__AVX2__)
 #include <immintrin.h>
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+#include <arm_neon.h>
 #endif
 
 // =============================== data validation
