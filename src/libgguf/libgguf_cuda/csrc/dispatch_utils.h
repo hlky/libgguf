@@ -2,7 +2,7 @@
 
 #ifdef LIBGGUF_CUDA_NO_C10
 
-#include <cuda_fp16.h>
+#include "libgguf_gpu_compat.h"
 
 namespace at {
 enum class ScalarType {

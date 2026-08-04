@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include <cuda_runtime.h>
+#include "libgguf_gpu_compat.h"
 
 int64_t gguf_cuda_quantize_row_size_for_type(int64_t type, int64_t n);
 int64_t gguf_cuda_quantize_block_size_for_type(int64_t type);
@@ -20,6 +20,15 @@ void gguf_cuda_quantize_row(
 
 void gguf_cuda_quantize_launch_q8_0(
     const float * x,
+    const float * quant_weights,
+    void * y,
+    int64_t k,
+    int64_t n_per_row,
+    cudaStream_t stream
+);
+
+void gguf_cuda_quantize_launch_q8_0_bf16(
+    const void * x,
     const float * quant_weights,
     void * y,
     int64_t k,

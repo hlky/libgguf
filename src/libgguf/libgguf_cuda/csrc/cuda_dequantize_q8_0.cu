@@ -1,5 +1,4 @@
-#include <cuda_fp16.h>
-#include <cuda_runtime.h>
+#include "libgguf_gpu_compat.h"
 
 #include "cuda_dequantize_common.cuh"
 #include "cuda_dequantize_kernels.h"

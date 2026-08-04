@@ -7,7 +7,7 @@
 #else
 #include <ATen/core/ScalarType.h>
 #endif
-#include <cuda_runtime.h>
+#include "libgguf_gpu_compat.h"
 
 void gguf_cuda_dequantize_row(
     const void * x,

@@ -1,7 +1,6 @@
 #pragma once
 
-#include <cuda_fp16.h>
-#include <cuda_runtime.h>
+#include "libgguf_gpu_compat.h"
 
 #include "libgguf_cuda_common.h"
 

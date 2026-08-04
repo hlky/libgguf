@@ -1,7 +1,6 @@
 #pragma once
 
-#include <cuda_fp16.h>
-#include <cuda_runtime.h>
+#include "libgguf_gpu_compat.h"
 
 #include "libgguf_cuda_common.h"
 #ifdef GGUF_CUDA_USE_IQ1_GRID_LOOKUP
@@ -33,21 +32,21 @@ static __device__ __forceinline__ int gguf_cuda_clamp_int(int value, int low, in
 
 static __device__ __forceinline__ float gguf_cuda_warp_reduce_max(float value) {
     constexpr unsigned mask = 0xffffffffu;
-    value = fmaxf(value, __shfl_down_sync(mask, value, 16));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 8));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 4));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 2));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 1));
+    value = fmaxf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 16));
+    value = fmaxf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 8));
+    value = fmaxf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 4));
+    value = fmaxf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 2));
+    value = fmaxf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 1));
     return value;
 }
 
 static __device__ __forceinline__ float gguf_cuda_warp_reduce_min(float value) {
     constexpr unsigned mask = 0xffffffffu;
-    value = fminf(value, __shfl_down_sync(mask, value, 16));
-    value = fminf(value, __shfl_down_sync(mask, value, 8));
-    value = fminf(value, __shfl_down_sync(mask, value, 4));
-    value = fminf(value, __shfl_down_sync(mask, value, 2));
-    value = fminf(value, __shfl_down_sync(mask, value, 1));
+    value = fminf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 16));
+    value = fminf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 8));
+    value = fminf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 4));
+    value = fminf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 2));
+    value = fminf(value, GGUF_GPU_SHFL_DOWN_SYNC(mask, value, 1));
     return value;
 }
 
@@ -57,16 +56,16 @@ static __device__ __forceinline__ float gguf_cuda_warp_reduce_absmax_first(float
     int best_idx = lane;
     float best_value = value;
     for (int offset = 16; offset > 0; offset >>= 1) {
-        const float other_abs = __shfl_down_sync(mask, best_abs, offset);
-        const int other_idx = __shfl_down_sync(mask, best_idx, offset);
-        const float other_value = __shfl_down_sync(mask, best_value, offset);
+        const float other_abs = GGUF_GPU_SHFL_DOWN_SYNC(mask, best_abs, offset);
+        const int other_idx = GGUF_GPU_SHFL_DOWN_SYNC(mask, best_idx, offset);
+        const float other_value = GGUF_GPU_SHFL_DOWN_SYNC(mask, best_value, offset);
         if (other_abs > best_abs || (other_abs == best_abs && other_idx < best_idx)) {
             best_abs = other_abs;
             best_idx = other_idx;
             best_value = other_value;
         }
     }
-    return __shfl_sync(mask, best_value, 0);
+    return GGUF_GPU_SHFL_SYNC(mask, best_value, 0);
 }
 
 

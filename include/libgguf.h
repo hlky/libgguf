@@ -6,7 +6,9 @@
 #include <stdbool.h>
 #endif
 
-#if defined(_WIN32) && !defined(__MINGW32__)
+#if (defined(__HIP_DEVICE_COMPILE__) && __HIP_DEVICE_COMPILE__) || defined(__CUDA_ARCH__)
+#define LIBGGUF_API
+#elif defined(_WIN32) && !defined(__MINGW32__)
 #define LIBGGUF_API __declspec(dllexport)
 #else
 #define LIBGGUF_API __attribute__((visibility("default")))
