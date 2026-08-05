@@ -38,7 +38,7 @@ int libgguf_cuda_dequantize_rows_on_stream(
 );
 ```
 
-`output_dtype` is `LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F32` or `LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F16`. The `stream` argument is a `cudaStream_t` passed as `void *`; callers are responsible for ensuring the current CUDA device matches the input/output pointers. `libgguf_cuda_dequantize_rows(...)` provides the same operation on a `libgguf_cuda_context` and its owned stream.
+`output_dtype` is `LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F32` or `LIBGGUF_CUDA_DEQUANTIZE_DTYPE_F16`. The `stream` argument is a `StreamType` passed as `void *`; callers are responsible for ensuring the current CUDA device matches the input/output pointers. `libgguf_cuda_dequantize_rows(...)` provides the same operation on a `libgguf_cuda_context` and its owned stream.
 
 ## Build Requirements
 
