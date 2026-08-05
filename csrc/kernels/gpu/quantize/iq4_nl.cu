@@ -1,35 +1,23 @@
-#include <libgguf/gpu/compat.h>
-#include <libgguf/gpu/quantize/common.cuh>
+#include <libgguf/gpu/dispatch.h>
+#include <libgguf/gpu/quantize/iq4_nl.cuh>
 #include <libgguf/gpu/quantize/kernels.h>
 
-static __global__ void quantize_block_iq4_nl(const float * __restrict__ x, block_iq4_nl * __restrict__ y, int64_t n_blocks) {
-    const int64_t iblock = blockDim.x * blockIdx.x + threadIdx.x;
-    if (iblock >= n_blocks) {
-        return;
-    }
-
-    float scale;
-    float weight[QK4_NL];
-    uint8_t l[QK4_NL];
-    uint16_t scales_h_unused;
-    quantize_iq4_nl_impl(
-        QK4_NL, 32, x + iblock * QK4_NL, &y[iblock].d, y[iblock].qs, &scales_h_unused, nullptr,
-        &scale, weight, l, 7);
-}
-
-
 void quantize_iq4_nl(
-    const float * x,
+    const void * x,
     const float * quant_weights,
     void * y,
     int64_t k,
     int64_t n_per_row,
+    libgguf_gpu_dtype dtype,
     StreamType stream
 ) {
     (void)quant_weights;
     (void)n_per_row;
     const int threads = 256;
-        const int64_t n_blocks = k / QK4_NL;
-        const int blocks = (int)((n_blocks + threads - 1) / threads);
-        quantize_block_iq4_nl<<<blocks, threads, 0, stream>>>(x, (block_iq4_nl *)y, n_blocks);
+    const int64_t n_blocks = k / QK4_NL;
+    const int blocks = (int)((n_blocks + threads - 1) / threads);
+    DISPATCH_FLOATING_TYPES(dtype, "quantize_iq4_nl", [&] {
+        libgguf::gpu::quantize_block_iq4_nl<<<blocks, threads, 0, stream>>>(
+            static_cast<const scalar_t *>(x), static_cast<block_iq4_nl *>(y), n_blocks);
+    });
 }

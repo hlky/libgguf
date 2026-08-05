@@ -32,6 +32,11 @@ static __device__ __forceinline__ int clamp_int(int value, int low, int high) {
     return value < low ? low : value > high ? high : value;
 }
 
+static __device__ __forceinline__ int tq_round_away(float value) {
+    const int absolute = static_cast<int>(fabsf(value) + 0.5f);
+    return value < 0.0f ? -absolute : absolute;
+}
+
 static __device__ __forceinline__ float warp_reduce_max(float value) {
     const auto mask = __activemask();
     value = fmaxf(value, __shfl_down_sync(mask, value, 16));
@@ -148,16 +153,18 @@ static __device__ __forceinline__ uint8_t pack_trits_5(uint8_t q) {
     return ((uint16_t)q * 256 + (243 - 1)) / 243;
 }
 
+template<typename src_t>
 static __device__ __forceinline__ float make_qx_quants_rmse1(
-    int n, int nmax, const float * x, int8_t * l
+    int n, int nmax, const src_t * x, int8_t * l
 ) {
     float max = 0.0f;
     float amax = 0.0f;
     for (int i = 0; i < n; ++i) {
-        const float ax = fabsf(x[i]);
+        const float xi = static_cast<float>(x[i]);
+        const float ax = fabsf(xi);
         if (ax > amax) {
             amax = ax;
-            max = x[i];
+            max = xi;
         }
     }
 
@@ -172,11 +179,12 @@ static __device__ __forceinline__ float make_qx_quants_rmse1(
     float sumlx = 0.0f;
     float suml2 = 0.0f;
     for (int i = 0; i < n; ++i) {
-        int q = nearest_int(__fmul_rn(iscale, x[i]));
+        const float xi = static_cast<float>(x[i]);
+        int q = nearest_int(__fmul_rn(iscale, xi));
         q = clamp_int(q, -nmax, nmax - 1);
         l[i] = q + nmax;
-        const float w = __fmul_rn(x[i], x[i]);
-        sumlx = __fadd_rn(sumlx, __fmul_rn(__fmul_rn(w, x[i]), float(q)));
+        const float w = __fmul_rn(xi, xi);
+        sumlx = __fadd_rn(sumlx, __fmul_rn(__fmul_rn(w, xi), float(q)));
         suml2 = __fadd_rn(suml2, __fmul_rn(__fmul_rn(w, float(q)), float(q)));
     }
 
@@ -190,15 +198,16 @@ static __device__ __forceinline__ float make_qx_quants_rmse1(
         sumlx = 0.0f;
         suml2 = 0.0f;
         for (int i = 0; i < n; ++i) {
-            int q = nearest_int(__fmul_rn(iscale, x[i]));
+            const float xi = static_cast<float>(x[i]);
+            int q = nearest_int(__fmul_rn(iscale, xi));
             q = clamp_int(q, -nmax, nmax - 1);
-            const float w = __fmul_rn(x[i], x[i]);
-            sumlx = __fadd_rn(sumlx, __fmul_rn(__fmul_rn(w, x[i]), float(q)));
+            const float w = __fmul_rn(xi, xi);
+            sumlx = __fadd_rn(sumlx, __fmul_rn(__fmul_rn(w, xi), float(q)));
             suml2 = __fadd_rn(suml2, __fmul_rn(__fmul_rn(w, float(q)), float(q)));
         }
         if (suml2 > 0.0f && __fmul_rn(sumlx, sumlx) > __fmul_rn(best, suml2)) {
             for (int i = 0; i < n; ++i) {
-                int q = nearest_int(__fmul_rn(iscale, x[i]));
+                int q = nearest_int(__fmul_rn(iscale, static_cast<float>(x[i])));
                 l[i] = nmax + clamp_int(q, -nmax, nmax - 1);
             }
             scale = __fdiv_rn(sumlx, suml2);
@@ -208,10 +217,11 @@ static __device__ __forceinline__ float make_qx_quants_rmse1(
     return scale;
 }
 
+template<typename src_t>
 static __device__ __forceinline__ float make_qkx2_quants(
     int n,
     int nmax,
-    const float * x,
+    const src_t * x,
     const float * weights,
     uint8_t * l,
     float * the_min,
@@ -221,20 +231,21 @@ static __device__ __forceinline__ float make_qkx2_quants(
     int nstep,
     bool use_mad
 ) {
-    float minv = x[0];
-    float maxv = x[0];
+    float minv = static_cast<float>(x[0]);
+    float maxv = minv;
     float sum_w = weights[0];
-    float sum_x = sum_w * x[0];
+    float sum_x = sum_w * minv;
     for (int i = 1; i < n; ++i) {
-        if (x[i] < minv) {
-            minv = x[i];
+        const float value = static_cast<float>(x[i]);
+        if (value < minv) {
+            minv = value;
         }
-        if (x[i] > maxv) {
-            maxv = x[i];
+        if (value > maxv) {
+            maxv = value;
         }
         const float w = weights[i];
         sum_w += w;
-        sum_x += w * x[i];
+        sum_x += w * value;
     }
 
     if (minv > 0.0f) {
@@ -252,10 +263,11 @@ static __device__ __forceinline__ float make_qkx2_quants(
     float scale = 1.0f / iscale;
     float best_error = 0.0f;
     for (int i = 0; i < n; ++i) {
-        int q = nearest_int(iscale * (x[i] - minv));
+        const float value = static_cast<float>(x[i]);
+        int q = nearest_int(iscale * (value - minv));
         q = clamp_int(q, 0, nmax);
         l[i] = q;
-        float diff = scale * l[i] + minv - x[i];
+        float diff = scale * l[i] + minv - value;
         diff = use_mad ? fabsf(diff) : diff * diff;
         best_error += weights[i] * diff;
     }
@@ -271,13 +283,14 @@ static __device__ __forceinline__ float make_qkx2_quants(
         float sum_l2 = 0.0f;
         float sum_xl = 0.0f;
         for (int i = 0; i < n; ++i) {
-            int q = nearest_int(iscale * (x[i] - minv));
+            const float value = static_cast<float>(x[i]);
+            int q = nearest_int(iscale * (value - minv));
             q = clamp_int(q, 0, nmax);
             laux[i] = q;
             const float w = weights[i];
             sum_l += w * q;
             sum_l2 += w * q * q;
-            sum_xl += w * q * x[i];
+            sum_xl += w * q * value;
         }
         const float d_det = sum_w * sum_l2 - sum_l * sum_l;
         if (d_det > 0.0f) {
@@ -289,7 +302,7 @@ static __device__ __forceinline__ float make_qkx2_quants(
             }
             float cur_error = 0.0f;
             for (int i = 0; i < n; ++i) {
-                float diff = this_scale * laux[i] + this_min - x[i];
+                float diff = this_scale * laux[i] + this_min - static_cast<float>(x[i]);
                 diff = use_mad ? fabsf(diff) : diff * diff;
                 cur_error += weights[i] * diff;
             }
@@ -309,16 +322,18 @@ static __device__ __forceinline__ float make_qkx2_quants(
 }
 
 
+template<typename src_t>
 static __device__ __forceinline__ float make_q3_quants(
-    int n, int nmax, const float * x, int8_t * l
+    int n, int nmax, const src_t * x, int8_t * l
 ) {
     float max = 0.0f;
     float amax = 0.0f;
     for (int i = 0; i < n; ++i) {
-        const float ax = fabsf(x[i]);
+        const float xi = static_cast<float>(x[i]);
+        const float ax = fabsf(xi);
         if (ax > amax) {
             amax = ax;
-            max = x[i];
+            max = xi;
         }
     }
 
@@ -333,25 +348,27 @@ static __device__ __forceinline__ float make_q3_quants(
     float sumlx = 0.0f;
     float suml2 = 0.0f;
     for (int i = 0; i < n; ++i) {
-        int q = nearest_int(iscale * x[i]);
+        const float xi = static_cast<float>(x[i]);
+        int q = nearest_int(iscale * xi);
         q = clamp_int(q, -nmax, nmax - 1);
         l[i] = q;
-        const float w = x[i] * x[i];
-        sumlx += w * x[i] * q;
+        const float w = xi * xi;
+        sumlx += w * xi * q;
         suml2 += w * q * q;
     }
 
     for (int itry = 0; itry < 5; ++itry) {
         int n_changed = 0;
         for (int i = 0; i < n; ++i) {
-            const float w = x[i] * x[i];
-            float slx = sumlx - w * x[i] * l[i];
+            const float xi = static_cast<float>(x[i]);
+            const float w = xi * xi;
+            float slx = sumlx - w * xi * l[i];
             if (slx > 0.0f) {
                 float sl2 = suml2 - w * l[i] * l[i];
-                int new_l = nearest_int(x[i] * sl2 / slx);
+                int new_l = nearest_int(xi * sl2 / slx);
                 new_l = clamp_int(new_l, -nmax, nmax - 1);
                 if (new_l != l[i]) {
-                    slx += w * x[i] * new_l;
+                    slx += w * xi * new_l;
                     sl2 += w * new_l * new_l;
                     if (sl2 > 0.0f && slx * slx * suml2 > sumlx * sumlx * sl2) {
                         l[i] = new_l;
@@ -405,10 +422,11 @@ static __device__ __forceinline__ int best_index_int8(int n, const int8_t * valu
     return x - values[mu - 1] < values[mu] - x ? mu - 1 : mu;
 }
 
+template<typename src_t>
 static __device__ __forceinline__ void quantize_iq4_nl_impl(
     int super_block_size,
     int block_size,
-    const float * x,
+    const src_t * x,
     ggml_half * dh,
     uint8_t * q4,
     uint16_t * scales_h,
@@ -420,7 +438,8 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
 ) {
     float sigma2 = 0.0f;
     for (int j = 0; j < super_block_size; ++j) {
-        sigma2 += x[j] * x[j];
+        const float xj = static_cast<float>(x[j]);
+        sigma2 += xj * xj;
     }
     sigma2 *= 2.0f / super_block_size;
 
@@ -432,19 +451,21 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
     float max_scale = 0.0f;
     float amax_scale = 0.0f;
     for (int ib = 0; ib < super_block_size / block_size; ++ib) {
-        const float * xb = x + ib * block_size;
+        const src_t * xb = x + ib * block_size;
         uint8_t * lb = l + ib * block_size;
         for (int j = 0; j < block_size; ++j) {
-            weight[j] = xb[j] * xb[j];
+            const float xj = static_cast<float>(xb[j]);
+            weight[j] = xj * xj;
         }
 
         float amax = 0.0f;
         float max = 0.0f;
         for (int j = 0; j < block_size; ++j) {
-            const float ax = fabsf(xb[j]);
+            const float xj = static_cast<float>(xb[j]);
+            const float ax = fabsf(xj);
             if (ax > amax) {
                 amax = ax;
-                max = xb[j];
+                max = xj;
             }
         }
         if (amax < GROUP_MAX_EPS) {
@@ -457,12 +478,13 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
         float sumqx = 0.0f;
         float sumq2 = 0.0f;
         for (int j = 0; j < block_size; ++j) {
-            const float al = id * xb[j];
+            const float xj = static_cast<float>(xb[j]);
+            const float al = id * xj;
             const int qindex = best_index_int8(16, kvalues_iq4nl, al);
             lb[j] = qindex;
             const float q = kvalues_iq4nl[qindex];
             const float w = weight[j];
-            sumqx += w * q * xb[j];
+            sumqx += w * q * xj;
             sumq2 += w * q * q;
         }
         d = sumq2 > 0.0f ? sumqx / sumq2 : 0.0f;
@@ -472,11 +494,12 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
             sumqx = 0.0f;
             sumq2 = 0.0f;
             for (int j = 0; j < block_size; ++j) {
-                const float al = id * xb[j];
+                const float xj = static_cast<float>(xb[j]);
+                const float al = id * xj;
                 const int qindex = best_index_int8(16, kvalues_iq4nl, al);
                 const float q = kvalues_iq4nl[qindex];
                 const float w = weight[j];
-                sumqx += w * q * xb[j];
+                sumqx += w * q * xj;
                 sumq2 += w * q * q;
             }
             if (sumq2 > 0.0f && sumqx * sumqx > best * sumq2) {
@@ -506,9 +529,9 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
             const float dl = d * qscale;
             const float idl = dl != 0.0f ? 1.0f / dl : 0.0f;
             uint8_t * lb = l + ib * block_size;
-            const float * xb = x + ib * block_size;
+            const src_t * xb = x + ib * block_size;
             for (int j = 0; j < block_size; ++j) {
-                lb[j] = best_index_int8(16, kvalues_iq4nl, idl * xb[j]);
+                lb[j] = best_index_int8(16, kvalues_iq4nl, idl * static_cast<float>(xb[j]));
             }
             qscale += 32;
             const uint8_t l_l = qscale & 0x0f;
@@ -525,7 +548,7 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
         if (ntry > 0) {
             const float id = scales[0] != 0.0f ? 1.0f / scales[0] : 0.0f;
             for (int j = 0; j < super_block_size; ++j) {
-                l[j] = best_index_int8(16, kvalues_iq4nl, id * x[j]);
+                l[j] = best_index_int8(16, kvalues_iq4nl, id * static_cast<float>(x[j]));
             }
         }
     }
@@ -1144,8 +1167,9 @@ static __device__ __forceinline__ int iq1_grid_dist(int grid_index, const int8_t
     return dist;
 }
 
+template<typename src_t>
 static __device__ __forceinline__ int iq1_find_best_neighbour(
-    const float * xval, const float * weight, float scale, const float * values, int8_t * l
+    const src_t * xval, const float * weight, float scale, const float * values, int8_t * l
 ) {
 #ifdef LIBGGUF_GPU_USE_IQ1_NEIGHBOURS
     const int key = iq1_lookup_key(l);
@@ -1160,7 +1184,7 @@ static __device__ __forceinline__ int iq1_find_best_neighbour(
                 float d2 = 0.0f;
                 for (int i = 0; i < 8; ++i) {
                     const float q = values[iq1_grid_l(grid_index, i)];
-                    const float diff = scale * q - xval[i];
+                    const float diff = scale * q - static_cast<float>(xval[i]);
                     d2 += weight[i] * diff * diff;
                 }
                 if (d2 < best_d2) {
@@ -1212,7 +1236,7 @@ static __device__ __forceinline__ int iq1_find_best_neighbour(
         float d2 = 0.0f;
         for (int i = 0; i < 8; ++i) {
             const float q = values[iq1_grid_l(grid_index, i)];
-            const float diff = scale * q - xval[i];
+            const float diff = scale * q - static_cast<float>(xval[i]);
             d2 += weight[i] * diff * diff;
         }
         if (d2 < best_d2) {
@@ -1226,8 +1250,9 @@ static __device__ __forceinline__ int iq1_find_best_neighbour(
     return best_index;
 }
 
+template<typename src_t>
 static __device__ __forceinline__ int iq1_find_grid_or_best_neighbour(
-    const float * xval,
+    const src_t * xval,
     const float * weight,
     float scale,
     const float * values,
@@ -1253,7 +1278,7 @@ static __device__ __forceinline__ int iq1_find_grid_or_best_neighbour(
             float d2 = 0.0f;
             for (int i = 0; i < 8; ++i) {
                 const float q = values[iq1_grid_l(grid_index, i)];
-                const float diff = scale * q - xval[i];
+                const float diff = scale * q - static_cast<float>(xval[i]);
                 d2 += weight[i] * diff * diff;
             }
             if (d2 < best_d2) {

@@ -21,7 +21,7 @@ if(LIBGGUF_ENABLE_ROCM)
   libgguf_configure_rocm_sdk()
 endif()
 
-project(libgguf VERSION 0.2.0 LANGUAGES CXX)
+project(libgguf VERSION 0.2.1 LANGUAGES CXX)
 
 option(LIBGGUF_BUILD_SHARED "Build the standalone libgguf shared library" ON)
 option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
@@ -164,12 +164,14 @@ if(LIBGGUF_BUILD_GPU)
       enable_language(HIP)
       find_package(hip REQUIRED)
       set(LIBGGUF_GPU_LANGUAGE HIP)
-      set(LIBGGUF_GPU_RUNTIME_TARGET hip::device)
+      set(LIBGGUF_GPU_DEVICE_RUNTIME_TARGET hip::device)
+      set(LIBGGUF_GPU_HOST_RUNTIME_TARGET hip::host)
     else()
       enable_language(CUDA)
       find_package(CUDAToolkit REQUIRED)
       set(LIBGGUF_GPU_LANGUAGE CUDA)
-      set(LIBGGUF_GPU_RUNTIME_TARGET CUDA::cudart)
+      set(LIBGGUF_GPU_DEVICE_RUNTIME_TARGET CUDA::cudart)
+      set(LIBGGUF_GPU_HOST_RUNTIME_TARGET CUDA::cudart)
     endif()
 
     file(
@@ -221,7 +223,7 @@ if(LIBGGUF_BUILD_GPU)
     else()
       target_compile_options(libgguf_gpu_objects PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     endif()
-    target_link_libraries(libgguf_gpu_objects PUBLIC ${LIBGGUF_GPU_RUNTIME_TARGET})
+    target_link_libraries(libgguf_gpu_objects PRIVATE ${LIBGGUF_GPU_DEVICE_RUNTIME_TARGET})
 
     if(LIBGGUF_BUILD_TORCH)
       if(LIBGGUF_ENABLE_ROCM)
@@ -312,7 +314,7 @@ if(LIBGGUF_BUILD_GPU)
         PRIVATE
           libgguf_objects
           libgguf_gpu_objects
-          ${LIBGGUF_GPU_RUNTIME_TARGET}
+          ${LIBGGUF_GPU_HOST_RUNTIME_TARGET}
           ${TORCH_LIBRARIES}
       )
       install(TARGETS libgguf_gpu_C_gguf DESTINATION libgguf/libgguf_gpu)
@@ -357,7 +359,7 @@ if(LIBGGUF_BUILD_TOOLS)
     target_compile_definitions(libgguf_quantize_gguf PRIVATE LIBGGUF_HAS_GPU=1)
     target_link_libraries(
       libgguf_quantize_gguf
-      PRIVATE libgguf_gpu_objects ${LIBGGUF_GPU_RUNTIME_TARGET}
+      PRIVATE libgguf_gpu_objects ${LIBGGUF_GPU_HOST_RUNTIME_TARGET}
     )
     if(LIBGGUF_ENABLE_ROCM)
       set_target_properties(

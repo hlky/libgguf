@@ -1,53 +1,14 @@
-#include <libgguf/gpu/compat.h>
-#include <libgguf/gpu/quantize/common.cuh>
+#include <libgguf/gpu/dispatch.h>
 #include <libgguf/gpu/quantize/kernels.h>
-
-static __device__ __forceinline__ int tq_round_away(float v) {
-    const int abs_i = (int)(fabsf(v) + 0.5f);
-    return v < 0.0f ? -abs_i : abs_i;
-}
-
-static __global__ void quantize_block_tq2_0_warp(const float * __restrict__ x, block_tq2_0 * __restrict__ y, int64_t n_blocks) {
-    const auto mask = __activemask();
-    const int lane = threadIdx.x & 31;
-    const int warp = threadIdx.x >> 5;
-    const int warps_per_cta = blockDim.x >> 5;
-    const int64_t ib = (int64_t)blockIdx.x * warps_per_cta + warp;
-    if (ib >= n_blocks) {
-        return;
-    }
-
-    const float * xb = x + ib * QK_K;
-    float amax = 0.0f;
-    for (int j = lane; j < QK_K; j += 32) {
-        amax = fmaxf(amax, fabsf(xb[j]));
-    }
-    amax = __shfl_sync(mask, warp_reduce_max(amax), 0);
-
-    const float d = amax;
-    const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
-    if (lane == 0) {
-        y[ib].d = compute_fp32_to_fp16(d);
-    }
-
-    for (int j = 0; j < (int)sizeof(block_tq2_0::qs); j += 32) {
-        const int offset = 4 * j;
-        uint8_t q = 0;
-        for (int n = 0; n < 4; ++n) {
-            const int xi = tq_round_away(__fmul_rn(xb[offset + lane + n * 32], id)) + 1;
-            q += (xi & 3) << (2 * n);
-        }
-        y[ib].qs[j + lane] = q;
-    }
-}
-
+#include <libgguf/gpu/quantize/tq2_0.cuh>
 
 void quantize_tq2_0(
-    const float * x,
+    const void * x,
     const float * quant_weights,
     void * y,
     int64_t k,
     int64_t n_per_row,
+    libgguf_gpu_dtype dtype,
     StreamType stream
 ) {
     (void)quant_weights;
@@ -56,5 +17,8 @@ void quantize_tq2_0(
     constexpr int tq2_blocks_per_cta = tq2_threads / 32;
     const int64_t n_blocks = k / QK_K;
     const int blocks = (int)((n_blocks + tq2_blocks_per_cta - 1) / tq2_blocks_per_cta);
-    quantize_block_tq2_0_warp<<<blocks, tq2_threads, 0, stream>>>(x, (block_tq2_0 *)y, n_blocks);
+    DISPATCH_FLOATING_TYPES(dtype, "quantize_tq2_0", [&] {
+        libgguf::gpu::quantize_block_tq2_0<<<blocks, tq2_threads, 0, stream>>>(
+            static_cast<const scalar_t *>(x), static_cast<block_tq2_0 *>(y), n_blocks);
+    });
 }
