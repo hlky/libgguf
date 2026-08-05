@@ -1,7 +1,13 @@
-#include <libgguf/cpu/common.h>
-#include <libgguf/cpu/iq_tables.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
 
-static void quantize_row_iq1_m_impl(const float *RESTRICT x, void *RESTRICT vy, int64_t n, const float *RESTRICT quant_weights,
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+
+void quantize_block_iq1_m(const float *LIBGGUF_RESTRICT x, void *LIBGGUF_RESTRICT vy, int64_t n, const float *LIBGGUF_RESTRICT quant_weights,
                                     float *scales,
                                     float *weight,
                                     float *pairs,
@@ -17,9 +23,9 @@ static void quantize_row_iq1_m_impl(const float *RESTRICT x, void *RESTRICT vy, 
   const uint16_t *kneighbors_q2xs = iq2_data[gindex].neighbours;
 
   // assert(quant_weights   && "missing quantization weights");
-  assert(kgrid_q2xs && "forgot to call ggml_quantize_init()?");
-  assert(kmap_q2xs && "forgot to call ggml_quantize_init()?");
-  assert(kneighbors_q2xs && "forgot to call ggml_quantize_init()?");
+  assert(kgrid_q2xs && "IQ tables are not initialized");
+  assert(kmap_q2xs && "IQ tables are not initialized");
+  assert(kneighbors_q2xs && "IQ tables are not initialized");
   assert(n % QK_K == 0);
 
   block_iq1_m *y = (block_iq1_m *)vy;
@@ -69,7 +75,7 @@ static void quantize_row_iq1_m_impl(const float *RESTRICT x, void *RESTRICT vy, 
       }
       float max = fabsf(xb[0]);
       for (int i = 1; i < block_size; ++i)
-        max = MAX(max, fabsf(xb[i]));
+        max = libgguf_max(max, fabsf(xb[i]));
       if (max < GROUP_MAX_EPS_IQ1_M)
       {
         scales[ib] = 0;
@@ -261,7 +267,7 @@ static void quantize_row_iq1_m_impl(const float *RESTRICT x, void *RESTRICT vy, 
       assert(scale >= 0);
       scales[ib] = scale;
       shifts[ib] = best_k;
-      max_scale = MAX(max_scale, scale);
+      max_scale = libgguf_max(max_scale, scale);
     }
 
     if (!max_scale)
@@ -276,7 +282,7 @@ static void quantize_row_iq1_m_impl(const float *RESTRICT x, void *RESTRICT vy, 
     for (int ib = 0; ib < QK_K / block_size; ++ib)
     {
       int l = nearest_int(0.5f * (id * scales[ib + 0] - 1));
-      l = MAX(0, MIN(7, l));
+      l = libgguf_max(0, libgguf_min(7, l));
       sc[ib / 4] |= (l << 3 * (ib % 4));
       y[ibl].qh[ib] |= masks[shifts[ib]];
       const float *xb = xbl + block_size * ib;
@@ -309,7 +315,7 @@ static void quantize_row_iq1_m_impl(const float *RESTRICT x, void *RESTRICT vy, 
     }
     if (sumq2_f > 0)
       d = sumqx_f / sumq2_f;
-    s.f16 = GGML_FP32_TO_FP16(d * 1.1125f); // 1.1125f is another fudge factor. Don't ask me why it is needed.
+    s.f16 = LIBGGUF_FP32_TO_FP16(d * 1.1125f); // 1.1125f is another fudge factor. Don't ask me why it is needed.
     sc[0] |= ((s.u16 & 0x000f) << 12);
     sc[1] |= ((s.u16 & 0x00f0) << 8);
     sc[2] |= ((s.u16 & 0x0f00) << 4);
@@ -317,7 +323,7 @@ static void quantize_row_iq1_m_impl(const float *RESTRICT x, void *RESTRICT vy, 
   }
 }
 
-size_t quantize_iq1_m(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+size_t quantize_iq1_m(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
 {
   assert(n_per_row % QK_K == 0);
   float scales[QK_K / IQ1M_BLOCK_SIZE];
@@ -330,12 +336,10 @@ size_t quantize_iq1_m(const float *RESTRICT src, void *RESTRICT dst, int64_t nro
   char *qrow = (char *)dst;
   for (int64_t row = 0; row < nrow; ++row)
   {
-    quantize_row_iq1_m_impl(src, qrow, n_per_row, quant_weights, scales, weight, pairs, L, index, shifts);
+    quantize_block_iq1_m(src, qrow, n_per_row, quant_weights, scales, weight, pairs, L, index, shifts);
     src += n_per_row;
     qrow += nblock * sizeof(block_iq1_m);
   }
   return nrow * nblock * sizeof(block_iq1_m);
 }
-
-// ============================ 4-bit non-linear quants
 

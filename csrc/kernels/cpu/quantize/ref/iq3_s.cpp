@@ -1,9 +1,15 @@
-#include <libgguf/cpu/common.h>
-#include <libgguf/cpu/iq_tables.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
+
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
 
 #define IQ3S_BLOCK_SIZE 32
-static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, void *RESTRICT vy, int n,
-                                    const float *RESTRICT quant_weights,
+void quantize_block_iq3_s(int block_size, const float *LIBGGUF_RESTRICT x, void *LIBGGUF_RESTRICT vy, int n,
+                                    const float *LIBGGUF_RESTRICT quant_weights,
                                     float *scales,
                                     float *weight,
                                     float *xval,
@@ -22,9 +28,9 @@ static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, voi
   const uint16_t *kneighbors_q3xs = iq3_data[gindex].neighbours;
 
   // assert(quant_weights   && "missing quantization weights");
-  assert(kgrid_q3xs && "forgot to call ggml_quantize_init()?");
-  assert(kmap_q3xs && "forgot to call ggml_quantize_init()?");
-  assert(kneighbors_q3xs && "forgot to call ggml_quantize_init()?");
+  assert(kgrid_q3xs && "IQ tables are not initialized");
+  assert(kmap_q3xs && "IQ tables are not initialized");
+  assert(kneighbors_q3xs && "IQ tables are not initialized");
   assert(n % QK_K == 0);
 
   const int kMaxQ = 8;
@@ -40,7 +46,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, voi
   {
 
     memset(&y[ibl], 0, sizeof(block_iq3_s));
-    y[ibl].d = GGML_FP32_TO_FP16(0.f);
+    y[ibl].d = LIBGGUF_FP32_TO_FP16(0.f);
 
     uint8_t *qs = y[ibl].qs;
     uint8_t *qh = y[ibl].qh;
@@ -87,7 +93,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, voi
       }
       float max = xval[0];
       for (int i = 1; i < block_size; ++i)
-        max = MAX(max, xval[i]);
+        max = libgguf_max(max, xval[i]);
       memset(L, 0, block_size);
       if (!max)
       {
@@ -107,7 +113,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, voi
           for (int i = 0; i < 4; ++i)
           {
             int l = nearest_int(0.5f * (id * xval[4 * k + i] - 1));
-            Laux[4 * k + i] = MAX(0, MIN(kMaxQ - 1, l));
+            Laux[4 * k + i] = libgguf_max(0, libgguf_min(kMaxQ - 1, l));
           }
           uint16_t u = 0;
           for (int i = 0; i < 4; ++i)
@@ -153,7 +159,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, voi
           for (int i = 0; i < 4; ++i)
           {
             int l = nearest_int(0.5f * (id * xval[4 * k + i] - 1));
-            l = MAX(0, MIN(kMaxQ - 1, l));
+            l = libgguf_max(0, libgguf_min(kMaxQ - 1, l));
             u |= (l << 3 * i);
           }
           int grid_index = kmap_q3xs[u];
@@ -209,7 +215,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, voi
       signs += bs8;
       assert(scale >= 0);
       scales[ib] = scale;
-      max_scale = MAX(max_scale, scale);
+      max_scale = libgguf_max(max_scale, scale);
     }
 
     if (!max_scale)
@@ -218,21 +224,21 @@ static void quantize_row_iq3_s_impl(int block_size, const float *RESTRICT x, voi
     }
 
     float d = max_scale / 31;
-    y[ibl].d = GGML_FP32_TO_FP16(d * 1.033f);
+    y[ibl].d = LIBGGUF_FP32_TO_FP16(d * 1.033f);
     float id = 1 / d;
     for (int ib = 0; ib < QK_K / block_size; ib += 2)
     {
       int l1 = nearest_int(0.5f * (id * scales[ib + 0] - 1));
-      l1 = MAX(0, MIN(15, l1));
+      l1 = libgguf_max(0, libgguf_min(15, l1));
       int l2 = nearest_int(0.5f * (id * scales[ib + 1] - 1));
-      l2 = MAX(0, MIN(15, l2));
+      l2 = libgguf_max(0, libgguf_min(15, l2));
       y[ibl].scales[ib / 2] = l1 | (l2 << 4);
     }
   }
 }
 
-#define IQ3S_BLOCK_SIZE 32
-size_t quantize_iq3_s(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+
+size_t quantize_iq3_s(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
 {
   assert(n_per_row % QK_K == 0);
   int64_t nblock = n_per_row / QK_K;
@@ -248,19 +254,11 @@ size_t quantize_iq3_s(const float *RESTRICT src, void *RESTRICT dst, int64_t nro
   char *qrow = (char *)dst;
   for (int64_t row = 0; row < nrow; ++row)
   {
-    quantize_row_iq3_s_impl(IQ3S_BLOCK_SIZE, src, qrow, n_per_row, quant_weights,
+    quantize_block_iq3_s(IQ3S_BLOCK_SIZE, src, qrow, n_per_row, quant_weights,
                             scales, weight, xval, L, Laux, waux, is_on_grid, is_on_grid_aux, block_signs);
     src += n_per_row;
     qrow += nblock * sizeof(block_iq3_s);
   }
   return nrow * nblock * sizeof(block_iq3_s);
 }
-
-void quantize_row_iq3_s(const float *RESTRICT x, block_iq3_s *RESTRICT y, int64_t k)
-{
-  assert(k % QK_K == 0);
-  quantize_iq3_s(x, y, 1, k, nullptr);
-}
-
-// =================================== 1.5 bpw ===================================================
 

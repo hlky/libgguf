@@ -2,27 +2,6 @@
 #include <libgguf/gpu/compat.h>
 #include <libgguf/gpu/common.cuh>
 
-template <int qk, int qr, dequantize_kernel_t dequantize_kernel, typename dst_t>
-static __global__ void dequantize_block(const void * __restrict__ vx, dst_t * __restrict__ y, const int k) {
-    const int i = 2*(blockDim.x*blockIdx.x + threadIdx.x);
-
-    if (i >= k) {
-        return;
-    }
-
-    const int ib = i/qk; // block index
-    const int iqs = (i%qk)/qr; // quant index
-    const int iybs = i - i%qk; // y block start index
-    const int y_offset = qr == 1 ? 1 : qk/2;
-
-    // dequantize
-    dfloat2 v;
-    dequantize_kernel(vx, ib, iqs, v);
-
-    y[iybs + iqs + 0]        = convert_from_float<dst_t>(v.x);
-    y[iybs + iqs + y_offset] = convert_from_float<dst_t>(v.y);
-}
-
 static __device__ __forceinline__ float bitcast_u32_to_float(uint32_t bits) {
     float value;
     memcpy(&value, &bits, sizeof(value));
@@ -54,9 +33,3 @@ static inline __device__ void get_scale_min_k4(int j, const uint8_t * q, uint8_t
     }
 }
 
-
-template <int qk, int qr, dequantize_kernel_t dequantize_kernel, typename dst_t>
-static void dequantize_block_cuda(const void * __restrict__ vx, dst_t * __restrict__ y, const int k, StreamType stream) {
-    const int num_blocks = (k + 2*CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / (2*CUDA_DEQUANTIZE_BLOCK_SIZE);
-    dequantize_block<qk, qr, dequantize_kernel><<<num_blocks, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>(vx, y, k);
-}

@@ -24,6 +24,7 @@ extern "C"
 {
 #endif
   LIBGGUF_API size_t libgguf_row_size(enum ggml_type type, int64_t n_per_row);
+  LIBGGUF_API int64_t libgguf_block_size(enum ggml_type type);
   LIBGGUF_API size_t libgguf_type_size(enum ggml_type type);
   LIBGGUF_API const char *libgguf_type_name(enum ggml_type type);
   LIBGGUF_API bool libgguf_quantize_requires_imatrix(enum ggml_type type);

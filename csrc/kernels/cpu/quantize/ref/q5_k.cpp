@@ -1,22 +1,10 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
 #include <libgguf/libgguf.h>
-#include <libgguf/cpu/backend.h>
 
-#include <cstring>
 
-typedef void (*libgguf_q5_k_kernel_fn)(const float *RESTRICT, block_q5_K *RESTRICT, int64_t);
-
-struct libgguf_q5_k_selection
-{
-  const char *backend;
-  libgguf_q5_k_kernel_fn kernel;
-};
-
-#if !LIBGGUF_CPU_BACKEND_REF
-extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_q5_K)(const float *RESTRICT x, block_q5_K *RESTRICT y, int64_t k);
-#endif
-
-void quantize_row_q5_K(const float *RESTRICT x, block_q5_K *RESTRICT y, int64_t k)
+void quantize_block_q5_k(const float *LIBGGUF_RESTRICT x, block_q5_K *LIBGGUF_RESTRICT y, int64_t k)
 {
   assert(k % QK_K == 0);
   const int64_t nb = k / QK_K;
@@ -59,8 +47,8 @@ void quantize_row_q5_K(const float *RESTRICT x, block_q5_K *RESTRICT y, int64_t 
     {
       uint8_t ls = nearest_int(inv_scale * scales[j]);
       uint8_t lm = nearest_int(inv_min * mins[j]);
-      ls = MIN(63, ls);
-      lm = MIN(63, lm);
+      ls = libgguf_min(63, ls);
+      lm = libgguf_min(63, lm);
       if (j < 4)
       {
         y[i].scales[j] = ls;
@@ -73,27 +61,27 @@ void quantize_row_q5_K(const float *RESTRICT x, block_q5_K *RESTRICT y, int64_t 
         y[i].scales[j - 0] |= ((lm >> 4) << 6);
       }
     }
-    y[i].d = GGML_FP32_TO_FP16(max_scale / 63.f);
-    y[i].dmin = GGML_FP32_TO_FP16(max_min / 63.f);
+    y[i].d = LIBGGUF_FP32_TO_FP16(max_scale / 63.f);
+    y[i].dmin = LIBGGUF_FP32_TO_FP16(max_min / 63.f);
 
     uint8_t sc, m;
     for (int j = 0; j < QK_K / 32; ++j)
     {
       get_scale_min_k4(j, y[i].scales, &sc, &m);
-      const float d = GGML_FP16_TO_FP32(y[i].d) * sc;
+      const float d = LIBGGUF_FP16_TO_FP32(y[i].d) * sc;
       if (!d)
         continue;
-      const float dm = GGML_FP16_TO_FP32(y[i].dmin) * m;
+      const float dm = LIBGGUF_FP16_TO_FP32(y[i].dmin) * m;
       for (int ii = 0; ii < 32; ++ii)
       {
         int l = nearest_int((x[32 * j + ii] + dm) / d);
-        l = MAX(0, MIN(31, l));
+        l = libgguf_max(0, libgguf_min(31, l));
         L[32 * j + ii] = l;
       }
     }
 
-    uint8_t *RESTRICT qh = y[i].qh;
-    uint8_t *RESTRICT ql = y[i].qs;
+    uint8_t *LIBGGUF_RESTRICT qh = y[i].qh;
+    uint8_t *LIBGGUF_RESTRICT ql = y[i].qs;
     memset(qh, 0, QK_K / 8);
 
     uint8_t m1 = 1, m2 = 2;
@@ -124,68 +112,8 @@ void quantize_row_q5_K(const float *RESTRICT x, block_q5_K *RESTRICT y, int64_t 
   }
 }
 
-static libgguf_q5_k_kernel_fn libgguf_q5_k_kernel_for_backend(const char *backend)
-{
-  if (libgguf_cpu_backend_is_ref_request(backend))
-  {
-    return quantize_row_q5_K;
-  }
-#if !LIBGGUF_CPU_BACKEND_REF
-  if (libgguf_cpu_backend_is_compiled_request(backend))
-  {
-    return LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_q5_K);
-  }
-#endif
-  return nullptr;
-}
 
-static libgguf_q5_k_selection libgguf_q5_k_select_kernel()
-{
-#if LIBGGUF_CPU_BACKEND_REF
-  return {LIBGGUF_CPU_BACKEND_NAME, quantize_row_q5_K};
-#else
-  return {LIBGGUF_CPU_BACKEND_NAME, LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_q5_K)};
-#endif
-}
-
-static const libgguf_q5_k_selection &libgguf_q5_k_selected()
-{
-  static const libgguf_q5_k_selection selected = libgguf_q5_k_select_kernel();
-  return selected;
-}
-
-static libgguf_q5_k_kernel_fn libgguf_q5_k_kernel()
-{
-  return libgguf_q5_k_selected().kernel;
-}
-
-extern "C" const char *libgguf_q5_k_backend(void)
-{
-  return libgguf_q5_k_selected().backend;
-}
-
-extern "C" int libgguf_q5_k_cpu_supports_backend(const char *backend)
-{
-  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
-}
-
-extern "C" size_t libgguf_quantize_q5_k_for_backend(
-    const char *backend,
-    const float *RESTRICT src,
-    void *RESTRICT dst,
-    int64_t nrows,
-    int64_t n_per_row)
-{
-  libgguf_q5_k_kernel_fn kernel = libgguf_q5_k_kernel_for_backend(backend);
-  if (!kernel)
-  {
-    return 0;
-  }
-  kernel(src, (block_q5_K *)dst, (int64_t)nrows * n_per_row);
-  return nrows * libgguf_row_size(GGML_TYPE_Q5_K, n_per_row);
-}
-
-static void quantize_row_q5_K_impl(const float *RESTRICT x, block_q5_K *RESTRICT y, int64_t n_per_row, const float *quant_weights)
+static void quantize_weighted_q5_K(const float *LIBGGUF_RESTRICT x, block_q5_K *LIBGGUF_RESTRICT y, int64_t n_per_row, const float *quant_weights)
 {
   assert(n_per_row % QK_K == 0);
   const int64_t nb = n_per_row / QK_K;
@@ -236,8 +164,8 @@ static void quantize_row_q5_K_impl(const float *RESTRICT x, block_q5_K *RESTRICT
     {
       uint8_t ls = Ls[j];
       uint8_t lm = Lm[j];
-      ls = MIN(63, ls);
-      lm = MIN(63, lm);
+      ls = libgguf_min(63, ls);
+      lm = libgguf_min(63, lm);
       if (j < 4)
       {
         y[i].scales[j] = ls;
@@ -250,27 +178,27 @@ static void quantize_row_q5_K_impl(const float *RESTRICT x, block_q5_K *RESTRICT
         y[i].scales[j - 0] |= ((lm >> 4) << 6);
       }
     }
-    y[i].d = GGML_FP32_TO_FP16(d_block);
-    y[i].dmin = GGML_FP32_TO_FP16(m_block);
+    y[i].d = LIBGGUF_FP32_TO_FP16(d_block);
+    y[i].dmin = LIBGGUF_FP32_TO_FP16(m_block);
 
     uint8_t sc, m;
     for (int j = 0; j < QK_K / 32; ++j)
     {
       get_scale_min_k4(j, y[i].scales, &sc, &m);
-      const float d = GGML_FP16_TO_FP32(y[i].d) * sc;
+      const float d = LIBGGUF_FP16_TO_FP32(y[i].d) * sc;
       if (!d)
         continue;
-      const float dm = GGML_FP16_TO_FP32(y[i].dmin) * m;
+      const float dm = LIBGGUF_FP16_TO_FP32(y[i].dmin) * m;
       for (int ii = 0; ii < 32; ++ii)
       {
         int l = nearest_int((x[32 * j + ii] + dm) / d);
-        l = MAX(0, MIN(31, l));
+        l = libgguf_max(0, libgguf_min(31, l));
         L[32 * j + ii] = l;
       }
     }
 
-    uint8_t *RESTRICT qh = y[i].qh;
-    uint8_t *RESTRICT ql = y[i].qs;
+    uint8_t *LIBGGUF_RESTRICT qh = y[i].qh;
+    uint8_t *LIBGGUF_RESTRICT ql = y[i].qs;
     memset(qh, 0, QK_K / 8);
 
     uint8_t m1 = 1, m2 = 2;
@@ -301,19 +229,19 @@ static void quantize_row_q5_K_impl(const float *RESTRICT x, block_q5_K *RESTRICT
   }
 }
 
-size_t quantize_q5_K(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+size_t quantize_q5_k(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
 {
   size_t row_size = libgguf_row_size(GGML_TYPE_Q5_K, n_per_row);
   if (!quant_weights)
   {
-    libgguf_q5_k_kernel()(src, (block_q5_K *)dst, (int64_t)nrow * n_per_row);
+    quantize_block_q5_k(src, (block_q5_K *)dst, (int64_t)nrow * n_per_row);
   }
   else
   {
     char *qrow = (char *)dst;
     for (int64_t row = 0; row < nrow; ++row)
     {
-      quantize_row_q5_K_impl(src, (block_q5_K *)qrow, n_per_row, quant_weights);
+      quantize_weighted_q5_K(src, (block_q5_K *)qrow, n_per_row, quant_weights);
       src += n_per_row;
       qrow += row_size;
     }
@@ -321,4 +249,3 @@ size_t quantize_q5_K(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow
   return nrow * row_size;
 }
 
-// ====================== 6-bit (de)-quantization

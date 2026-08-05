@@ -2,7 +2,7 @@
 #include <libgguf/gpu/quantize/common.cuh>
 #include <libgguf/gpu/quantize/kernels.h>
 
-static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q3_K * __restrict__ y, int64_t n_blocks) {
+static __global__ void quantize_block_q3_k(const float * __restrict__ x, block_q3_K * __restrict__ y, int64_t n_blocks) {
     constexpr int blocks_per_warp = 2;
     const int lane = threadIdx.x & 31;
     const int warp = threadIdx.x >> 5;
@@ -13,7 +13,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
     const int block_in_cta = warp * blocks_per_warp + block_in_warp;
     const int64_t iblock = (int64_t)blockIdx.x * blocks_per_cta + block_in_cta;
     const bool valid = iblock < n_blocks;
-    const unsigned warp_mask = __ballot_sync(0xffffffffu, valid);
+    const auto warp_mask = __ballot_sync(__activemask(), valid);
     if (!valid) {
         return;
     }
@@ -99,7 +99,7 @@ static __global__ void quantize_block_q3_K(const float * __restrict__ x, block_q
 }
 
 
-void quantize_launch_q3_k(
+void quantize_q3_k(
     const float * x,
     const float * quant_weights,
     void * y,
@@ -114,5 +114,5 @@ void quantize_launch_q3_k(
     const int64_t n_blocks = k / QK_K;
     const int blocks = (int)((n_blocks + q3_k_blocks_per_cta - 1) / q3_k_blocks_per_cta);
     const size_t smem = q3_k_blocks_per_cta * (QK_K * sizeof(int8_t) + (QK_K / 16) * (sizeof(float) + sizeof(int8_t)));
-    quantize_block_q3_K<<<blocks, q3_k_threads, smem, stream>>>(x, (block_q3_K *)y, n_blocks);
+    quantize_block_q3_k<<<blocks, q3_k_threads, smem, stream>>>(x, (block_q3_K *)y, n_blocks);
 }

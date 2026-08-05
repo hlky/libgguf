@@ -3,7 +3,7 @@
 #include <libgguf/gpu/quantize/kernels.h>
 
 static __device__ __forceinline__ float subwarp8_reduce_max(float value) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     value = fmaxf(value, __shfl_down_sync(mask, value, 4, 8));
     value = fmaxf(value, __shfl_down_sync(mask, value, 2, 8));
     value = fmaxf(value, __shfl_down_sync(mask, value, 1, 8));
@@ -11,7 +11,7 @@ static __device__ __forceinline__ float subwarp8_reduce_max(float value) {
 }
 
 static __global__ void quantize_block_nvfp4_warp(const float * __restrict__ x, block_nvfp4 * __restrict__ y, int64_t n_blocks) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     const int warp = threadIdx.x >> 5;
     const int warps_per_cta = blockDim.x >> 5;
@@ -39,7 +39,7 @@ static __global__ void quantize_block_nvfp4_warp(const float * __restrict__ x, b
 }
 
 
-void quantize_launch_nvfp4(
+void quantize_nvfp4(
     const float * x,
     const float * quant_weights,
     void * y,

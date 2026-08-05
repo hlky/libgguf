@@ -1,22 +1,22 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/dequantize/kernels.h"
+#include "quantize/iq_tables.h"
 
-#if defined(__AVX2__) || defined(_MSC_VER)
+
 #include <immintrin.h>
-#define LIBGGUF_BUILD_AVX2 1
-#endif
 
-static inline void libgguf_tq1_0_store16_avx2(float *RESTRICT y, __m128i q8, __m256 d)
+static inline void libgguf_tq1_0_store16(float *LIBGGUF_RESTRICT y, __m128i q8, __m256 d)
 {
   _mm256_storeu_ps(y + 0, _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(q8)), d));
   _mm256_storeu_ps(y + 8, _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(q8, 8))), d));
 }
 
-static inline void libgguf_tq1_0_store4_avx2(float *RESTRICT y, __m128i q8, __m128 d)
+static inline void libgguf_tq1_0_store4(float *LIBGGUF_RESTRICT y, __m128i q8, __m128 d)
 {
   _mm_storeu_ps(y, _mm_mul_ps(_mm_cvtepi32_ps(_mm_cvtepi8_epi32(q8)), d));
 }
 
-static inline __m128i libgguf_tq1_0_digits16_avx2(__m128i bytes, int pow3)
+static inline __m128i libgguf_tq1_0_digits16(__m128i bytes, int pow3)
 {
   const __m128i zero = _mm_setzero_si128();
   const __m128i mult = _mm_set1_epi16((short)pow3);
@@ -29,9 +29,8 @@ static inline __m128i libgguf_tq1_0_digits16_avx2(__m128i bytes, int pow3)
   return _mm_packs_epi16(_mm_sub_epi16(lo, one), _mm_sub_epi16(hi, one));
 }
 
-extern "C" void dequantize_row_tq1_0_avx2(const block_tq1_0 *RESTRICT x, float *RESTRICT y, int64_t k)
+extern "C" void dequantize_block_tq1_0(const block_tq1_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_AVX2)
   assert(k % QK_K == 0);
   static_assert(QK_K == 256, "QK_K must be 256");
 
@@ -41,25 +40,25 @@ extern "C" void dequantize_row_tq1_0_avx2(const block_tq1_0 *RESTRICT x, float *
 
   for (int i = 0; i < nb; ++i)
   {
-    const float df = GGML_FP16_TO_FP32(x[i].d);
+    const float df = LIBGGUF_FP16_TO_FP32(x[i].d);
     const __m256 d = _mm256_set1_ps(df);
     const __m128 d4 = _mm_set1_ps(df);
-    float *RESTRICT yb = y + i * QK_K;
+    float *LIBGGUF_RESTRICT yb = y + i * QK_K;
     int out = 0;
 
     const __m128i p0 = _mm_loadu_si128((const __m128i *)(x[i].qs + 0));
     const __m128i p1 = _mm_loadu_si128((const __m128i *)(x[i].qs + 16));
     for (int n = 0; n < 5; ++n)
     {
-      libgguf_tq1_0_store16_avx2(yb + out + 0, libgguf_tq1_0_digits16_avx2(p0, pow3[n]), d);
-      libgguf_tq1_0_store16_avx2(yb + out + 16, libgguf_tq1_0_digits16_avx2(p1, pow3[n]), d);
+      libgguf_tq1_0_store16(yb + out + 0, libgguf_tq1_0_digits16(p0, pow3[n]), d);
+      libgguf_tq1_0_store16(yb + out + 16, libgguf_tq1_0_digits16(p1, pow3[n]), d);
       out += 32;
     }
 
     const __m128i tail = _mm_loadu_si128((const __m128i *)(x[i].qs + 32));
     for (int n = 0; n < 5; ++n)
     {
-      libgguf_tq1_0_store16_avx2(yb + out, libgguf_tq1_0_digits16_avx2(tail, pow3[n]), d);
+      libgguf_tq1_0_store16(yb + out, libgguf_tq1_0_digits16(tail, pow3[n]), d);
       out += 16;
     }
 
@@ -68,14 +67,15 @@ extern "C" void dequantize_row_tq1_0_avx2(const block_tq1_0 *RESTRICT x, float *
     const __m128i qh = _mm_loadu_si128((const __m128i *)high);
     for (int n = 0; n < 4; ++n)
     {
-      libgguf_tq1_0_store4_avx2(yb + out, libgguf_tq1_0_digits16_avx2(qh, qh_pow3[n]), d4);
+      libgguf_tq1_0_store4(yb + out, libgguf_tq1_0_digits16(qh, qh_pow3[n]), d4);
       out += 4;
     }
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+void dequantize_tq1_0(const block_tq1_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  dequantize_block_tq1_0(x, y, k);
+}
+

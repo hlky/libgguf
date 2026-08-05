@@ -1,80 +1,55 @@
 # Installation
 
-libgguf uses `scikit-build-core` with CMake >=3.18 and C++17. The core Python package depends on NumPy.
-
-Editable core install:
-
-```bash
-python -m pip install -e .
-```
-
-Install Python conversion helper dependencies:
+libgguf is a Python package built with scikit-build-core and CMake. A normal
+installation builds the native CPU extension and installs the Python package.
 
 ```bash
-python -m pip install -e ".[quantize]"
+python -m pip install .
 ```
 
-Install Torch for the optional CUDA extension path:
+For development, install it editable so the Python sources remain connected to
+the working tree:
 
 ```bash
-python -m pip install -e ".[cuda]"
+python -m pip install --editable .
 ```
 
-The optional extras are:
+## GPU build
 
-| Extra | Dependencies | Purpose |
-| --- | --- | --- |
-| `cuda` | `torch` | Build/use the optional Torch CUDA extension when CUDA tooling is present. |
-| `quantize` | `gguf`, `safetensors`, `torch`, `tqdm` | Experimental/internal Python conversion helper and safetensors/ckpt loading. |
-| `test` | `gguf`, `huggingface_hub`, `pytest`, `requests`, `safetensors`, `torch`, `tqdm` | Test runner and test-only script dependencies. |
+The current GPU build uses HIP/ROCm. The caller must provide the ROCm SDK tools,
+a HIP-capable compiler, and an appropriate GPU architecture. On Windows the
+ROCm SDK `rocm-sdk` command and Ninja must be available on `PATH`.
 
-## Native Build
+The Torch wrapper additionally requires a ROCm-enabled Torch installation in
+the build environment. Disable build isolation so CMake can discover that
+installation:
 
-CMake options exposed by the project:
+```powershell
+$env:CMAKE_ARGS='-DLIBGGUF_BUILD_GPU=ON -DLIBGGUF_ENABLE_ROCM=ON -DLIBGGUF_BUILD_TORCH=ON'
+python -m pip install --editable ".[gpu]" --no-build-isolation
+```
+
+The installed wrapper is `libgguf.libgguf_gpu`. PyTorch uses its `cuda` device
+namespace for ROCm tensors, so tensors are still created with `device="cuda"`.
+
+## CMake build
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `LIBGGUF_BUILD_SHARED` | `ON` | Build the standalone shared library. |
-| `LIBGGUF_BUILD_PYTHON` | `ON` | Build the Python native extension `_libgguf`. |
-| `LIBGGUF_BUILD_TOOLS` | `ON` | Build native command-line tools such as `libgguf_quantize_gguf`. |
-| `LIBGGUF_BUILD_BENCHMARKS` | `OFF` | Build native benchmark binaries. |
-| `LIBGGUF_BUILD_CUDA_KERNELS` | `AUTO` | Build optional CUDA kernel targets, including the `libgguf_cuda` Torch extension when Torch is available. Values: `AUTO`, `ON`, `OFF`. |
-| `LIBGGUF_CPU_BACKEND` | `REF` | Native CPU row backend to compile. Values: `REF`, `SSE2`, `SSE4_1`, `AVX2`. |
+| `LIBGGUF_BUILD_PYTHON` | `ON` | Build the native Python extension. |
+| `LIBGGUF_BUILD_TOOLS` | `ON` | Build the native converter. |
+| `LIBGGUF_BUILD_BENCHMARKS` | `OFF` | Build the native CPU benchmark. |
+| `LIBGGUF_BUILD_GPU` | `OFF` | Build generic GPU kernels and conversion support. |
+| `LIBGGUF_ENABLE_ROCM` | `OFF` | Compile GPU targets with HIP/ROCm. |
+| `LIBGGUF_ENABLE_CUDA` | `OFF` | Compile GPU targets with CUDA. |
+| `LIBGGUF_BUILD_TORCH` | `OFF` | Build the Torch GPU extension; requires `LIBGGUF_BUILD_GPU=ON`. |
+| `LIBGGUF_CPU_BACKEND` | `REF` | Select `REF`, `SSE2`, `SSE4_1`, or `AVX2` at compile time. |
 
-Example explicit native build:
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLIBGGUF_BUILD_TOOLS=ON
-cmake --build build --config Release
-```
-
-Optimized CPU backends are build-time choices, not runtime auto-dispatch. Use
-`LIBGGUF_CPU_BACKEND=REF` for portable/reference builds, or choose an x86 SIMD
-backend explicitly for wheels or local builds targeting machines with that
-instruction set.
-
-## CUDA Requirements
-
-CUDA kernel builds require `nvcc` and the CUDA toolkit. The optional Python
-Torch CUDA extension additionally requires:
-
-- `torch` imports in the build Python environment.
-- Torch CMake metadata is discoverable through `torch.utils.cmake_prefix_path`.
-- Python development-module headers are available.
-
-With `LIBGGUF_BUILD_CUDA_KERNELS=AUTO`, the build skips CUDA when `nvcc` or the
-CUDA toolkit is missing. With `LIBGGUF_BUILD_CUDA_KERNELS=ON`, missing `nvcc` or
-CUDA toolkit support is a build error. If CUDA is available but Torch metadata is
-not, the internal native CUDA target can still build while the Python Torch
-extension is skipped.
-
-The installed Python CUDA target is a Torch extension at
-`libgguf.libgguf_cuda._C_gguf`.
-
-When installing through pip, build isolation can hide an already installed Torch from CMake. For an editable CUDA extension build, install the build backend and Torch first, then build without isolation:
-
-```bash
-python -m pip install scikit-build-core cmake ninja torch
-python -m pip install -e ".[cuda]" --no-build-isolation \
-  --config-settings=cmake.define.LIBGGUF_BUILD_CUDA_KERNELS=ON
-```
+CPU backend selection is compile-time. There is no runtime CPU feature
+dispatch. GPU builds must select exactly one GPU backend.

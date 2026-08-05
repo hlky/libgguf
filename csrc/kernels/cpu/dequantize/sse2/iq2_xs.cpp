@@ -1,12 +1,12 @@
-#include <libgguf/cpu/common.h>
-#include <libgguf/cpu/tables.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/dequantize/kernels.h"
+#include "quantize/iq_tables.h"
 
-#if defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__)
+#include "kernels/cpu/common/tables.h"
+
 #include <emmintrin.h>
-#define LIBGGUF_BUILD_SSE2 1
-#endif
 
-static inline void libgguf_iq2_xs_store8_sse2(float *RESTRICT y, const uint8_t *RESTRICT grid, uint8_t signs, __m128 db)
+static inline void libgguf_iq2_xs_store8(float *LIBGGUF_RESTRICT y, const uint8_t *LIBGGUF_RESTRICT grid, uint8_t signs, __m128 db)
 {
   const __m128i zero = _mm_setzero_si128();
   const __m128i g8 = _mm_loadl_epi64((const __m128i *)grid);
@@ -17,15 +17,14 @@ static inline void libgguf_iq2_xs_store8_sse2(float *RESTRICT y, const uint8_t *
   _mm_storeu_ps(y + 4, _mm_xor_ps(_mm_mul_ps(_mm_cvtepi32_ps(_mm_unpackhi_epi16(g16, zero)), db), _mm_castsi128_ps(_mm_loadu_si128((const __m128i *)m1))));
 }
 
-extern "C" void dequantize_row_iq2_xs_sse2(const block_iq2_xs *RESTRICT x, float *RESTRICT y, int64_t k)
+extern "C" void dequantize_block_iq2_xs(const block_iq2_xs *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_SSE2)
   assert(k % QK_K == 0);
   const int nb = (int)(k / QK_K);
   for (int i = 0; i < nb; ++i)
   {
-    const float d = GGML_FP16_TO_FP32(x[i].d);
-    float *RESTRICT yb = y + i * QK_K;
+    const float d = LIBGGUF_FP16_TO_FP32(x[i].d);
+    float *LIBGGUF_RESTRICT yb = y + i * QK_K;
     for (int ib32 = 0; ib32 < QK_K / 32; ++ib32)
     {
       const __m128 db0 = _mm_set1_ps(d * (0.5f + (float)(x[i].scales[ib32] & 0xf)) * 0.25f);
@@ -34,11 +33,15 @@ extern "C" void dequantize_row_iq2_xs_sse2(const block_iq2_xs *RESTRICT x, float
       {
         const uint16_t q = x[i].qs[4 * ib32 + l];
         const uint8_t *grid = (const uint8_t *)(iq2xs_grid + (q & 511));
-        libgguf_iq2_xs_store8_sse2(yb + 32 * ib32 + 8 * l, grid, ksigns_iq2xs[q >> 9], l < 2 ? db0 : db1);
+        libgguf_iq2_xs_store8(yb + 32 * ib32 + 8 * l, grid, ksigns_iq2xs[q >> 9], l < 2 ? db0 : db1);
       }
     }
   }
-#else
-  GGML_UNUSED(x); GGML_UNUSED(y); GGML_UNUSED(k); GGML_UNREACHABLE();
-#endif
 }
+
+
+void dequantize_iq2_xs(const block_iq2_xs *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  dequantize_block_iq2_xs(x, y, k);
+}
+

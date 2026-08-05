@@ -1,11 +1,11 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/dequantize/kernels.h"
+#include "quantize/iq_tables.h"
 
-#if defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__)
+
 #include <emmintrin.h>
-#define LIBGGUF_BUILD_SSE2 1
-#endif
 
-static inline void libgguf_q6_k_store16_sse2(float *RESTRICT y, __m128i q8, __m128 d)
+static inline void libgguf_q6_k_store16(float *LIBGGUF_RESTRICT y, __m128i q8, __m128 d)
 {
   const __m128i zero = _mm_setzero_si128();
   const __m128i sign = _mm_cmpgt_epi8(zero, q8);
@@ -19,7 +19,7 @@ static inline void libgguf_q6_k_store16_sse2(float *RESTRICT y, __m128i q8, __m1
   _mm_storeu_ps(y + 12, _mm_mul_ps(_mm_cvtepi32_ps(_mm_unpackhi_epi16(q16b, s16b)), d));
 }
 
-static inline __m128i libgguf_q6_k_vals_sse2(const uint8_t *RESTRICT ql, const uint8_t *RESTRICT qh, int ql_shift, int qh_shift)
+static inline __m128i libgguf_q6_k_vals(const uint8_t *LIBGGUF_RESTRICT ql, const uint8_t *LIBGGUF_RESTRICT qh, int ql_shift, int qh_shift)
 {
   const __m128i low_mask = _mm_set1_epi8(0x0f);
   const __m128i high_mask = _mm_set1_epi8(0x30);
@@ -29,40 +29,40 @@ static inline __m128i libgguf_q6_k_vals_sse2(const uint8_t *RESTRICT ql, const u
   return _mm_sub_epi8(_mm_or_si128(l, h), bias);
 }
 
-extern "C" void dequantize_row_q6_K_sse2(const block_q6_K *RESTRICT x, float *RESTRICT y, int64_t k)
+extern "C" void dequantize_block_q6_k(const block_q6_K *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_SSE2)
   assert(k % QK_K == 0);
   static_assert(QK_K == 256, "QK_K must be 256");
 
   const int nb = (int)(k / QK_K);
   for (int i = 0; i < nb; ++i)
   {
-    const float d_all = GGML_FP16_TO_FP32(x[i].d);
-    const uint8_t *RESTRICT ql = x[i].ql;
-    const uint8_t *RESTRICT qh = x[i].qh;
-    const int8_t *RESTRICT sc = x[i].scales;
-    float *RESTRICT yb = y + i * QK_K;
+    const float d_all = LIBGGUF_FP16_TO_FP32(x[i].d);
+    const uint8_t *LIBGGUF_RESTRICT ql = x[i].ql;
+    const uint8_t *LIBGGUF_RESTRICT qh = x[i].qh;
+    const int8_t *LIBGGUF_RESTRICT sc = x[i].scales;
+    float *LIBGGUF_RESTRICT yb = y + i * QK_K;
 
     for (int n = 0; n < QK_K; n += 128)
     {
       for (int l = 0; l < 32; l += 16)
       {
         const int is = l / 16;
-        libgguf_q6_k_store16_sse2(yb + n + l + 0, libgguf_q6_k_vals_sse2(ql + l + 0, qh + l, 0, 0), _mm_set1_ps(d_all * (float)sc[is + 0]));
-        libgguf_q6_k_store16_sse2(yb + n + l + 32, libgguf_q6_k_vals_sse2(ql + l + 32, qh + l, 0, 2), _mm_set1_ps(d_all * (float)sc[is + 2]));
-        libgguf_q6_k_store16_sse2(yb + n + l + 64, libgguf_q6_k_vals_sse2(ql + l + 0, qh + l, 4, 4), _mm_set1_ps(d_all * (float)sc[is + 4]));
-        libgguf_q6_k_store16_sse2(yb + n + l + 96, libgguf_q6_k_vals_sse2(ql + l + 32, qh + l, 4, 6), _mm_set1_ps(d_all * (float)sc[is + 6]));
+        libgguf_q6_k_store16(yb + n + l + 0, libgguf_q6_k_vals(ql + l + 0, qh + l, 0, 0), _mm_set1_ps(d_all * (float)sc[is + 0]));
+        libgguf_q6_k_store16(yb + n + l + 32, libgguf_q6_k_vals(ql + l + 32, qh + l, 0, 2), _mm_set1_ps(d_all * (float)sc[is + 2]));
+        libgguf_q6_k_store16(yb + n + l + 64, libgguf_q6_k_vals(ql + l + 0, qh + l, 4, 4), _mm_set1_ps(d_all * (float)sc[is + 4]));
+        libgguf_q6_k_store16(yb + n + l + 96, libgguf_q6_k_vals(ql + l + 32, qh + l, 4, 6), _mm_set1_ps(d_all * (float)sc[is + 6]));
       }
       ql += 64;
       qh += 32;
       sc += 8;
     }
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+void dequantize_q6_k(const block_q6_K *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  dequantize_block_q6_k(x, y, k);
+}
+

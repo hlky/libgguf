@@ -1,18 +1,18 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
 
-#if defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__)
+
 #include <emmintrin.h>
 #include <xmmintrin.h>
-#define LIBGGUF_BUILD_SSE2 1
-#endif
 
-#if defined(LIBGGUF_BUILD_SSE2)
-static inline __m128 q5_0_blendv_ps_sse2(__m128 a, __m128 b, __m128 mask)
+static inline __m128 q5_0_blendv_ps(__m128 a, __m128 b, __m128 mask)
 {
   return _mm_or_ps(_mm_and_ps(mask, b), _mm_andnot_ps(mask, a));
 }
 
-static inline float q5_0_signed_absmax_sse2(const float *RESTRICT x)
+static inline float q5_0_signed_absmax(const float *LIBGGUF_RESTRICT x)
 {
   const __m128 sign_mask = _mm_set1_ps(-0.0f);
   const __m128 step = _mm_set1_ps(4.0f);
@@ -26,9 +26,9 @@ static inline float q5_0_signed_absmax_sse2(const float *RESTRICT x)
     const __m128 v = _mm_loadu_ps(x + j);
     const __m128 av = _mm_andnot_ps(sign_mask, v);
     const __m128 mask = _mm_cmpgt_ps(av, best_abs);
-    best_abs = q5_0_blendv_ps_sse2(best_abs, av, mask);
-    best_val = q5_0_blendv_ps_sse2(best_val, v, mask);
-    best_idx = q5_0_blendv_ps_sse2(best_idx, idx, mask);
+    best_abs = q5_0_blendv_ps(best_abs, av, mask);
+    best_val = q5_0_blendv_ps(best_val, v, mask);
+    best_idx = q5_0_blendv_ps(best_idx, idx, mask);
     idx = _mm_add_ps(idx, step);
   }
 
@@ -54,17 +54,15 @@ static inline float q5_0_signed_absmax_sse2(const float *RESTRICT x)
   return max;
 }
 
-static inline __m128i q5_0_quantize_8_i16_sse2(const float *RESTRICT x, __m128 id, __m128 offset, __m128i max_q)
+static inline __m128i q5_0_quantize_8_i16(const float *LIBGGUF_RESTRICT x, __m128 id, __m128 offset, __m128i max_q)
 {
   const __m128i q0 = _mm_cvttps_epi32(_mm_add_ps(_mm_mul_ps(_mm_loadu_ps(x), id), offset));
   const __m128i q1 = _mm_cvttps_epi32(_mm_add_ps(_mm_mul_ps(_mm_loadu_ps(x + 4), id), offset));
   return _mm_min_epi16(_mm_packs_epi32(q0, q1), max_q);
 }
-#endif
 
-extern "C" void quantize_row_q5_0_sse2(const float *RESTRICT x, block_q5_0 *RESTRICT y, int64_t k)
+extern "C" void quantize_block_q5_0(const float *LIBGGUF_RESTRICT x, block_q5_0 *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_SSE2)
   assert(k % QK5_0 == 0);
   static_assert(QK5_0 == 32, "QK5_0 must be 32");
 
@@ -74,10 +72,10 @@ extern "C" void quantize_row_q5_0_sse2(const float *RESTRICT x, block_q5_0 *REST
   for (int i = 0; i < nb; ++i)
   {
     const float *xb = x + i * QK5_0;
-    const float max = q5_0_signed_absmax_sse2(xb);
+    const float max = q5_0_signed_absmax(xb);
     const float d = max / -16;
     const float id = d ? 1.0f / d : 0.0f;
-    y[i].d = GGML_FP32_TO_FP16(d);
+    y[i].d = LIBGGUF_FP32_TO_FP16(d);
 
     const __m128 idv = _mm_set1_ps(id);
     uint32_t qh = 0;
@@ -85,8 +83,8 @@ extern "C" void quantize_row_q5_0_sse2(const float *RESTRICT x, block_q5_0 *REST
     {
       alignas(16) uint16_t lo[8];
       alignas(16) uint16_t hi[8];
-      _mm_store_si128((__m128i *)lo, q5_0_quantize_8_i16_sse2(xb + j, idv, offset, max_q));
-      _mm_store_si128((__m128i *)hi, q5_0_quantize_8_i16_sse2(xb + QK5_0 / 2 + j, idv, offset, max_q));
+      _mm_store_si128((__m128i *)lo, q5_0_quantize_8_i16(xb + j, idv, offset, max_q));
+      _mm_store_si128((__m128i *)hi, q5_0_quantize_8_i16(xb + QK5_0 / 2 + j, idv, offset, max_q));
       for (int lane = 0; lane < 8; ++lane)
       {
         const uint8_t xi0 = (uint8_t)lo[lane];
@@ -98,10 +96,69 @@ extern "C" void quantize_row_q5_0_sse2(const float *RESTRICT x, block_q5_0 *REST
     }
     memcpy(&y[i].qh, &qh, sizeof(qh));
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+static void quantize_weighted_q5_0(const float *LIBGGUF_RESTRICT x, block_q5_0 *LIBGGUF_RESTRICT y, int64_t n_per_row, const float *quant_weights)
+{
+  static_assert(QK5_0 == 32, "QK5_0 must be 32");
+
+  if (!quant_weights)
+  {
+    quantize_block_q5_0(x, y, n_per_row);
+    return;
+  }
+
+  float weight[QK5_0];
+  int8_t L[QK5_0];
+
+  float sum_x2 = 0;
+  for (int j = 0; j < n_per_row; ++j)
+    sum_x2 += x[j] * x[j];
+  float sigma2 = sum_x2 / n_per_row;
+
+  const int64_t nb = n_per_row / QK5_0;
+  for (int ib = 0; ib < nb; ++ib)
+  {
+    const float *xb = x + QK5_0 * ib;
+    const float *qw = quant_weights + QK5_0 * ib;
+    for (int j = 0; j < QK5_0; ++j)
+      weight[j] = qw[j] * sqrtf(sigma2 + xb[j] * xb[j]);
+    float d = make_qx_quants(QK5_0, 16, xb, L, 1, weight);
+    y[ib].d = LIBGGUF_FP32_TO_FP16(d);
+
+    uint32_t qh = 0;
+
+    for (int j = 0; j < 16; ++j)
+    {
+      const uint8_t xi0 = L[j];
+      const uint8_t xi1 = L[j + 16];
+      y[ib].qs[j] = (xi0 & 0x0F) | ((xi1 & 0x0F) << 4);
+
+      // get the 5-th bit and store it in qh at the right position
+      qh |= ((xi0 & 0x10u) >> 4) << (j + 0);
+      qh |= ((xi1 & 0x10u) >> 4) << (j + QK5_0 / 2);
+    }
+
+    memcpy(&y[ib].qh, &qh, sizeof(qh));
+  }
+}
+
+size_t quantize_q5_0(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+{
+  if (!quant_weights)
+  {
+    quantize_block_q5_0(src, (block_q5_0 *)dst, (int64_t)nrow * n_per_row);
+    return nrow * libgguf_row_size(GGML_TYPE_Q5_0, n_per_row);
+  }
+  size_t row_size = libgguf_row_size(GGML_TYPE_Q5_0, n_per_row);
+  char *qrow = (char *)dst;
+  for (int64_t row = 0; row < nrow; ++row)
+  {
+    quantize_weighted_q5_0(src, (block_q5_0 *)qrow, n_per_row, quant_weights);
+    src += n_per_row;
+    qrow += row_size;
+  }
+  return nrow * row_size;
+}
+

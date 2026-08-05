@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifdef GGUF_CUDA_USE_IQ2_XXS_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_XXS_NEIGHBOURS
 static const __device__ uint32_t iq2xxs_neighbour_offsets[IQ2_GRID_LOOKUP_SIZE + 1] = {
     0u, 0u, 34u, 34u, 75u, 75u, 89u, 89u, 110u, 110u, 159u, 159u,
     178u, 178u, 218u, 244u, 268u, 300u, 307u, 307u, 336u, 336u, 366u, 404u,
@@ -7631,7 +7631,7 @@ static const __device__ uint16_t iq2xxs_neighbours[113157] = {
 };
 #endif
 
-#ifdef GGUF_CUDA_USE_IQ2_XS_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_XS_NEIGHBOURS
 static const __device__ uint32_t iq2xs_neighbour_offsets[IQ2_GRID_LOOKUP_SIZE + 1] = {
     0u, 0u, 86u, 86u, 172u, 172u, 226u, 226u, 281u, 281u, 367u, 367u,
     419u, 419u, 517u, 517u, 571u, 571u, 596u, 596u, 650u, 650u, 706u, 706u,
@@ -19544,7 +19544,7 @@ static const __device__ uint16_t iq2xs_neighbours[181721] = {
 };
 #endif
 
-#ifdef GGUF_CUDA_USE_IQ2_S_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_S_NEIGHBOURS
 static const __device__ uint32_t iq2s_neighbour_offsets[IQ2_GRID_LOOKUP_SIZE + 1] = {
     0u, 0u, 9u, 9u, 18u, 18u, 27u, 27u, 36u, 36u, 45u, 45u,
     54u, 54u, 65u, 65u, 74u, 74u, 78u, 78u, 87u, 87u, 96u, 96u,

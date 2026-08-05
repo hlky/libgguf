@@ -1,17 +1,9 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
 #include <libgguf/libgguf.h>
-#include <libgguf/cpu/backend.h>
-#include <libgguf/cpu/tables.h>
 
-#include <cstring>
-
-typedef void (*libgguf_iq4_xs_kernel_fn)(const float *RESTRICT, block_iq4_xs *RESTRICT, int64_t);
-
-#if !LIBGGUF_CPU_BACKEND_REF
-extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_iq4_xs)(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k);
-#endif
-
-static void quantize_row_iq4_nl_impl(const int super_block_size, const int block_size, const float *RESTRICT x,
+void quantize_block_iq4_xs_impl(const int super_block_size, const int block_size, const float *LIBGGUF_RESTRICT x,
                                      ggml_fp16_t *dh, uint8_t *q4, uint16_t *scales_h, uint8_t *scales_l,
                                      float *scales, float *weight, uint8_t *L,
                                      const int8_t *values,
@@ -25,7 +17,7 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
   sigma2 *= 2.f / super_block_size;
 
   memset(q4, 0, super_block_size / 2);
-  dh[0] = GGML_FP32_TO_FP16(0.f);
+  dh[0] = LIBGGUF_FP32_TO_FP16(0.f);
 
   float max_scale = 0, amax_scale = 0;
   for (int ib = 0; ib < super_block_size / block_size; ++ib)
@@ -106,12 +98,12 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
     int nb = super_block_size / block_size;
     memset(scales_h, 0, ((nb + 7) / 8) * sizeof(uint16_t));
     float d = -max_scale / 32;
-    dh[0] = GGML_FP32_TO_FP16(d);
+    dh[0] = LIBGGUF_FP32_TO_FP16(d);
     float id = d ? 1 / d : 0.f;
     for (int ib = 0; ib < super_block_size / block_size; ++ib)
     {
       int l = nearest_int(id * scales[ib]);
-      l = MAX(-32, MIN(31, l));
+      l = libgguf_max(-32, libgguf_min(31, l));
       float dl = d * l;
       float idl = dl ? 1 / dl : 0.f;
       uint8_t *Lb = L + ib * block_size;
@@ -132,7 +124,7 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
   }
   else
   {
-    dh[0] = GGML_FP32_TO_FP16(scales[0]);
+    dh[0] = LIBGGUF_FP32_TO_FP16(scales[0]);
     if (ntry > 0)
     {
       float id = scales[0] ? 1 / scales[0] : 0;
@@ -152,43 +144,23 @@ static void quantize_row_iq4_nl_impl(const int super_block_size, const int block
   }
 }
 
-static libgguf_iq4_xs_kernel_fn libgguf_iq4_xs_kernel_for_backend(const char *backend)
+void quantize_block_iq4_xs(const float *LIBGGUF_RESTRICT x, block_iq4_xs *LIBGGUF_RESTRICT y, int64_t k)
 {
-  if (libgguf_cpu_backend_is_ref_request(backend))
+  assert(k % QK_K == 0);
+  const int64_t nblock = k / QK_K;
+  uint8_t L[QK_K];
+  float weight[32];
+  float scales[QK_K / 32];
+  for (int64_t ibl = 0; ibl < nblock; ++ibl)
   {
-    return quantize_row_iq4_xs;
+    quantize_block_iq4_xs_impl(
+        QK_K, 32, x + QK_K * ibl, &y[ibl].d, y[ibl].qs, &y[ibl].scales_h, y[ibl].scales_l,
+        scales, weight, L, kvalues_iq4nl, nullptr, 7);
   }
-#if !LIBGGUF_CPU_BACKEND_REF
-  if (libgguf_cpu_backend_is_compiled_request(backend))
-  {
-    return LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_iq4_xs);
-  }
-#endif
-  return nullptr;
 }
 
-extern "C" int libgguf_iq4_xs_cpu_supports_backend(const char *backend)
-{
-  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
-}
 
-extern "C" size_t libgguf_quantize_iq4_xs_for_backend(
-    const char *backend,
-    const float *RESTRICT src,
-    void *RESTRICT dst,
-    int64_t nrows,
-    int64_t n_per_row)
-{
-  libgguf_iq4_xs_kernel_fn kernel = libgguf_iq4_xs_kernel_for_backend(backend);
-  if (!kernel)
-  {
-    return 0;
-  }
-  kernel(src, (block_iq4_xs *)dst, (int64_t)nrows * n_per_row);
-  return nrows * libgguf_row_size(GGML_TYPE_IQ4_XS, n_per_row);
-}
-
-size_t quantize_iq4_xs(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+size_t quantize_iq4_xs(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
 {
   assert(n_per_row % QK_K == 0);
   int64_t nblock = n_per_row / QK_K;
@@ -203,8 +175,8 @@ size_t quantize_iq4_xs(const float *RESTRICT src, void *RESTRICT dst, int64_t nr
     for (int ibl = 0; ibl < nblock; ++ibl)
     {
       const float *qw = quant_weights ? quant_weights + QK_K * ibl : nullptr;
-      quantize_row_iq4_nl_impl(QK_K, 32, src + QK_K * ibl, &iq4[ibl].d, iq4[ibl].qs, &iq4[ibl].scales_h, iq4[ibl].scales_l,
-                               scales, weight, L, kvalues_iq4nl, qw, 7);
+      quantize_block_iq4_xs_impl(QK_K, 32, src + QK_K * ibl, &iq4[ibl].d, iq4[ibl].qs, &iq4[ibl].scales_h, iq4[ibl].scales_l,
+                                           scales, weight, L, kvalues_iq4nl, qw, 7);
     }
     src += n_per_row;
     qrow += nblock * sizeof(block_iq4_xs);
@@ -212,10 +184,3 @@ size_t quantize_iq4_xs(const float *RESTRICT src, void *RESTRICT dst, int64_t nr
   return nrow * nblock * sizeof(block_iq4_xs);
 }
 
-void quantize_row_iq4_xs(const float *RESTRICT x, block_iq4_xs *RESTRICT y, int64_t k)
-{
-  assert(k % QK_K == 0);
-  quantize_iq4_xs(x, y, 1, k, nullptr);
-}
-
-// =============================== 2.5625 bpw

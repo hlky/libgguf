@@ -5,21 +5,21 @@
 
 #include <libgguf/gpu/compat.h>
 #include <libgguf/gpu/common.cuh>
-#ifdef GGUF_CUDA_USE_IQ1_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ1_GRID_LOOKUP
 #include <libgguf/gpu/iq/iq1_lookup.cuh>
-#ifdef GGUF_CUDA_USE_IQ1_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ1_NEIGHBOURS
 #include <libgguf/gpu/iq/iq1_neighbours.cuh>
 #endif
 #endif
-#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP
 #include <libgguf/gpu/iq/iq2_lookup.cuh>
-#ifdef GGUF_CUDA_USE_IQ2_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_NEIGHBOURS
 #include <libgguf/gpu/iq/iq2_neighbours.cuh>
 #endif
 #endif
-#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ3_GRID_LOOKUP
 #include <libgguf/gpu/iq/iq3_lookup.cuh>
-#ifdef GGUF_CUDA_USE_IQ3_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ3_NEIGHBOURS
 #include <libgguf/gpu/iq/iq3_neighbours.cuh>
 #endif
 #endif
@@ -33,7 +33,7 @@ static __device__ __forceinline__ int clamp_int(int value, int low, int high) {
 }
 
 static __device__ __forceinline__ float warp_reduce_max(float value) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     value = fmaxf(value, __shfl_down_sync(mask, value, 16));
     value = fmaxf(value, __shfl_down_sync(mask, value, 8));
     value = fmaxf(value, __shfl_down_sync(mask, value, 4));
@@ -43,7 +43,7 @@ static __device__ __forceinline__ float warp_reduce_max(float value) {
 }
 
 static __device__ __forceinline__ float warp_reduce_min(float value) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     value = fminf(value, __shfl_down_sync(mask, value, 16));
     value = fminf(value, __shfl_down_sync(mask, value, 8));
     value = fminf(value, __shfl_down_sync(mask, value, 4));
@@ -53,7 +53,7 @@ static __device__ __forceinline__ float warp_reduce_min(float value) {
 }
 
 static __device__ __forceinline__ float warp_reduce_absmax_first(float value, int lane) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     float best_abs = fabsf(value);
     int best_idx = lane;
     float best_value = value;
@@ -654,7 +654,7 @@ static __device__ __forceinline__ int iq2_lookup_key(const int8_t * l) {
 }
 
 static __device__ __forceinline__ int iq2_find_grid_index(const uint64_t * grid, int grid_size, const int8_t * l) {
-#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP
     const int key = iq2_lookup_key(l);
     if (key < 0) {
         return -1;
@@ -690,7 +690,7 @@ static __device__ __forceinline__ int iq2_find_grid_index(const uint64_t * grid,
 
 static __device__ __forceinline__ int iq2_grid_dist(const uint64_t * grid, int grid_index, const int8_t * l) {
     int dist = 0;
-#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP
     uint16_t packed;
     if (grid == iq2xxs_grid) {
         packed = iq2xxs_grid_packed[grid_index];
@@ -714,7 +714,7 @@ static __device__ __forceinline__ int iq2_grid_dist(const uint64_t * grid, int g
 }
 
 static __device__ __forceinline__ int8_t iq2_grid_l_fast(const uint64_t * grid, int grid_index, int i) {
-#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP
     uint16_t packed;
     if (grid == iq2xxs_grid) {
         packed = iq2xxs_grid_packed[grid_index];
@@ -733,11 +733,11 @@ static __device__ __forceinline__ int8_t iq2_grid_q_fast(const uint64_t * grid, 
     return 2 * iq2_grid_l_fast(grid, grid_index, i) + 1;
 }
 
-#ifdef GGUF_CUDA_USE_IQ2_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP
 static __device__ __forceinline__ const uint16_t * iq2_packed_grid(const uint64_t * grid) {
-#ifdef GGUF_CUDA_IQ2_PACKED_GRID
+#ifdef LIBGGUF_GPU_IQ2_PACKED_GRID
     (void)grid;
-    return GGUF_CUDA_IQ2_PACKED_GRID;
+    return LIBGGUF_GPU_IQ2_PACKED_GRID;
 #else
     if (grid == iq2xxs_grid) {
         return iq2xxs_grid_packed;
@@ -768,7 +768,7 @@ static __device__ __forceinline__ int8_t iq2_packed_q(const uint16_t * packed_gr
     return 2 * iq2_packed_l(packed_grid, grid_index, i) + 1;
 }
 
-#if defined(GGUF_CUDA_USE_IQ2_NEIGHBOURS)
+#if defined(LIBGGUF_GPU_USE_IQ2_NEIGHBOURS)
 static __device__ __forceinline__ int iq2_find_best_neighbour_lookup(
     const uint16_t * packed_grid,
     const uint32_t * offsets,
@@ -880,8 +880,8 @@ static __device__ __forceinline__ int iq2_find_grid_or_best_neighbour(
     int8_t * l,
     bool * is_on_grid
 ) {
-#if defined(GGUF_CUDA_USE_IQ2_GRID_LOOKUP) && defined(GGUF_CUDA_USE_IQ2_NEIGHBOURS)
-#ifdef GGUF_CUDA_USE_IQ2_XXS_NEIGHBOURS
+#if defined(LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP) && defined(LIBGGUF_GPU_USE_IQ2_NEIGHBOURS)
+#ifdef LIBGGUF_GPU_USE_IQ2_XXS_NEIGHBOURS
     if (grid == iq2xxs_grid && grid_size == 256 && nwant == 2) {
         const int grid_index = iq2_find_grid_or_best_neighbour_lookup(
             iq2xxs_grid_packed, iq2xxs_neighbour_offsets, iq2xxs_neighbours, iq2xxs_grid_lookup,
@@ -891,7 +891,7 @@ static __device__ __forceinline__ int iq2_find_grid_or_best_neighbour(
         }
     }
 #endif
-#ifdef GGUF_CUDA_USE_IQ2_XS_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_XS_NEIGHBOURS
     if (grid == iq2xs_grid && grid_size == 512 && nwant == 2) {
         const int grid_index = iq2_find_grid_or_best_neighbour_lookup(
             iq2xs_grid_packed, iq2xs_neighbour_offsets, iq2xs_neighbours, iq2xs_grid_lookup,
@@ -901,7 +901,7 @@ static __device__ __forceinline__ int iq2_find_grid_or_best_neighbour(
         }
     }
 #endif
-#ifdef GGUF_CUDA_USE_IQ2_S_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_S_NEIGHBOURS
     if (grid == iq2s_grid && grid_size == 1024 && nwant == 1) {
         const int grid_index = iq2_find_grid_or_best_neighbour_lookup(
             iq2s_grid_packed, iq2s_neighbour_offsets, iq2s_neighbours, iq2s_grid_lookup,
@@ -924,8 +924,8 @@ static __device__ __forceinline__ int iq2_find_grid_or_best_neighbour(
 static __device__ __forceinline__ int iq2_find_best_neighbour(
     const uint64_t * grid, int grid_size, int nwant, const float * xval, const float * weight, float scale, int8_t * l
 ) {
-#if defined(GGUF_CUDA_USE_IQ2_GRID_LOOKUP) && defined(GGUF_CUDA_USE_IQ2_NEIGHBOURS)
-#ifdef GGUF_CUDA_USE_IQ2_XXS_NEIGHBOURS
+#if defined(LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP) && defined(LIBGGUF_GPU_USE_IQ2_NEIGHBOURS)
+#ifdef LIBGGUF_GPU_USE_IQ2_XXS_NEIGHBOURS
     if (grid == iq2xxs_grid && grid_size == 256 && nwant == 2) {
         const int grid_index = iq2_find_best_neighbour_lookup(
             iq2xxs_grid_packed, iq2xxs_neighbour_offsets, iq2xxs_neighbours, iq2xxs_grid_lookup, xval, weight, scale, l);
@@ -934,7 +934,7 @@ static __device__ __forceinline__ int iq2_find_best_neighbour(
         }
     }
 #endif
-#ifdef GGUF_CUDA_USE_IQ2_XS_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_XS_NEIGHBOURS
     if (grid == iq2xs_grid && grid_size == 512 && nwant == 2) {
         const int grid_index = iq2_find_best_neighbour_lookup(
             iq2xs_grid_packed, iq2xs_neighbour_offsets, iq2xs_neighbours, iq2xs_grid_lookup, xval, weight, scale, l);
@@ -943,7 +943,7 @@ static __device__ __forceinline__ int iq2_find_best_neighbour(
         }
     }
 #endif
-#ifdef GGUF_CUDA_USE_IQ2_S_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ2_S_NEIGHBOURS
     if (grid == iq2s_grid && grid_size == 1024 && nwant == 1) {
         const int grid_index = iq2_find_best_neighbour_lookup(
             iq2s_grid_packed, iq2s_neighbour_offsets, iq2s_neighbours, iq2s_grid_lookup, xval, weight, scale, l);
@@ -953,7 +953,7 @@ static __device__ __forceinline__ int iq2_find_best_neighbour(
     }
 #endif
 #endif
-#if defined(GGUF_CUDA_USE_IQ2_GRID_LOOKUP) && defined(GGUF_CUDA_IQ2_HOIST_BEST_NEIGHBOUR)
+#if defined(LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP) && defined(LIBGGUF_GPU_IQ2_HOIST_BEST_NEIGHBOUR)
     const uint16_t * packed_grid = iq2_packed_grid(grid);
     int cutoff_dist = INT_MAX;
     if (nwant <= 1) {
@@ -1088,11 +1088,11 @@ static __device__ __forceinline__ int iq1_lookup_key(const int8_t * l) {
 }
 
 static __device__ __forceinline__ int iq1_find_grid_index(const int8_t * l) {
-#ifdef GGUF_CUDA_USE_IQ1_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ1_NEIGHBOURS
     const int key = iq1_lookup_key(l);
     return key < 0 ? -1 : iq1s_grid_direct[key];
 #else
-#ifdef GGUF_CUDA_USE_IQ1_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ1_GRID_LOOKUP
     int key = 0;
     int mul = 1;
     for (int i = 0; i < 8; ++i) {
@@ -1147,7 +1147,7 @@ static __device__ __forceinline__ int iq1_grid_dist(int grid_index, const int8_t
 static __device__ __forceinline__ int iq1_find_best_neighbour(
     const float * xval, const float * weight, float scale, const float * values, int8_t * l
 ) {
-#ifdef GGUF_CUDA_USE_IQ1_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ1_NEIGHBOURS
     const int key = iq1_lookup_key(l);
     if (key >= 0) {
         const uint32_t begin = iq1s_neighbour_offsets[key];
@@ -1234,7 +1234,7 @@ static __device__ __forceinline__ int iq1_find_grid_or_best_neighbour(
     int8_t * l,
     bool * is_on_grid
 ) {
-#ifdef GGUF_CUDA_USE_IQ1_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ1_NEIGHBOURS
     const int key = iq1_lookup_key(l);
     if (key >= 0) {
         const int direct = iq1s_grid_direct[key];
@@ -1315,7 +1315,7 @@ static __device__ __forceinline__ int iq3_lookup_key(const int8_t * l) {
 }
 
 static __device__ __forceinline__ int iq3_find_grid_index(const uint32_t * grid, int grid_size, const int8_t * l) {
-#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ3_GRID_LOOKUP
     const int key = iq3_lookup_key(l);
     if (key < 0) {
         return -1;
@@ -1348,7 +1348,7 @@ static __device__ __forceinline__ int iq3_find_grid_index(const uint32_t * grid,
 
 static __device__ __forceinline__ int iq3_grid_dist(const uint32_t * grid, int grid_index, const int8_t * l) {
     int dist = 0;
-#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ3_GRID_LOOKUP
     uint16_t packed = grid == iq3xxs_grid ? iq3xxs_grid_packed[grid_index] : iq3xs_grid_packed[grid_index];
     for (int i = 0; i < 4; ++i) {
         const int diff = (int)(packed & 0x07u) - (int)l[i];
@@ -1365,7 +1365,7 @@ static __device__ __forceinline__ int iq3_grid_dist(const uint32_t * grid, int g
 }
 
 static __device__ __forceinline__ int8_t iq3_grid_l_fast(const uint32_t * grid, int grid_index, int i) {
-#ifdef GGUF_CUDA_USE_IQ3_GRID_LOOKUP
+#ifdef LIBGGUF_GPU_USE_IQ3_GRID_LOOKUP
     const uint16_t packed = grid == iq3xxs_grid ? iq3xxs_grid_packed[grid_index] : iq3xs_grid_packed[grid_index];
     return (packed >> (3 * i)) & 0x07u;
 #else
@@ -1377,7 +1377,7 @@ static __device__ __forceinline__ int8_t iq3_grid_q_fast(const uint32_t * grid, 
     return 2 * iq3_grid_l_fast(grid, grid_index, i) + 1;
 }
 
-#if defined(GGUF_CUDA_USE_IQ3_GRID_LOOKUP) && defined(GGUF_CUDA_USE_IQ3_NEIGHBOURS)
+#if defined(LIBGGUF_GPU_USE_IQ3_GRID_LOOKUP) && defined(LIBGGUF_GPU_USE_IQ3_NEIGHBOURS)
 static __device__ __forceinline__ int8_t iq3_packed_l(const uint16_t * packed_grid, int grid_index, int i) {
     return (packed_grid[grid_index] >> (3 * i)) & 0x07u;
 }
@@ -1496,7 +1496,7 @@ static __device__ __forceinline__ int iq3_find_grid_or_best_neighbour(
     int8_t * l,
     bool * is_on_grid
 ) {
-#if defined(GGUF_CUDA_USE_IQ3_GRID_LOOKUP) && defined(GGUF_CUDA_USE_IQ3_NEIGHBOURS)
+#if defined(LIBGGUF_GPU_USE_IQ3_GRID_LOOKUP) && defined(LIBGGUF_GPU_USE_IQ3_NEIGHBOURS)
     if (grid == iq3xxs_grid && grid_size == 256 && nwant == 2) {
         const int grid_index = iq3_find_grid_or_best_neighbour_lookup(
             iq3xxs_grid_packed, iq3xxs_neighbour_offsets, iq3xxs_neighbours, iq3xxs_grid_lookup,
@@ -1526,7 +1526,7 @@ static __device__ __forceinline__ int iq3_find_grid_or_best_neighbour(
 static __device__ __forceinline__ int iq3_find_best_neighbour(
     const uint32_t * grid, int grid_size, int nwant, const float * xval, const float * weight, float scale, int8_t * l
 ) {
-#if defined(GGUF_CUDA_USE_IQ3_GRID_LOOKUP) && defined(GGUF_CUDA_USE_IQ3_NEIGHBOURS)
+#if defined(LIBGGUF_GPU_USE_IQ3_GRID_LOOKUP) && defined(LIBGGUF_GPU_USE_IQ3_NEIGHBOURS)
     if (grid == iq3xxs_grid && grid_size == 256 && nwant == 2) {
         const int grid_index = iq3_find_best_neighbour_lookup(
             iq3xxs_grid_packed, iq3xxs_neighbour_offsets, iq3xxs_neighbours, iq3xxs_grid_lookup, xval, weight, scale, l);

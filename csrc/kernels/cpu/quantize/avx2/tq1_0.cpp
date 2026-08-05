@@ -1,12 +1,12 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
 
-#if defined(__AVX2__)
+
 #include <immintrin.h>
-#define LIBGGUF_BUILD_AVX2 1
-#endif
 
-#if defined(LIBGGUF_BUILD_AVX2)
-static inline __m256i tq1_0_round_away_from_zero_8_avx2(
+static inline __m256i tq1_0_round_away_from_zero_8(
     __m256 v,
     __m256 id,
     __m256 sign_mask,
@@ -23,7 +23,7 @@ static inline __m256i tq1_0_round_away_from_zero_8_avx2(
   return _mm256_add_epi32(_mm256_sub_epi32(_mm256_xor_si256(abs_i, sign_i), sign_i), one);
 }
 
-static inline __m128i tq1_0_round_away_from_zero_4_avx2(
+static inline __m128i tq1_0_round_away_from_zero_4(
     __m128 v,
     __m128 id,
     __m128 sign_mask,
@@ -52,9 +52,9 @@ static inline uint8_t tq1_0_pack4_high(int a, int b, int c, int d)
   return (uint8_t)((q * 256 + 242) / 243);
 }
 
-static inline void tq1_0_pack_8_avx2(
-    uint8_t *RESTRICT dst,
-    const float *RESTRICT src,
+static inline void tq1_0_pack_8(
+    uint8_t *LIBGGUF_RESTRICT dst,
+    const float *LIBGGUF_RESTRICT src,
     size_t stride,
     __m256 id,
     __m256 sign_mask,
@@ -63,20 +63,20 @@ static inline void tq1_0_pack_8_avx2(
     __m256i one)
 {
   int32_t q0[8], q1[8], q2[8], q3[8], q4[8];
-  _mm256_storeu_si256((__m256i *)q0, tq1_0_round_away_from_zero_8_avx2(_mm256_loadu_ps(src + 0 * stride), id, sign_mask, half, zero, one));
-  _mm256_storeu_si256((__m256i *)q1, tq1_0_round_away_from_zero_8_avx2(_mm256_loadu_ps(src + 1 * stride), id, sign_mask, half, zero, one));
-  _mm256_storeu_si256((__m256i *)q2, tq1_0_round_away_from_zero_8_avx2(_mm256_loadu_ps(src + 2 * stride), id, sign_mask, half, zero, one));
-  _mm256_storeu_si256((__m256i *)q3, tq1_0_round_away_from_zero_8_avx2(_mm256_loadu_ps(src + 3 * stride), id, sign_mask, half, zero, one));
-  _mm256_storeu_si256((__m256i *)q4, tq1_0_round_away_from_zero_8_avx2(_mm256_loadu_ps(src + 4 * stride), id, sign_mask, half, zero, one));
+  _mm256_storeu_si256((__m256i *)q0, tq1_0_round_away_from_zero_8(_mm256_loadu_ps(src + 0 * stride), id, sign_mask, half, zero, one));
+  _mm256_storeu_si256((__m256i *)q1, tq1_0_round_away_from_zero_8(_mm256_loadu_ps(src + 1 * stride), id, sign_mask, half, zero, one));
+  _mm256_storeu_si256((__m256i *)q2, tq1_0_round_away_from_zero_8(_mm256_loadu_ps(src + 2 * stride), id, sign_mask, half, zero, one));
+  _mm256_storeu_si256((__m256i *)q3, tq1_0_round_away_from_zero_8(_mm256_loadu_ps(src + 3 * stride), id, sign_mask, half, zero, one));
+  _mm256_storeu_si256((__m256i *)q4, tq1_0_round_away_from_zero_8(_mm256_loadu_ps(src + 4 * stride), id, sign_mask, half, zero, one));
   for (int lane = 0; lane < 8; ++lane)
   {
     dst[lane] = tq1_0_pack5(q0[lane], q1[lane], q2[lane], q3[lane], q4[lane]);
   }
 }
 
-static inline void tq1_0_pack_high4_avx2(
-    uint8_t *RESTRICT dst,
-    const float *RESTRICT src,
+static inline void tq1_0_pack_high4(
+    uint8_t *LIBGGUF_RESTRICT dst,
+    const float *LIBGGUF_RESTRICT src,
     __m128 id,
     __m128 sign_mask,
     __m128 half,
@@ -84,20 +84,18 @@ static inline void tq1_0_pack_high4_avx2(
     __m128i one)
 {
   int32_t q0[4], q1[4], q2[4], q3[4];
-  _mm_storeu_si128((__m128i *)q0, tq1_0_round_away_from_zero_4_avx2(_mm_loadu_ps(src + 0 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
-  _mm_storeu_si128((__m128i *)q1, tq1_0_round_away_from_zero_4_avx2(_mm_loadu_ps(src + 1 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
-  _mm_storeu_si128((__m128i *)q2, tq1_0_round_away_from_zero_4_avx2(_mm_loadu_ps(src + 2 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
-  _mm_storeu_si128((__m128i *)q3, tq1_0_round_away_from_zero_4_avx2(_mm_loadu_ps(src + 3 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
+  _mm_storeu_si128((__m128i *)q0, tq1_0_round_away_from_zero_4(_mm_loadu_ps(src + 0 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
+  _mm_storeu_si128((__m128i *)q1, tq1_0_round_away_from_zero_4(_mm_loadu_ps(src + 1 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
+  _mm_storeu_si128((__m128i *)q2, tq1_0_round_away_from_zero_4(_mm_loadu_ps(src + 2 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
+  _mm_storeu_si128((__m128i *)q3, tq1_0_round_away_from_zero_4(_mm_loadu_ps(src + 3 * sizeof(block_tq1_0::qh)), id, sign_mask, half, zero, one));
   for (int lane = 0; lane < 4; ++lane)
   {
     dst[lane] = tq1_0_pack4_high(q0[lane], q1[lane], q2[lane], q3[lane]);
   }
 }
-#endif
 
-extern "C" void quantize_row_tq1_0_avx2(const float *RESTRICT x, block_tq1_0 *RESTRICT y, int64_t k)
+extern "C" void quantize_block_tq1_0(const float *LIBGGUF_RESTRICT x, block_tq1_0 *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_AVX2)
   assert(k % QK_K == 0);
   static_assert(QK_K == 256, "QK_K must be 256");
   static_assert(sizeof(block_tq1_0::qs) == 48, "unexpected TQ1_0 qs size");
@@ -122,11 +120,11 @@ extern "C" void quantize_row_tq1_0_avx2(const float *RESTRICT x, block_tq1_0 *RE
     {
       const float v = xb[j];
       finite &= std::isfinite(v);
-      amax = MAX(amax, fabsf(v));
+      amax = libgguf_max(amax, fabsf(v));
     }
     if (!finite)
     {
-      quantize_row_tq1_0(xb, y + i, QK_K);
+      quantize_block_tq1_0(xb, y + i, QK_K);
       continue;
     }
 
@@ -134,22 +132,26 @@ extern "C" void quantize_row_tq1_0_avx2(const float *RESTRICT x, block_tq1_0 *RE
     const float id = d ? 1.0f / d : 0.0f;
     const __m256 idv = _mm256_set1_ps(id);
     const __m128 idv128 = _mm_set1_ps(id);
-    y[i].d = GGML_FP32_TO_FP16(d);
+    y[i].d = LIBGGUF_FP32_TO_FP16(d);
 
     for (size_t m = 0; m < 32; m += 8)
     {
-      tq1_0_pack_8_avx2(y[i].qs + m, xb + m, 32, idv, sign_mask, half, zero, one);
+      tq1_0_pack_8(y[i].qs + m, xb + m, 32, idv, sign_mask, half, zero, one);
     }
     for (size_t m = 0; m < 16; m += 8)
     {
-      tq1_0_pack_8_avx2(y[i].qs + 32 + m, xb + 160 + m, 16, idv, sign_mask, half, zero, one);
+      tq1_0_pack_8(y[i].qs + 32 + m, xb + 160 + m, 16, idv, sign_mask, half, zero, one);
     }
-    tq1_0_pack_high4_avx2(y[i].qh, xb + 240, idv128, sign_mask128, half128, zero128, one128);
+    tq1_0_pack_high4(y[i].qh, xb + 240, idv128, sign_mask128, half128, zero128, one128);
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+size_t quantize_tq1_0(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+{
+  (void)quant_weights; // not used
+  const size_t row_size = libgguf_row_size(GGML_TYPE_TQ1_0, n_per_row);
+  quantize_block_tq1_0(src, (block_tq1_0 *)dst, (int64_t)nrow * n_per_row);
+  return nrow * row_size;
+}
+

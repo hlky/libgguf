@@ -1,11 +1,11 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/dequantize/kernels.h"
+#include "quantize/iq_tables.h"
 
-#if defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__)
+
 #include <emmintrin.h>
-#define LIBGGUF_BUILD_SSE2 1
-#endif
 
-static inline void libgguf_q4_k_store16_sse2(float *RESTRICT y, __m128i q8, __m128 d, __m128 m)
+static inline void libgguf_q4_k_store16(float *LIBGGUF_RESTRICT y, __m128i q8, __m128 d, __m128 m)
 {
   const __m128i zero = _mm_setzero_si128();
   const __m128i q16a = _mm_unpacklo_epi8(q8, zero);
@@ -20,9 +20,8 @@ static inline void libgguf_q4_k_store16_sse2(float *RESTRICT y, __m128i q8, __m1
   _mm_storeu_ps(y + 12, _mm_sub_ps(_mm_mul_ps(_mm_cvtepi32_ps(q32d), d), m));
 }
 
-extern "C" void dequantize_row_q4_K_sse2(const block_q4_K *RESTRICT x, float *RESTRICT y, int64_t k)
+extern "C" void dequantize_block_q4_k(const block_q4_K *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_SSE2)
   assert(k % QK_K == 0);
   static_assert(QK_K == 256, "QK_K must be 256");
 
@@ -31,10 +30,10 @@ extern "C" void dequantize_row_q4_K_sse2(const block_q4_K *RESTRICT x, float *RE
 
   for (int i = 0; i < nb; ++i)
   {
-    const float d_all = GGML_FP16_TO_FP32(x[i].d);
-    const float min_all = GGML_FP16_TO_FP32(x[i].dmin);
-    const uint8_t *RESTRICT q = x[i].qs;
-    float *RESTRICT yb = y + i * QK_K;
+    const float d_all = LIBGGUF_FP16_TO_FP32(x[i].d);
+    const float min_all = LIBGGUF_FP16_TO_FP32(x[i].dmin);
+    const uint8_t *LIBGGUF_RESTRICT q = x[i].qs;
+    float *LIBGGUF_RESTRICT yb = y + i * QK_K;
 
     int is = 0;
     for (int j = 0; j < QK_K; j += 64)
@@ -54,19 +53,20 @@ extern "C" void dequantize_row_q4_K_sse2(const block_q4_K *RESTRICT x, float *RE
       const __m128i hi0 = _mm_and_si128(_mm_srli_epi16(packed0, 4), low_mask);
       const __m128i hi1 = _mm_and_si128(_mm_srli_epi16(packed1, 4), low_mask);
 
-      libgguf_q4_k_store16_sse2(yb + j + 0, lo0, d1, m1);
-      libgguf_q4_k_store16_sse2(yb + j + 16, lo1, d1, m1);
-      libgguf_q4_k_store16_sse2(yb + j + 32, hi0, d2, m2);
-      libgguf_q4_k_store16_sse2(yb + j + 48, hi1, d2, m2);
+      libgguf_q4_k_store16(yb + j + 0, lo0, d1, m1);
+      libgguf_q4_k_store16(yb + j + 16, lo1, d1, m1);
+      libgguf_q4_k_store16(yb + j + 32, hi0, d2, m2);
+      libgguf_q4_k_store16(yb + j + 48, hi1, d2, m2);
 
       q += 32;
       is += 2;
     }
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+void dequantize_q4_k(const block_q4_K *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  dequantize_block_q4_k(x, y, k);
+}
+

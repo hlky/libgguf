@@ -1,7 +1,13 @@
-#include <libgguf/cpu/common.h>
-#include <libgguf/cpu/iq_tables.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
 
-static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy, int64_t n, const float *RESTRICT quant_weights)
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+
+void quantize_block_iq2_xxs(const float *LIBGGUF_RESTRICT x, void *LIBGGUF_RESTRICT vy, int64_t n, const float *LIBGGUF_RESTRICT quant_weights)
 {
 
   const int gindex = iq2_data_index(GGML_TYPE_IQ2_XXS);
@@ -11,9 +17,9 @@ static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy
   const uint16_t *kneighbors_q2xs = iq2_data[gindex].neighbours;
 
   assert(quant_weights && "missing quantization weights");
-  assert(kgrid_q2xs && "forgot to call ggml_quantize_init()?");
-  assert(kmap_q2xs && "forgot to call ggml_quantize_init()?");
-  assert(kneighbors_q2xs && "forgot to call ggml_quantize_init()?");
+  assert(kgrid_q2xs && "IQ tables are not initialized");
+  assert(kmap_q2xs && "IQ tables are not initialized");
+  assert(kneighbors_q2xs && "IQ tables are not initialized");
   assert(n % QK_K == 0);
 
   const int kMaxQ = 3;
@@ -34,7 +40,7 @@ static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy
   for (int ibl = 0; ibl < nbl; ++ibl)
   {
 
-    y[ibl].d = GGML_FP32_TO_FP16(0.f);
+    y[ibl].d = LIBGGUF_FP32_TO_FP16(0.f);
     memset(q2, 0, QK_K / 4);
 
     float max_scale = 0;
@@ -88,7 +94,7 @@ static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy
       }
       float max = xval[0];
       for (int i = 1; i < 32; ++i)
-        max = MAX(max, xval[i]);
+        max = libgguf_max(max, xval[i]);
       if (max < GROUP_MAX_EPS)
       {
         scales[ib] = 0;
@@ -113,7 +119,7 @@ static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy
           for (int i = 0; i < 8; ++i)
           {
             int l = nearest_int(0.5f * (id * xval[8 * k + i] - 1));
-            Laux[8 * k + i] = MAX(0, MIN(kMaxQ - 1, l));
+            Laux[8 * k + i] = libgguf_max(0, libgguf_min(kMaxQ - 1, l));
           }
           uint16_t u = 0;
           for (int i = 0; i < 8; ++i)
@@ -149,7 +155,7 @@ static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy
           for (int i = 0; i < 8; ++i)
           {
             int l = nearest_int(0.5f * (id * xval[8 * k + i] - 1));
-            l = MAX(0, MIN(kMaxQ - 1, l));
+            l = libgguf_max(0, libgguf_min(kMaxQ - 1, l));
             u |= (l << 2 * i);
           }
           int grid_index = kmap_q2xs[u];
@@ -201,7 +207,7 @@ static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy
       }
       assert(scale >= 0);
       scales[ib] = scale;
-      max_scale = MAX(max_scale, scale);
+      max_scale = libgguf_max(max_scale, scale);
     }
 
     if (!max_scale)
@@ -211,28 +217,30 @@ static void quantize_row_iq2_xxs_impl(const float *RESTRICT x, void *RESTRICT vy
     }
 
     float d = max_scale / 31;
-    y[ibl].d = GGML_FP32_TO_FP16(d);
+    y[ibl].d = LIBGGUF_FP32_TO_FP16(d);
     float id = 1 / d;
     for (int ib = 0; ib < QK_K / 32; ++ib)
     {
       int l = nearest_int(0.5f * (id * scales[ib] - 1));
-      l = MAX(0, MIN(15, l));
+      l = libgguf_max(0, libgguf_min(15, l));
       q2[2 * ib + 1] |= ((uint32_t)l << 28);
     }
     memcpy(y[ibl].qs, q2, QK_K / 4);
   }
 }
 
-size_t quantize_iq2_xxs(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+
+size_t quantize_iq2_xxs(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
 {
   assert(n_per_row % QK_K == 0);
   int64_t nblock = n_per_row / QK_K;
   char *qrow = (char *)dst;
   for (int64_t row = 0; row < nrow; ++row)
   {
-    quantize_row_iq2_xxs_impl(src, qrow, n_per_row, quant_weights);
+    quantize_block_iq2_xxs(src, qrow, n_per_row, quant_weights);
     src += n_per_row;
     qrow += nblock * sizeof(block_iq2_xxs);
   }
   return nrow * nblock * sizeof(block_iq2_xxs);
 }
+

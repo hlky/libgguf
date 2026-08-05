@@ -1,16 +1,12 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/dequantize/kernels.h"
+#include "quantize/iq_tables.h"
 
-#if defined(_MSC_VER)
-#include <smmintrin.h>
-#define LIBGGUF_BUILD_SSE4_1 1
-#elif defined(__SSE4_1__)
-#include <smmintrin.h>
-#define LIBGGUF_BUILD_SSE4_1 1
-#endif
 
-extern "C" void dequantize_row_q4_0_sse4_1(const block_q4_0 *RESTRICT x, float *RESTRICT y, int64_t k)
+#include <smmintrin.h>
+
+extern "C" void dequantize_block_q4_0(const block_q4_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_SSE4_1)
   assert(k % QK4_0 == 0);
   static_assert(QK4_0 == 32, "QK4_0 must be 32");
 
@@ -20,7 +16,7 @@ extern "C" void dequantize_row_q4_0_sse4_1(const block_q4_0 *RESTRICT x, float *
 
   for (int i = 0; i < nb; ++i)
   {
-    const __m128 scale = _mm_set1_ps(GGML_FP16_TO_FP32(x[i].d));
+    const __m128 scale = _mm_set1_ps(LIBGGUF_FP16_TO_FP32(x[i].d));
     const __m128i packed = _mm_loadu_si128((const __m128i *)x[i].qs);
     const __m128i lo8 = _mm_and_si128(packed, low_mask);
     const __m128i hi8 = _mm_and_si128(_mm_srli_epi16(packed, 4), low_mask);
@@ -50,10 +46,11 @@ extern "C" void dequantize_row_q4_0_sse4_1(const block_q4_0 *RESTRICT x, float *
     _mm_storeu_ps(yb + 24, _mm_mul_ps(_mm_cvtepi32_ps(hi32c), scale));
     _mm_storeu_ps(yb + 28, _mm_mul_ps(_mm_cvtepi32_ps(hi32d), scale));
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+void dequantize_q4_0(const block_q4_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  dequantize_block_q4_0(x, y, k);
+}
+

@@ -1,12 +1,12 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
 
-#if defined(__AVX2__)
+
 #include <immintrin.h>
-#define LIBGGUF_BUILD_AVX2 1
-#endif
 
-#if defined(LIBGGUF_BUILD_AVX2)
-static inline float q4_0_signed_absmax_avx2(const float *RESTRICT x)
+static inline float q4_0_signed_absmax(const float *LIBGGUF_RESTRICT x)
 {
   const __m256 sign_mask = _mm256_set1_ps(-0.0f);
   const __m256 step = _mm256_set1_ps(8.0f);
@@ -48,17 +48,15 @@ static inline float q4_0_signed_absmax_avx2(const float *RESTRICT x)
   return max;
 }
 
-static inline __m256i q4_0_quantize_8_avx2(const float *RESTRICT x, __m256 id, __m256 offset, __m256i max_q)
+static inline __m256i q4_0_quantize_8(const float *LIBGGUF_RESTRICT x, __m256 id, __m256 offset, __m256i max_q)
 {
   const __m256 scaled = _mm256_add_ps(_mm256_mul_ps(_mm256_loadu_ps(x), id), offset);
   const __m256i q = _mm256_cvttps_epi32(scaled);
   return _mm256_min_epi32(q, max_q);
 }
-#endif
 
-extern "C" void quantize_row_q4_0_avx2(const float *RESTRICT x, block_q4_0 *RESTRICT y, int64_t k)
+extern "C" void quantize_block_q4_0(const float *LIBGGUF_RESTRICT x, block_q4_0 *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_AVX2)
   assert(k % QK4_0 == 0);
   static_assert(QK4_0 == 32, "QK4_0 must be 32");
 
@@ -68,16 +66,16 @@ extern "C" void quantize_row_q4_0_avx2(const float *RESTRICT x, block_q4_0 *REST
   for (int i = 0; i < nb; ++i)
   {
     const float *xb = x + i * QK4_0;
-    const float max = q4_0_signed_absmax_avx2(xb);
+    const float max = q4_0_signed_absmax(xb);
     const float d = max / -8;
     const float id = d ? 1.0f / d : 0.0f;
     const __m256 idv = _mm256_set1_ps(id);
-    y[i].d = GGML_FP32_TO_FP16(d);
+    y[i].d = LIBGGUF_FP32_TO_FP16(d);
 
     for (int j = 0; j < QK4_0 / 2; j += 8)
     {
-      const __m256i lo32 = q4_0_quantize_8_avx2(xb + j, idv, offset, max_q);
-      const __m256i hi32 = q4_0_quantize_8_avx2(xb + QK4_0 / 2 + j, idv, offset, max_q);
+      const __m256i lo32 = q4_0_quantize_8(xb + j, idv, offset, max_q);
+      const __m256i hi32 = q4_0_quantize_8(xb + QK4_0 / 2 + j, idv, offset, max_q);
       const __m256i byte32 = _mm256_or_si256(lo32, _mm256_slli_epi32(hi32, 4));
       const __m256i packed16 = _mm256_packs_epi32(byte32, _mm256_setzero_si256());
       const __m256i packed8 = _mm256_packus_epi16(packed16, _mm256_setzero_si256());
@@ -87,10 +85,58 @@ extern "C" void quantize_row_q4_0_avx2(const float *RESTRICT x, block_q4_0 *REST
       memcpy(y[i].qs + j, &out, sizeof(out));
     }
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+static void quantize_weighted_q4_0(const float *LIBGGUF_RESTRICT x, block_q4_0 *LIBGGUF_RESTRICT y, int64_t n_per_row, const float *quant_weights)
+{
+  static_assert(QK4_0 == 32, "QK4_0 must be 32");
+
+  if (!quant_weights)
+  {
+    quantize_block_q4_0(x, y, n_per_row);
+    return;
+  }
+
+  float weight[QK4_0];
+  int8_t L[QK4_0];
+
+  float sum_x2 = 0;
+  for (int j = 0; j < n_per_row; ++j)
+    sum_x2 += x[j] * x[j];
+  float sigma2 = sum_x2 / n_per_row;
+
+  const int64_t nb = n_per_row / QK4_0;
+  for (int ib = 0; ib < nb; ++ib)
+  {
+    const float *xb = x + QK4_0 * ib;
+    const float *qw = quant_weights + QK4_0 * ib;
+    for (int j = 0; j < QK4_0; ++j)
+      weight[j] = qw[j] * sqrtf(sigma2 + xb[j] * xb[j]);
+    float d = make_qx_quants(QK4_0, 8, xb, L, 1, weight);
+    y[ib].d = LIBGGUF_FP32_TO_FP16(d);
+    for (int j = 0; j < 16; ++j)
+    {
+      y[ib].qs[j] = L[j] | (L[j + 16] << 4);
+    }
+  }
+}
+
+size_t quantize_q4_0(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+{
+  if (!quant_weights)
+  {
+    quantize_block_q4_0(src, (block_q4_0 *)dst, (int64_t)nrow * n_per_row);
+    return nrow * libgguf_row_size(GGML_TYPE_Q4_0, n_per_row);
+  }
+  size_t row_size = libgguf_row_size(GGML_TYPE_Q4_0, n_per_row);
+  char *qrow = (char *)dst;
+  for (int64_t row = 0; row < nrow; ++row)
+  {
+    quantize_weighted_q4_0(src, (block_q4_0 *)qrow, n_per_row, quant_weights);
+    src += n_per_row;
+    qrow += row_size;
+  }
+  return nrow * row_size;
+}
+

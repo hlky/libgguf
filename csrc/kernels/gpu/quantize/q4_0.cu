@@ -36,7 +36,7 @@ static __global__ void quantize_block_q4_0(const float * __restrict__ x, block_q
 }
 
 
-void quantize_launch_q4_0(
+void quantize_q4_0(
     const float * x,
     const float * quant_weights,
     void * y,

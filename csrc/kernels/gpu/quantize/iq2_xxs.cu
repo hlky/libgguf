@@ -1,8 +1,8 @@
 #include <libgguf/gpu/compat.h>
 
-#define GGUF_CUDA_USE_IQ2_GRID_LOOKUP
-#define GGUF_CUDA_USE_IQ2_NEIGHBOURS
-#define GGUF_CUDA_USE_IQ2_XXS_NEIGHBOURS
+#define LIBGGUF_GPU_USE_IQ2_GRID_LOOKUP
+#define LIBGGUF_GPU_USE_IQ2_NEIGHBOURS
+#define LIBGGUF_GPU_USE_IQ2_XXS_NEIGHBOURS
 #include <libgguf/gpu/quantize/common.cuh>
 #include <libgguf/gpu/quantize/kernels.h>
 
@@ -195,7 +195,7 @@ static __global__ void quantize_block_iq2_xxs(
 }
 
 
-void quantize_launch_iq2_xxs(
+void quantize_iq2_xxs(
     const float * x,
     const float * quant_weights,
     void * y,

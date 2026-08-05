@@ -1,21 +1,21 @@
-#include <libgguf/cpu/common.h>
-#include <libgguf/cpu/tables.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
 
-#if defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__)
+#include "kernels/cpu/common/tables.h"
+
 #include <emmintrin.h>
 #include <xmmintrin.h>
-#define LIBGGUF_BUILD_MXFP4_SSE2 1
-#endif
 
-#if defined(LIBGGUF_BUILD_MXFP4_SSE2)
-static inline float mxfp4_hmax_sse2(__m128 v)
+static inline float mxfp4_hmax(__m128 v)
 {
   v = _mm_max_ps(v, _mm_movehl_ps(v, v));
   v = _mm_max_ss(v, _mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)));
   return _mm_cvtss_f32(v);
 }
 
-static inline bool mxfp4_amax_sse2(const float *RESTRICT x, float *RESTRICT amax)
+static inline bool mxfp4_amax(const float *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT amax)
 {
   const __m128 abs_mask = _mm_castsi128_ps(_mm_set1_epi32(0x7fffffff));
   __m128 maxv = _mm_setzero_ps();
@@ -29,7 +29,7 @@ static inline bool mxfp4_amax_sse2(const float *RESTRICT x, float *RESTRICT amax
     maxv = _mm_max_ps(maxv, _mm_and_ps(v, abs_mask));
   }
 
-  const float m = mxfp4_hmax_sse2(maxv);
+  const float m = mxfp4_hmax(maxv);
   if (!std::isfinite(m))
   {
     return false;
@@ -38,7 +38,7 @@ static inline bool mxfp4_amax_sse2(const float *RESTRICT x, float *RESTRICT amax
   return true;
 }
 
-static inline __m128i mxfp4_indices4_sse2(const float *RESTRICT x, float d)
+static inline __m128i mxfp4_indices4(const float *LIBGGUF_RESTRICT x, float d)
 {
   const __m128 abs_mask = _mm_castsi128_ps(_mm_set1_epi32(0x7fffffff));
   const __m128 xv = _mm_loadu_ps(x);
@@ -60,50 +60,54 @@ static inline __m128i mxfp4_indices4_sse2(const float *RESTRICT x, float d)
   return _mm_packus_epi16(packed16, zero);
 }
 
-static inline void mxfp4_pack4_sse2(const float *RESTRICT lo_x, const float *RESTRICT hi_x, float d,
-                                    uint8_t *RESTRICT q)
+static inline void mxfp4_pack4(const float *LIBGGUF_RESTRICT lo_x, const float *LIBGGUF_RESTRICT hi_x, float d,
+                                    uint8_t *LIBGGUF_RESTRICT q)
 {
   const __m128i low_mask = _mm_set1_epi8(0x0F);
-  const __m128i lo = _mm_and_si128(mxfp4_indices4_sse2(lo_x, d), low_mask);
-  const __m128i hi = _mm_slli_epi16(_mm_and_si128(mxfp4_indices4_sse2(hi_x, d), low_mask), 4);
+  const __m128i lo = _mm_and_si128(mxfp4_indices4(lo_x, d), low_mask);
+  const __m128i hi = _mm_slli_epi16(_mm_and_si128(mxfp4_indices4(hi_x, d), low_mask), 4);
   const int packed = _mm_cvtsi128_si32(_mm_or_si128(lo, hi));
   memcpy(q, &packed, sizeof(packed));
 }
 
-static inline bool mxfp4_quantize_block_sse2(const float *RESTRICT x, block_mxfp4 *RESTRICT y)
+static inline bool mxfp4_quantize_block(const float *LIBGGUF_RESTRICT x, block_mxfp4 *LIBGGUF_RESTRICT y)
 {
   float amax = 0.0f;
-  if (!mxfp4_amax_sse2(x, &amax))
+  if (!mxfp4_amax(x, &amax))
   {
     return false;
   }
 
   const uint8_t e = amax > 0.0f ? (uint8_t)(floorf(log2f(amax)) - 2 + 127) : 0;
-  const float d = GGML_E8M0_TO_FP32_HALF(e);
+  const float d = LIBGGUF_E8M0_TO_FP32_HALF(e);
   y->e = e;
 
   for (int j = 0; j < QK_MXFP4 / 2; j += 4)
   {
-    mxfp4_pack4_sse2(x + j, x + QK_MXFP4 / 2 + j, d, y->qs + j);
+    mxfp4_pack4(x + j, x + QK_MXFP4 / 2 + j, d, y->qs + j);
   }
   return true;
 }
-#endif
 
-extern "C" void quantize_row_mxfp4_sse2(const float *RESTRICT x, block_mxfp4 *RESTRICT y, int64_t k)
+extern "C" void quantize_block_mxfp4(const float *LIBGGUF_RESTRICT x, block_mxfp4 *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_MXFP4_SSE2)
   assert(k % QK_MXFP4 == 0);
   const int64_t nb = k / QK_MXFP4;
   for (int64_t i = 0; i < nb; ++i)
   {
-    if (!mxfp4_quantize_block_sse2(x + i * QK_MXFP4, y + i))
+    if (!mxfp4_quantize_block(x + i * QK_MXFP4, y + i))
     {
-      quantize_row_mxfp4(x, y, k);
+      quantize_block_mxfp4(x, y, k);
       return;
     }
   }
-#else
-  quantize_row_mxfp4(x, y, k);
-#endif
 }
+
+
+size_t quantize_mxfp4(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+{
+  LIBGGUF_UNUSED(quant_weights);
+  quantize_block_mxfp4(src, (block_mxfp4 *)dst, (int64_t)nrow * n_per_row);
+  return nrow * libgguf_row_size(GGML_TYPE_MXFP4, n_per_row);
+}
+

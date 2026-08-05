@@ -6,16 +6,7 @@
 #include <libgguf/gpu/compat.h>
 #include <libgguf/gpu/types.h>
 
-void dequantize_row(
-    const void * x,
-    void * y,
-    int64_t type,
-    int k,
-    libgguf_gpu_dtype dtype,
-    StreamType stream
-);
-
-void dequantize_launch_q4_0(
+void dequantize_q4_0(
     const void * x,
     void * y,
     int k,
@@ -23,7 +14,7 @@ void dequantize_launch_q4_0(
     StreamType stream
 );
 
-void dequantize_launch_q4_1(
+void dequantize_q4_1(
     const void * x,
     void * y,
     int k,
@@ -31,7 +22,7 @@ void dequantize_launch_q4_1(
     StreamType stream
 );
 
-void dequantize_launch_q5_0(
+void dequantize_q5_0(
     const void * x,
     void * y,
     int k,
@@ -39,7 +30,7 @@ void dequantize_launch_q5_0(
     StreamType stream
 );
 
-void dequantize_launch_q5_1(
+void dequantize_q5_1(
     const void * x,
     void * y,
     int k,
@@ -47,7 +38,7 @@ void dequantize_launch_q5_1(
     StreamType stream
 );
 
-void dequantize_launch_q8_0(
+void dequantize_q8_0(
     const void * x,
     void * y,
     int k,
@@ -55,7 +46,7 @@ void dequantize_launch_q8_0(
     StreamType stream
 );
 
-void dequantize_launch_bf16(
+void dequantize_bf16(
     const void * x,
     void * y,
     int k,
@@ -63,7 +54,7 @@ void dequantize_launch_bf16(
     StreamType stream
 );
 
-void dequantize_launch_q1_0(
+void dequantize_q1_0(
     const void * x,
     void * y,
     int k,
@@ -71,7 +62,7 @@ void dequantize_launch_q1_0(
     StreamType stream
 );
 
-void dequantize_launch_tq1_0(
+void dequantize_tq1_0(
     const void * x,
     void * y,
     int k,
@@ -79,7 +70,7 @@ void dequantize_launch_tq1_0(
     StreamType stream
 );
 
-void dequantize_launch_tq2_0(
+void dequantize_tq2_0(
     const void * x,
     void * y,
     int k,
@@ -87,7 +78,7 @@ void dequantize_launch_tq2_0(
     StreamType stream
 );
 
-void dequantize_launch_mxfp4(
+void dequantize_mxfp4(
     const void * x,
     void * y,
     int k,
@@ -95,7 +86,7 @@ void dequantize_launch_mxfp4(
     StreamType stream
 );
 
-void dequantize_launch_nvfp4(
+void dequantize_nvfp4(
     const void * x,
     void * y,
     int k,
@@ -103,7 +94,7 @@ void dequantize_launch_nvfp4(
     StreamType stream
 );
 
-void dequantize_launch_q2_k(
+void dequantize_q2_k(
     const void * x,
     void * y,
     int k,
@@ -111,7 +102,7 @@ void dequantize_launch_q2_k(
     StreamType stream
 );
 
-void dequantize_launch_q3_k(
+void dequantize_q3_k(
     const void * x,
     void * y,
     int k,
@@ -119,7 +110,7 @@ void dequantize_launch_q3_k(
     StreamType stream
 );
 
-void dequantize_launch_q4_k(
+void dequantize_q4_k(
     const void * x,
     void * y,
     int k,
@@ -127,7 +118,7 @@ void dequantize_launch_q4_k(
     StreamType stream
 );
 
-void dequantize_launch_q5_k(
+void dequantize_q5_k(
     const void * x,
     void * y,
     int k,
@@ -135,7 +126,7 @@ void dequantize_launch_q5_k(
     StreamType stream
 );
 
-void dequantize_launch_q6_k(
+void dequantize_q6_k(
     const void * x,
     void * y,
     int k,
@@ -143,7 +134,7 @@ void dequantize_launch_q6_k(
     StreamType stream
 );
 
-void dequantize_launch_iq2_xxs(
+void dequantize_iq2_xxs(
     const void * x,
     void * y,
     int k,
@@ -151,7 +142,7 @@ void dequantize_launch_iq2_xxs(
     StreamType stream
 );
 
-void dequantize_launch_iq2_xs(
+void dequantize_iq2_xs(
     const void * x,
     void * y,
     int k,
@@ -159,7 +150,7 @@ void dequantize_launch_iq2_xs(
     StreamType stream
 );
 
-void dequantize_launch_iq2_s(
+void dequantize_iq2_s(
     const void * x,
     void * y,
     int k,
@@ -167,7 +158,7 @@ void dequantize_launch_iq2_s(
     StreamType stream
 );
 
-void dequantize_launch_iq3_xxs(
+void dequantize_iq3_xxs(
     const void * x,
     void * y,
     int k,
@@ -175,7 +166,7 @@ void dequantize_launch_iq3_xxs(
     StreamType stream
 );
 
-void dequantize_launch_iq3_s(
+void dequantize_iq3_s(
     const void * x,
     void * y,
     int k,
@@ -183,7 +174,7 @@ void dequantize_launch_iq3_s(
     StreamType stream
 );
 
-void dequantize_launch_iq1_s(
+void dequantize_iq1_s(
     const void * x,
     void * y,
     int k,
@@ -191,7 +182,7 @@ void dequantize_launch_iq1_s(
     StreamType stream
 );
 
-void dequantize_launch_iq1_m(
+void dequantize_iq1_m(
     const void * x,
     void * y,
     int k,
@@ -199,7 +190,7 @@ void dequantize_launch_iq1_m(
     StreamType stream
 );
 
-void dequantize_launch_iq4_nl(
+void dequantize_iq4_nl(
     const void * x,
     void * y,
     int k,
@@ -207,7 +198,7 @@ void dequantize_launch_iq4_nl(
     StreamType stream
 );
 
-void dequantize_launch_iq4_xs(
+void dequantize_iq4_xs(
     const void * x,
     void * y,
     int k,

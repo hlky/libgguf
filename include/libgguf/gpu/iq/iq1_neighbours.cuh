@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifdef GGUF_CUDA_USE_IQ1_NEIGHBOURS
+#ifdef LIBGGUF_GPU_USE_IQ1_NEIGHBOURS
 #define IQ1_GRID_LOOKUP_SIZE 65536
 
 static const __device__ short iq1s_grid_direct[IQ1_GRID_LOOKUP_SIZE] = {

@@ -3,7 +3,7 @@
 #include <libgguf/gpu/quantize/kernels.h>
 
 static __global__ void quantize_block_mxfp4_warp(const float * __restrict__ x, block_mxfp4 * __restrict__ y, int64_t n_blocks) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     const int warp = threadIdx.x >> 5;
     const int warps_per_cta = blockDim.x >> 5;
@@ -30,7 +30,7 @@ static __global__ void quantize_block_mxfp4_warp(const float * __restrict__ x, b
 }
 
 
-void quantize_launch_mxfp4(
+void quantize_mxfp4(
     const float * x,
     const float * quant_weights,
     void * y,

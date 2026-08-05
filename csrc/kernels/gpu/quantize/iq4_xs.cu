@@ -17,7 +17,7 @@ static __global__ void quantize_block_iq4_xs(const float * __restrict__ x, block
 }
 
 
-void quantize_launch_iq4_xs(
+void quantize_iq4_xs(
     const float * x,
     const float * quant_weights,
     void * y,

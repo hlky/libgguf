@@ -8,7 +8,7 @@ static __device__ __forceinline__ int tq_round_away(float v) {
 }
 
 static __global__ void quantize_block_tq1_0_warp(const float * __restrict__ x, block_tq1_0 * __restrict__ y, int64_t n_blocks) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     const int warp = threadIdx.x >> 5;
     const int warps_per_cta = blockDim.x >> 5;
@@ -63,7 +63,7 @@ static __global__ void quantize_block_tq1_0_warp(const float * __restrict__ x, b
 }
 
 
-void quantize_launch_tq1_0(
+void quantize_tq1_0(
     const float * x,
     const float * quant_weights,
     void * y,

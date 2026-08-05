@@ -2,7 +2,7 @@
 #include <libgguf/gpu/quantize/common.cuh>
 #include <libgguf/gpu/quantize/kernels.h>
 
-static __global__ void quantize_block_q2_K(const float * __restrict__ x, block_q2_K * __restrict__ y, int64_t n_blocks) {
+static __global__ void quantize_block_q2_k(const float * __restrict__ x, block_q2_K * __restrict__ y, int64_t n_blocks) {
     constexpr int blocks_per_warp = 2;
     const int warps_per_cta = blockDim.x >> 5;
     const int blocks_per_cta = warps_per_cta * blocks_per_warp;
@@ -101,7 +101,7 @@ static __global__ void quantize_block_q2_K(const float * __restrict__ x, block_q
 }
 
 
-void quantize_launch_q2_k(
+void quantize_q2_k(
     const float * x,
     const float * quant_weights,
     void * y,
@@ -116,5 +116,5 @@ void quantize_launch_q2_k(
     const int64_t n_blocks = k / QK_K;
     const int blocks = (int)((n_blocks + q2_k_blocks_per_cta - 1) / q2_k_blocks_per_cta);
     const size_t smem = q2_k_blocks_per_cta * (QK_K * sizeof(uint8_t) + 2 * (QK_K / 16) * sizeof(float));
-    quantize_block_q2_K<<<blocks, q2_k_threads, smem, stream>>>(x, (block_q2_K *)y, n_blocks);
+    quantize_block_q2_k<<<blocks, q2_k_threads, smem, stream>>>(x, (block_q2_K *)y, n_blocks);
 }

@@ -1,12 +1,12 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
+#include <libgguf/libgguf.h>
 
-#if defined(__AVX2__)
+
 #include <immintrin.h>
-#define LIBGGUF_BUILD_AVX2 1
-#endif
 
-#if defined(LIBGGUF_BUILD_AVX2)
-static inline float q8_0_hmax_ps_avx2(__m256 v)
+static inline float q8_0_hmax_ps(__m256 v)
 {
   __m128 maxv = _mm_max_ps(_mm256_castps256_ps128(v), _mm256_extractf128_ps(v, 1));
   __m128 shuf = _mm_shuffle_ps(maxv, maxv, _MM_SHUFFLE(2, 3, 0, 1));
@@ -16,7 +16,7 @@ static inline float q8_0_hmax_ps_avx2(__m256 v)
   return _mm_cvtss_f32(maxv);
 }
 
-static inline __m256i q8_0_round_away_from_zero_avx2(
+static inline __m256i q8_0_round_away_from_zero(
     __m256 v,
     __m256 id,
     __m256 sign_mask,
@@ -31,11 +31,9 @@ static inline __m256i q8_0_round_away_from_zero_avx2(
   const __m256i sign_i = _mm256_castps_si256(negative);
   return _mm256_sub_epi32(_mm256_xor_si256(abs_i, sign_i), sign_i);
 }
-#endif
 
-extern "C" void quantize_row_q8_0_avx2(const float *RESTRICT x, block_q8_0 *RESTRICT y, int64_t k)
+extern "C" void quantize_block_q8_0(const float *LIBGGUF_RESTRICT x, block_q8_0 *LIBGGUF_RESTRICT y, int64_t k)
 {
-#if defined(LIBGGUF_BUILD_AVX2)
   assert(k % QK8_0 == 0);
   static_assert(QK8_0 == 32, "QK8_0 must be 32");
 
@@ -54,17 +52,17 @@ extern "C" void quantize_row_q8_0_avx2(const float *RESTRICT x, block_q8_0 *REST
       maxv = _mm256_max_ps(maxv, _mm256_andnot_ps(sign_mask, v));
     }
 
-    const float amax = q8_0_hmax_ps_avx2(maxv);
+    const float amax = q8_0_hmax_ps(maxv);
     const float d = amax / ((1 << 7) - 1);
     const float id = d ? 1.0f / d : 0.0f;
     const __m256 idv = _mm256_set1_ps(id);
 
-    y[i].d = GGML_FP32_TO_FP16(d);
+    y[i].d = LIBGGUF_FP32_TO_FP16(d);
 
-    const __m256i q0 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 0), idv, sign_mask, half, zero);
-    const __m256i q1 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 8), idv, sign_mask, half, zero);
-    const __m256i q2 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 16), idv, sign_mask, half, zero);
-    const __m256i q3 = q8_0_round_away_from_zero_avx2(_mm256_loadu_ps(xb + 24), idv, sign_mask, half, zero);
+    const __m256i q0 = q8_0_round_away_from_zero(_mm256_loadu_ps(xb + 0), idv, sign_mask, half, zero);
+    const __m256i q1 = q8_0_round_away_from_zero(_mm256_loadu_ps(xb + 8), idv, sign_mask, half, zero);
+    const __m256i q2 = q8_0_round_away_from_zero(_mm256_loadu_ps(xb + 16), idv, sign_mask, half, zero);
+    const __m256i q3 = q8_0_round_away_from_zero(_mm256_loadu_ps(xb + 24), idv, sign_mask, half, zero);
 
     const __m256i q01_i16 = _mm256_packs_epi32(q0, q1);
     const __m256i q23_i16 = _mm256_packs_epi32(q2, q3);
@@ -72,10 +70,13 @@ extern "C" void quantize_row_q8_0_avx2(const float *RESTRICT x, block_q8_0 *REST
     const __m256i packed = _mm256_permutevar8x32_epi32(packed_lanes, pack_order);
     _mm256_storeu_si256((__m256i *)y[i].qs, packed);
   }
-#else
-  GGML_UNUSED(x);
-  GGML_UNUSED(y);
-  GGML_UNUSED(k);
-  GGML_UNREACHABLE();
-#endif
 }
+
+
+size_t quantize_q8_0(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+{
+  (void)quant_weights; // not used
+  quantize_block_q8_0(src, (block_q8_0 *)dst, (int64_t)nrow * n_per_row);
+  return nrow * libgguf_row_size(GGML_TYPE_Q8_0, n_per_row);
+}
+

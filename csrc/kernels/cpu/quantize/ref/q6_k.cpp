@@ -1,22 +1,10 @@
-#include <libgguf/cpu/common.h>
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/quantize/kernels.h"
+#include "quantize/iq_tables.h"
 #include <libgguf/libgguf.h>
-#include <libgguf/cpu/backend.h>
 
-#include <cstring>
 
-typedef void (*libgguf_q6_k_kernel_fn)(const float *RESTRICT, block_q6_K *RESTRICT, int64_t);
-
-struct libgguf_q6_k_selection
-{
-  const char *backend;
-  libgguf_q6_k_kernel_fn kernel;
-};
-
-#if !LIBGGUF_CPU_BACKEND_REF
-extern "C" void LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_q6_K)(const float *RESTRICT x, block_q6_K *RESTRICT y, int64_t k);
-#endif
-
-void quantize_row_q6_K(const float *RESTRICT x, block_q6_K *RESTRICT y, int64_t k)
+void quantize_block_q6_k(const float *LIBGGUF_RESTRICT x, block_q6_K *LIBGGUF_RESTRICT y, int64_t k)
 {
   assert(k % QK_K == 0);
   const int64_t nb = k / QK_K;
@@ -47,21 +35,21 @@ void quantize_row_q6_K(const float *RESTRICT x, block_q6_K *RESTRICT y, int64_t 
     if (max_abs_scale < GROUP_MAX_EPS)
     {
       memset(&y[i], 0, sizeof(block_q6_K));
-      y[i].d = GGML_FP32_TO_FP16(0.f);
+      y[i].d = LIBGGUF_FP32_TO_FP16(0.f);
       x += QK_K;
       continue;
     }
 
     float iscale = -128.f / max_scale;
-    y[i].d = GGML_FP32_TO_FP16(1 / iscale);
+    y[i].d = LIBGGUF_FP32_TO_FP16(1 / iscale);
     for (int ib = 0; ib < QK_K / 16; ++ib)
     {
-      y[i].scales[ib] = MIN(127, nearest_int(iscale * scales[ib]));
+      y[i].scales[ib] = libgguf_min(127, nearest_int(iscale * scales[ib]));
     }
 
     for (int j = 0; j < QK_K / 16; ++j)
     {
-      float d = GGML_FP16_TO_FP32(y[i].d) * y[i].scales[j];
+      float d = LIBGGUF_FP16_TO_FP32(y[i].d) * y[i].scales[j];
       if (!d)
       {
         continue;
@@ -69,13 +57,13 @@ void quantize_row_q6_K(const float *RESTRICT x, block_q6_K *RESTRICT y, int64_t 
       for (int ii = 0; ii < 16; ++ii)
       {
         int l = nearest_int(x[16 * j + ii] / d);
-        l = MAX(-32, MIN(31, l));
+        l = libgguf_max(-32, libgguf_min(31, l));
         L[16 * j + ii] = l + 32;
       }
     }
 
-    uint8_t *RESTRICT ql = y[i].ql;
-    uint8_t *RESTRICT qh = y[i].qh;
+    uint8_t *LIBGGUF_RESTRICT ql = y[i].ql;
+    uint8_t *LIBGGUF_RESTRICT qh = y[i].qh;
     for (int j = 0; j < QK_K; j += 128)
     {
       for (int l = 0; l < 32; ++l)
@@ -96,68 +84,8 @@ void quantize_row_q6_K(const float *RESTRICT x, block_q6_K *RESTRICT y, int64_t 
   }
 }
 
-static libgguf_q6_k_kernel_fn libgguf_q6_k_kernel_for_backend(const char *backend)
-{
-  if (libgguf_cpu_backend_is_ref_request(backend))
-  {
-    return quantize_row_q6_K;
-  }
-#if !LIBGGUF_CPU_BACKEND_REF
-  if (libgguf_cpu_backend_is_compiled_request(backend))
-  {
-    return LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_q6_K);
-  }
-#endif
-  return nullptr;
-}
 
-static libgguf_q6_k_selection libgguf_q6_k_select_kernel()
-{
-#if LIBGGUF_CPU_BACKEND_REF
-  return {LIBGGUF_CPU_BACKEND_NAME, quantize_row_q6_K};
-#else
-  return {LIBGGUF_CPU_BACKEND_NAME, LIBGGUF_CPU_BACKEND_SYMBOL(quantize_row_q6_K)};
-#endif
-}
-
-static const libgguf_q6_k_selection &libgguf_q6_k_selected()
-{
-  static const libgguf_q6_k_selection selected = libgguf_q6_k_select_kernel();
-  return selected;
-}
-
-static libgguf_q6_k_kernel_fn libgguf_q6_k_kernel()
-{
-  return libgguf_q6_k_selected().kernel;
-}
-
-extern "C" const char *libgguf_q6_k_backend(void)
-{
-  return libgguf_q6_k_selected().backend;
-}
-
-extern "C" int libgguf_q6_k_cpu_supports_backend(const char *backend)
-{
-  return libgguf_cpu_backend_supports_request(backend) ? 1 : 0;
-}
-
-extern "C" size_t libgguf_quantize_q6_k_for_backend(
-    const char *backend,
-    const float *RESTRICT src,
-    void *RESTRICT dst,
-    int64_t nrows,
-    int64_t n_per_row)
-{
-  libgguf_q6_k_kernel_fn kernel = libgguf_q6_k_kernel_for_backend(backend);
-  if (!kernel)
-  {
-    return 0;
-  }
-  kernel(src, (block_q6_K *)dst, (int64_t)nrows * n_per_row);
-  return nrows * libgguf_row_size(GGML_TYPE_Q6_K, n_per_row);
-}
-
-static void quantize_row_q6_K_impl(const float *RESTRICT x, block_q6_K *RESTRICT y, int64_t n_per_row, const float *quant_weights)
+static void quantize_weighted_q6_K(const float *LIBGGUF_RESTRICT x, block_q6_K *LIBGGUF_RESTRICT y, int64_t n_per_row, const float *quant_weights)
 {
   assert(n_per_row % QK_K == 0);
   const int64_t nb = n_per_row / QK_K;
@@ -204,21 +132,21 @@ static void quantize_row_q6_K_impl(const float *RESTRICT x, block_q6_K *RESTRICT
     if (max_abs_scale < GROUP_MAX_EPS)
     {
       memset(&y[i], 0, sizeof(block_q6_K));
-      y[i].d = GGML_FP32_TO_FP16(0.f);
+      y[i].d = LIBGGUF_FP32_TO_FP16(0.f);
       x += QK_K;
       continue;
     }
 
     float iscale = -128.f / max_scale;
-    y[i].d = GGML_FP32_TO_FP16(1 / iscale);
+    y[i].d = LIBGGUF_FP32_TO_FP16(1 / iscale);
     for (int ib = 0; ib < QK_K / 16; ++ib)
     {
-      y[i].scales[ib] = MIN(127, nearest_int(iscale * scales[ib]));
+      y[i].scales[ib] = libgguf_min(127, nearest_int(iscale * scales[ib]));
     }
 
     for (int j = 0; j < QK_K / 16; ++j)
     {
-      float d = GGML_FP16_TO_FP32(y[i].d) * y[i].scales[j];
+      float d = LIBGGUF_FP16_TO_FP32(y[i].d) * y[i].scales[j];
       if (!d)
       {
         continue;
@@ -226,13 +154,13 @@ static void quantize_row_q6_K_impl(const float *RESTRICT x, block_q6_K *RESTRICT
       for (int ii = 0; ii < 16; ++ii)
       {
         int l = nearest_int(x[16 * j + ii] / d);
-        l = MAX(-32, MIN(31, l));
+        l = libgguf_max(-32, libgguf_min(31, l));
         L[16 * j + ii] = l + 32;
       }
     }
 
-    uint8_t *RESTRICT ql = y[i].ql;
-    uint8_t *RESTRICT qh = y[i].qh;
+    uint8_t *LIBGGUF_RESTRICT ql = y[i].ql;
+    uint8_t *LIBGGUF_RESTRICT qh = y[i].qh;
     for (int j = 0; j < QK_K; j += 128)
     {
       for (int l = 0; l < 32; ++l)
@@ -253,22 +181,23 @@ static void quantize_row_q6_K_impl(const float *RESTRICT x, block_q6_K *RESTRICT
   }
 }
 
-size_t quantize_q6_K(const float *RESTRICT src, void *RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
+size_t quantize_q6_k(const float *LIBGGUF_RESTRICT src, void *LIBGGUF_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float *quant_weights)
 {
   size_t row_size = libgguf_row_size(GGML_TYPE_Q6_K, n_per_row);
   if (!quant_weights)
   {
-    libgguf_q6_k_kernel()(src, (block_q6_K *)dst, (int64_t)nrow * n_per_row);
+    quantize_block_q6_k(src, (block_q6_K *)dst, (int64_t)nrow * n_per_row);
   }
   else
   {
     char *qrow = (char *)dst;
     for (int64_t row = 0; row < nrow; ++row)
     {
-      quantize_row_q6_K_impl(src, (block_q6_K *)qrow, n_per_row, quant_weights);
+      quantize_weighted_q6_K(src, (block_q6_K *)qrow, n_per_row, quant_weights);
       src += n_per_row;
       qrow += row_size;
     }
   }
   return nrow * row_size;
 }
+

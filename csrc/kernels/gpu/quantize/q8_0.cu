@@ -13,7 +13,7 @@ static __global__ void quantize_block_q8_0_warp(const float *__restrict__ x, blo
         return;
     }
 
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     const float v = x[ib * QK8_0 + lane];
     const float amax = __shfl_sync(mask, warp_reduce_max(fabsf(v)), 0);
     const float d = __fdiv_rn(amax, 127.0f);
@@ -25,7 +25,7 @@ static __global__ void quantize_block_q8_0_warp(const float *__restrict__ x, blo
     y[ib].qs[lane] = (int8_t)roundf(__fmul_rn(v, id));
 }
 
-void quantize_launch_q8_0(
+void quantize_q8_0(
     const float *x,
     const float *quant_weights,
     void *y,

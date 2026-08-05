@@ -6,7 +6,7 @@
 #include <libgguf/gpu/types.h>
 #include <libgguf/formats.h>
 
-#define CUDA_DEQUANTIZE_BLOCK_SIZE 256
+#define LIBGGUF_GPU_DEQUANTIZE_BLOCK_SIZE 256
 
 static __device__ __forceinline__ half load_half(ggml_half value) {
     return __ushort_as_half(value);
@@ -63,10 +63,9 @@ static __device__ __forceinline__ half high_half(ggml_half2 value) {
 
 typedef float dfloat;
 typedef float2 dfloat2;
-typedef void (*dequantize_kernel_t)(const void * vx, const int ib, const int iqs, dfloat2 & v);
 
 template<typename dst_t>
-using to_cuda_ggml_t = void (*)(const void * __restrict__ x, dst_t * __restrict__ y, int k, StreamType stream);
+using libgguf_gpu_dequantize_fn = void (*)(const void * __restrict__ x, dst_t * __restrict__ y, int k, StreamType stream);
 
 template<typename dst_t>
 static __device__ __forceinline__ dst_t convert_from_half(half val) {

@@ -3,7 +3,7 @@
 #include <libgguf/gpu/quantize/kernels.h>
 
 static __global__ void quantize_block_q5_1_warp(const float * __restrict__ x, block_q5_1 * __restrict__ y, int64_t n_blocks) {
-    constexpr unsigned mask = 0xffffffffu;
+    const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     const int warp = threadIdx.x >> 5;
     const int warps_per_block = blockDim.x >> 5;
@@ -36,7 +36,7 @@ static __global__ void quantize_block_q5_1_warp(const float * __restrict__ x, bl
 }
 
 
-void quantize_launch_q5_1(
+void quantize_q5_1(
     const float * x,
     const float * quant_weights,
     void * y,
