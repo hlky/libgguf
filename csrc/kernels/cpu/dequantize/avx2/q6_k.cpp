@@ -1,0 +1,62 @@
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/dequantize/kernels.h"
+#include "quantize/iq_tables.h"
+
+
+#include <immintrin.h>
+
+static inline void libgguf_q6_k_store16(float *LIBGGUF_RESTRICT y, __m128i q8, __m256 d)
+{
+  const __m256 f0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(q8));
+  const __m256 f1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(q8, 8)));
+  _mm256_storeu_ps(y + 0, _mm256_mul_ps(f0, d));
+  _mm256_storeu_ps(y + 8, _mm256_mul_ps(f1, d));
+}
+
+static inline __m128i libgguf_q6_k_vals(const uint8_t *LIBGGUF_RESTRICT ql, const uint8_t *LIBGGUF_RESTRICT qh, int ql_shift, int qh_shift)
+{
+  const __m128i low_mask = _mm_set1_epi8(0x0f);
+  const __m128i high_mask = _mm_set1_epi8(0x30);
+  const __m128i bias = _mm_set1_epi8(32);
+  const __m128i l = ql_shift == 0 ? _mm_and_si128(_mm_loadu_si128((const __m128i *)ql), low_mask) : _mm_and_si128(_mm_srli_epi16(_mm_loadu_si128((const __m128i *)ql), 4), low_mask);
+  const __m128i h = _mm_and_si128(_mm_slli_epi16(_mm_srli_epi16(_mm_loadu_si128((const __m128i *)qh), qh_shift), 4), high_mask);
+  return _mm_sub_epi8(_mm_or_si128(l, h), bias);
+}
+
+extern "C" void dequantize_block_q6_k(const block_q6_K *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  assert(k % QK_K == 0);
+  static_assert(QK_K == 256, "QK_K must be 256");
+
+  const int nb = (int)(k / QK_K);
+  for (int i = 0; i < nb; ++i)
+  {
+    const float d_all = LIBGGUF_FP16_TO_FP32(x[i].d);
+    const uint8_t *LIBGGUF_RESTRICT ql = x[i].ql;
+    const uint8_t *LIBGGUF_RESTRICT qh = x[i].qh;
+    const int8_t *LIBGGUF_RESTRICT sc = x[i].scales;
+    float *LIBGGUF_RESTRICT yb = y + i * QK_K;
+
+    for (int n = 0; n < QK_K; n += 128)
+    {
+      for (int l = 0; l < 32; l += 16)
+      {
+        const int is = l / 16;
+        libgguf_q6_k_store16(yb + n + l + 0, libgguf_q6_k_vals(ql + l + 0, qh + l, 0, 0), _mm256_set1_ps(d_all * (float)sc[is + 0]));
+        libgguf_q6_k_store16(yb + n + l + 32, libgguf_q6_k_vals(ql + l + 32, qh + l, 0, 2), _mm256_set1_ps(d_all * (float)sc[is + 2]));
+        libgguf_q6_k_store16(yb + n + l + 64, libgguf_q6_k_vals(ql + l + 0, qh + l, 4, 4), _mm256_set1_ps(d_all * (float)sc[is + 4]));
+        libgguf_q6_k_store16(yb + n + l + 96, libgguf_q6_k_vals(ql + l + 32, qh + l, 4, 6), _mm256_set1_ps(d_all * (float)sc[is + 6]));
+      }
+      ql += 64;
+      qh += 32;
+      sc += 8;
+    }
+  }
+}
+
+
+void dequantize_q6_k(const block_q6_K *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  dequantize_block_q6_k(x, y, k);
+}
+

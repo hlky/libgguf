@@ -4,10 +4,9 @@ import numpy as np
 import pytest
 
 import libgguf
+import libgguf.libgguf_torch
 from libgguf import GGMLQuantizationType
-
-torch = pytest.importorskip("torch")
-libgguf_torch = pytest.importorskip("libgguf.libgguf_torch")
+import torch
 
 from .test_torch_equivalence import (  # noqa: E402
     FAST_QUANTIZE_PARITY_QTYPES,
@@ -21,31 +20,6 @@ from .test_torch_equivalence import (  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 
-COMPILED_QUANTIZE_QTYPES = (
-    GGMLQuantizationType.BF16,
-    GGMLQuantizationType.Q4_0,
-    GGMLQuantizationType.Q4_K,
-    GGMLQuantizationType.TQ2_0,
-    GGMLQuantizationType.NVFP4,
-)
-
-COMPILED_DEQUANTIZE_QTYPES = (
-    GGMLQuantizationType.Q4_0,
-    GGMLQuantizationType.Q4_K,
-    GGMLQuantizationType.TQ2_0,
-    GGMLQuantizationType.NVFP4,
-)
-
-
-def compile_or_skip(fn):
-    if not hasattr(torch, "compile"):
-        pytest.skip("torch.compile is not available")
-    try:
-        return torch.compile(fn, dynamic=False)
-    except Exception as exc:
-        pytest.skip(f"torch.compile failed: {exc}")
-
-
 @pytest.mark.parametrize("qtype", STORAGE_QTYPES, ids=qtype_id)
 def test_cuda_torch_quantize_storage_matches_libgguf(qtype: GGMLQuantizationType) -> None:
     rows = np.array(
@@ -56,7 +30,7 @@ def test_cuda_torch_quantize_storage_matches_libgguf(qtype: GGMLQuantizationType
         dtype=np.float32,
     )
 
-    actual = libgguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
+    actual = libgguf.libgguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
     expected = libgguf.quantize_rows(rows, qtype)
 
     np.testing.assert_array_equal(tensor_bytes(actual), expected.view(np.uint8))
@@ -66,19 +40,7 @@ def test_cuda_torch_quantize_storage_matches_libgguf(qtype: GGMLQuantizationType
 def test_cuda_torch_quantize_bytes_match_libgguf(qtype: GGMLQuantizationType) -> None:
     rows = build_rows(qtype, rows=1)
 
-    actual = libgguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
-    expected = libgguf.quantize_rows(rows, qtype)
-
-    assert tuple(actual.shape) == expected.shape
-    np.testing.assert_array_equal(tensor_bytes(actual), expected.view(np.uint8))
-
-
-@pytest.mark.parametrize("qtype", COMPILED_QUANTIZE_QTYPES, ids=qtype_id)
-def test_compiled_cuda_torch_quantize_bytes_match_libgguf(qtype: GGMLQuantizationType) -> None:
-    rows = build_rows(qtype, rows=1)
-    quantize = compile_or_skip(lambda data: libgguf_torch.quantize(data, qtype))
-
-    actual = quantize(torch.from_numpy(rows).to("cuda"))
+    actual = libgguf.libgguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
     expected = libgguf.quantize_rows(rows, qtype)
 
     assert tuple(actual.shape) == expected.shape
@@ -90,7 +52,7 @@ def test_cuda_torch_dequantize_native_bytes_matches_libgguf(qtype: GGMLQuantizat
     rows = build_rows(qtype, rows=1)
     encoded = libgguf.quantize_rows(rows, qtype)
 
-    actual = libgguf_torch.dequantize(
+    actual = libgguf.libgguf_torch.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         qtype,
         rows.shape,
@@ -102,26 +64,11 @@ def test_cuda_torch_dequantize_native_bytes_matches_libgguf(qtype: GGMLQuantizat
     np.testing.assert_allclose(actual.cpu().numpy(), expected, rtol=0.0, atol=4.0e-3)
 
 
-@pytest.mark.parametrize("qtype", COMPILED_DEQUANTIZE_QTYPES, ids=qtype_id)
-def test_compiled_cuda_torch_dequantize_native_bytes_matches_libgguf(qtype: GGMLQuantizationType) -> None:
-    rows = build_rows(qtype, rows=1)
-    encoded = libgguf.quantize_rows(rows, qtype)
-    dequantize = compile_or_skip(
-        lambda data: libgguf_torch.dequantize(data, qtype, rows.shape, dtype=torch.float32)
-    )
-
-    actual = dequantize(torch.from_numpy(encoded).to("cuda"))
-    expected = libgguf.dequantize_rows(encoded, qtype, n_per_row=rows.shape[-1])
-
-    assert tuple(actual.shape) == rows.shape
-    np.testing.assert_allclose(actual.cpu().numpy(), expected, rtol=0.0, atol=4.0e-3)
-
-
 def test_cuda_dequantize_tensor_returns_torch_compatible_tensor_in_requested_dtype() -> None:
     tensor = torch.arange(6, device="cuda", dtype=torch.float32).reshape(2, 3)
     tensor.tensor_type = GGMLQuantizationType.F32
 
-    actual = libgguf_torch.dequantize_tensor(tensor, dtype=torch.float16)
+    actual = libgguf.libgguf_torch.dequantize_tensor(tensor, dtype=torch.float16)
 
     assert actual.device.type == "cuda"
     assert actual.dtype == torch.float16

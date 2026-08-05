@@ -246,14 +246,6 @@ def dequantize_rows(data: Any, qtype: int | Any, n_per_row: int | None = None) -
 
 atexit.register(_libgguf.quantize_free)
 
-_CONVERSION_EXPORTS = frozenset(
-    {
-        "QuantResult",
-        "convert_safetensors_to_gguf_native",
-        "convert_to_gguf",
-    }
-)
-
 _INSPECT_EXPORTS = frozenset(
     {
         "GGUFFile",
@@ -271,10 +263,6 @@ _INSPECT_EXPORTS = frozenset(
 
 
 def __getattr__(name: str) -> Any:
-    if name in _CONVERSION_EXPORTS:
-        from . import quantize
-
-        return getattr(quantize, name)
     if name in _INSPECT_EXPORTS:
         from . import inspect
 
@@ -291,9 +279,6 @@ __all__ = [
     "quantize_rows_raw",
     "store_rows",
     "load_imatrix",
-    "QuantResult",
-    "convert_safetensors_to_gguf_native",
-    "convert_to_gguf",
     "GGUFFile",
     "GGUFFormatError",
     "GGUFMetadataValue",

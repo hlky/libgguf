@@ -1,0 +1,18 @@
+#include <libgguf/gpu/compat.h>
+#include <libgguf/gpu/dequantize/common.cuh>
+#include <libgguf/gpu/dequantize/kernels.h>
+#include <libgguf/gpu/dispatch.h>
+#include <libgguf/gpu/dequantize/q1_0.cuh>
+
+void dequantize_q1_0(
+    const void * x,
+    void * y,
+    int k,
+    libgguf_gpu_dtype dtype,
+    StreamType stream
+) {
+    DISPATCH_FLOATING_TYPES(dtype, "dequantize_q1_0", [&] {
+        const int nb = (k / 2 + LIBGGUF_GPU_DEQUANTIZE_BLOCK_SIZE - 1) / LIBGGUF_GPU_DEQUANTIZE_BLOCK_SIZE;
+                libgguf::gpu::dequantize_block_q1_0_pair<<<nb, LIBGGUF_GPU_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>(x, (scalar_t *)y, k);
+    });
+}

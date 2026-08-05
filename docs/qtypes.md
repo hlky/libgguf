@@ -1,10 +1,7 @@
 # Qtypes
 
-GGUF quantized tensors are stored in fixed-size blocks. A qtype defines how many source values are encoded per block and how many bytes each encoded block uses. Quantized row APIs require a positive last dimension divisible by the qtype block size; storage qtypes `F32`, `F16`, and `BF16` can be stored at any positive row width.
-
-At the file-format level, GGUF is a single-file binary container with header metadata, key-value metadata, tensor descriptors, and a tensor data blob. libgguf's current public surface includes qtype metadata, row kernels, converter paths, GGUF inspection, and minimal structural validation; first-class public reader/writer APIs and deeper validator coverage are planned.
-
-Use the metadata helpers to inspect exact block and row sizes:
+A GGUF qtype defines the number of values in a block and the encoded byte size
+of that block. Quantized rows must contain a whole number of blocks.
 
 ```python
 import libgguf
@@ -14,40 +11,18 @@ block_size, block_bytes = libgguf.GGML_QUANT_SIZES[qtype]
 row_bytes = libgguf.row_size(qtype, 4096)
 ```
 
-`row_size(qtype, n_per_row)` returns `0` for unsupported qtypes, non-positive widths, and quantized widths that are not valid multiples of the qtype block size.
-
 ## Families
 
-| Family | Examples | Notes |
-| --- | --- | --- |
-| Storage | `F32`, `F16`, `BF16` | Stored rather than quantized. |
-| Legacy Q | `Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, `Q8_0` | 32-value block families compatible with GGML/GGUF behavior. |
-| K quants | `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K` | 256-value block families with scale/min metadata layouts. |
-| IQ quants | `IQ1_S`, `IQ1_M`, `IQ2_*`, `IQ3_*`, `IQ4_*` | Importance/lookup-oriented formats. Some quantizers require or compute imatrix-style weights. |
-| TQ quants | `TQ1_0`, `TQ2_0` | Ternary quantization families. |
-| FP4 variants | `MXFP4`, `NVFP4` | 4-bit floating-style formats with format-specific scaling. |
-| New low-bit Q | `Q1_0` | 128-value block qtype. |
+| Family | Formats |
+| --- | --- |
+| Storage | `F32`, `F16`, `BF16` |
+| Legacy Q | `Q4_0`, `Q4_1`, `Q5_0`, `Q5_1`, `Q8_0` |
+| K quants | `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K` |
+| IQ quants | `IQ1_S`, `IQ1_M`, `IQ2_*`, `IQ3_*`, `IQ4_*` |
+| Ternary | `TQ1_0`, `TQ2_0` |
+| FP4 | `MXFP4`, `NVFP4` |
+| Low-bit Q | `Q1_0` |
 
-## Supported Public List
-
-- `Q1_0`
-- `Q4_0`, `Q4_1`
-- `Q5_0`, `Q5_1`
-- `Q8_0`
-- `Q2_K`, `Q3_K`, `Q4_K`, `Q5_K`, `Q6_K`
-- `IQ1_S`, `IQ1_M`
-- `IQ2_XXS`, `IQ2_XS`, `IQ2_S`
-- `IQ3_XXS`, `IQ3_S`
-- `IQ4_NL`, `IQ4_XS`
-- `TQ1_0`, `TQ2_0`
-- `MXFP4`, `NVFP4`
-- `F32`, `F16`, `BF16` storage
-
-Exact backend support varies. See [support-matrix.md](support-matrix.md).
-
-## References
-
-- [llama.cpp gguf-py constants](https://github.com/ggml-org/llama.cpp/blob/master/gguf-py/gguf/constants.py)
-- [llama.cpp gguf-py writer](https://github.com/ggml-org/llama.cpp/blob/master/gguf-py/gguf/gguf_writer.py)
-- [GGUF file-format overview](https://deepwiki.com/ggml-org/llama.cpp/7.1-gguf-file-format)
-- [GGUF format concept page](https://www.mintlify.com/ggml-org/llama.cpp/concepts/gguf-format)
+Backend support is determined by the compiled kernel set. Use `row_size` and
+`quantize_requires_imatrix` rather than maintaining a separate documentation
+matrix.

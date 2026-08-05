@@ -1,0 +1,56 @@
+#include "kernels/cpu/common/common.h"
+#include "kernels/cpu/dequantize/kernels.h"
+#include "quantize/iq_tables.h"
+
+#include "kernels/cpu/common/tables.h"
+
+#include <immintrin.h>
+
+static inline void libgguf_iq2_xxs_store8(float *LIBGGUF_RESTRICT y, const uint8_t *LIBGGUF_RESTRICT grid, uint8_t signs, __m256 db)
+{
+  const __m128i g8 = _mm_loadl_epi64((const __m128i *)grid);
+  const uint32_t m[8] = {
+      (signs & 0x01) ? 0x80000000u : 0u,
+      (signs & 0x02) ? 0x80000000u : 0u,
+      (signs & 0x04) ? 0x80000000u : 0u,
+      (signs & 0x08) ? 0x80000000u : 0u,
+      (signs & 0x10) ? 0x80000000u : 0u,
+      (signs & 0x20) ? 0x80000000u : 0u,
+      (signs & 0x40) ? 0x80000000u : 0u,
+      (signs & 0x80) ? 0x80000000u : 0u,
+  };
+  _mm256_storeu_ps(y, _mm256_xor_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8)), db), _mm256_castsi256_ps(_mm256_loadu_si256((const __m256i *)m))));
+}
+
+extern "C" void dequantize_block_iq2_xxs(const block_iq2_xxs *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  assert(k % QK_K == 0);
+  static_assert(QK_K == 256, "QK_K must be 256");
+  const int nb = (int)(k / QK_K);
+
+  for (int i = 0; i < nb; ++i)
+  {
+    const float d = LIBGGUF_FP16_TO_FP32(x[i].d);
+    float *LIBGGUF_RESTRICT yb = y + i * QK_K;
+    for (int ib32 = 0; ib32 < QK_K / 32; ++ib32)
+    {
+      uint32_t aux32[2];
+      memcpy(aux32, x[i].qs + 4 * ib32, 2 * sizeof(uint32_t));
+      const uint8_t *aux8 = (const uint8_t *)aux32;
+      const __m256 db = _mm256_set1_ps(d * (0.5f + (float)(aux32[1] >> 28)) * 0.25f);
+      for (int l = 0; l < 4; ++l)
+      {
+        const uint8_t *grid = (const uint8_t *)(iq2xxs_grid + aux8[l]);
+        const uint8_t signs = ksigns_iq2xs[(aux32[1] >> (7 * l)) & 127];
+        libgguf_iq2_xxs_store8(yb + 32 * ib32 + 8 * l, grid, signs, db);
+      }
+    }
+  }
+}
+
+
+void dequantize_iq2_xxs(const block_iq2_xxs *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k)
+{
+  dequantize_block_iq2_xxs(x, y, k);
+}
+

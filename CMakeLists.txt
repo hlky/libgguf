@@ -1,13 +1,33 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.21)
 
-project(libgguf VERSION 0.1.0 LANGUAGES CXX)
+option(LIBGGUF_BUILD_GPU "Build libgguf GPU targets" OFF)
+option(LIBGGUF_ENABLE_ROCM "Build GPU targets with HIP/ROCm" OFF)
+option(LIBGGUF_ENABLE_CUDA "Build GPU targets with CUDA" OFF)
+
+if(LIBGGUF_ENABLE_ROCM AND LIBGGUF_ENABLE_CUDA)
+  message(FATAL_ERROR "Select either LIBGGUF_ENABLE_ROCM or LIBGGUF_ENABLE_CUDA, not both")
+endif()
+
+if(LIBGGUF_BUILD_GPU AND NOT LIBGGUF_ENABLE_ROCM AND NOT LIBGGUF_ENABLE_CUDA)
+  message(FATAL_ERROR "LIBGGUF_BUILD_GPU requires LIBGGUF_ENABLE_ROCM=ON or LIBGGUF_ENABLE_CUDA=ON")
+endif()
+
+if((LIBGGUF_ENABLE_ROCM OR LIBGGUF_ENABLE_CUDA) AND NOT LIBGGUF_BUILD_GPU)
+  message(FATAL_ERROR "LIBGGUF_ENABLE_ROCM and LIBGGUF_ENABLE_CUDA require LIBGGUF_BUILD_GPU=ON")
+endif()
+
+if(LIBGGUF_ENABLE_ROCM)
+  include(cmake/LibGGUFROCmSdk.cmake)
+  libgguf_configure_rocm_sdk()
+endif()
+
+project(libgguf VERSION 0.2.0 LANGUAGES CXX)
 
 option(LIBGGUF_BUILD_SHARED "Build the standalone libgguf shared library" ON)
 option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
+option(LIBGGUF_BUILD_TORCH "Build the libgguf Torch GPU extension" OFF)
 option(LIBGGUF_BUILD_BENCHMARKS "Build native libgguf benchmark binaries" OFF)
 option(LIBGGUF_BUILD_TOOLS "Build native libgguf command line tools" ON)
-set(LIBGGUF_BUILD_CUDA_KERNELS "AUTO" CACHE STRING "Build optional libgguf CUDA kernel targets (AUTO, ON, or OFF)")
-set_property(CACHE LIBGGUF_BUILD_CUDA_KERNELS PROPERTY STRINGS AUTO ON OFF)
 set(LIBGGUF_CPU_BACKEND "REF" CACHE STRING "CPU row backend to compile (REF, SSE2, SSE4_1, or AVX2)")
 set_property(CACHE LIBGGUF_CPU_BACKEND PROPERTY STRINGS REF SSE2 SSE4_1 AVX2)
 
@@ -34,112 +54,91 @@ endif()
 string(TOLOWER "${LIBGGUF_CPU_BACKEND_UPPER}" LIBGGUF_CPU_BACKEND_LOWER)
 message(STATUS "libgguf CPU backend: ${LIBGGUF_CPU_BACKEND_UPPER}")
 
-file(
-  GLOB_RECURSE LIBGGUF_NATIVE_SOURCES
-  CONFIGURE_DEPENDS
-  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/*.cpp"
+set(
+  LIBGGUF_CORE_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/formats.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/cpu/threading.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/quantize/cpu.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/quantize/iq_tables.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/dequantize/cpu.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/cpu/common/tables.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/cpu/common/${LIBGGUF_CPU_BACKEND_LOWER}.cpp"
 )
-list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\]_libgguf_module\\.cpp$")
-list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\]quantize_gguf\\.cpp$")
-foreach(backend_dir IN ITEMS sse2 sse4_1 avx2)
-  if(NOT LIBGGUF_CPU_BACKEND_LOWER STREQUAL backend_dir)
-    list(FILTER LIBGGUF_NATIVE_SOURCES EXCLUDE REGEX "[/\\\\](common|dequant|quant)[/\\\\]${backend_dir}[/\\\\].*\\.cpp$")
-  endif()
-endforeach()
 
-add_library(libgguf_objects OBJECT ${LIBGGUF_NATIVE_SOURCES})
+file(
+  GLOB LIBGGUF_CPU_QUANTIZE_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/cpu/quantize/${LIBGGUF_CPU_BACKEND_LOWER}/*.cpp"
+)
+file(
+  GLOB LIBGGUF_CPU_DEQUANTIZE_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/cpu/dequantize/${LIBGGUF_CPU_BACKEND_LOWER}/*.cpp"
+)
+
+set(
+  LIBGGUF_CPU_BACKEND_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/cpu/common/${LIBGGUF_CPU_BACKEND_LOWER}.cpp"
+  ${LIBGGUF_CPU_QUANTIZE_SOURCES}
+  ${LIBGGUF_CPU_DEQUANTIZE_SOURCES}
+)
+list(APPEND LIBGGUF_CORE_SOURCES ${LIBGGUF_CPU_QUANTIZE_SOURCES} ${LIBGGUF_CPU_DEQUANTIZE_SOURCES})
+
+add_library(libgguf_objects OBJECT ${LIBGGUF_CORE_SOURCES})
 target_include_directories(
   libgguf_objects
   PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
   PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
 )
-target_compile_definitions(
-  libgguf_objects
-  PRIVATE
-    NDEBUG=1
-    LIBGGUF_CPU_BACKEND_${LIBGGUF_CPU_BACKEND_UPPER}=1
-)
+target_compile_definitions(libgguf_objects PRIVATE NDEBUG=1)
 
 if(MSVC)
-  target_compile_options(
-    libgguf_objects
-    PRIVATE
-      /O2
-      /EHsc
-      /std:c++17
-      /D_CRT_SECURE_NO_WARNINGS
-  )
+  target_compile_options(libgguf_objects PRIVATE /O2 /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS)
+elseif(WIN32)
+  target_compile_options(libgguf_objects PRIVATE -O3)
+  target_compile_definitions(libgguf_objects PRIVATE _CRT_SECURE_NO_WARNINGS=1)
 else()
-  target_compile_options(
-    libgguf_objects
-    PRIVATE
-      -O3
-      -pthread
-  )
+  target_compile_options(libgguf_objects PRIVATE -O3 -pthread)
   target_link_libraries(libgguf_objects PUBLIC m pthread)
 endif()
 
-if(LIBGGUF_X86_PROCESSOR)
-  foreach(source IN LISTS LIBGGUF_NATIVE_SOURCES)
-    get_filename_component(source_name "${source}" NAME)
-    get_filename_component(source_dir "${source}" DIRECTORY)
-    string(REPLACE "\\" "/" source_dir_normalized "${source_dir}")
-    set(is_backend_source OFF)
-    if(source_dir_normalized MATCHES "/(dequant|quant)/(sse2|sse4_1|avx2)$")
-      set(is_backend_source ON)
-    elseif(source_name MATCHES "^(libgguf_common_quant|libgguf_storage)\\.cpp$" AND source_dir_normalized MATCHES "/common/(sse2|sse4_1|avx2)$")
-      set(is_backend_source ON)
-    endif()
-
-    if(is_backend_source AND source_dir_normalized MATCHES "/avx2$")
-      if(MSVC)
-        set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
-      else()
-        set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-mavx2")
-      endif()
-    elseif(source_name STREQUAL "quantize_gguf_f16c.cpp")
-      if(MSVC)
-        set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
-      else()
-        set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-mavx;-mf16c")
-      endif()
-    elseif(is_backend_source AND NOT MSVC AND source_dir_normalized MATCHES "/sse4_1$")
-      set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-msse4.1")
-    elseif(is_backend_source AND NOT MSVC AND source_dir_normalized MATCHES "/sse2$")
-      set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-msse2")
-    endif()
-  endforeach()
+if(LIBGGUF_CPU_BACKEND_UPPER STREQUAL "AVX2")
+  if(MSVC)
+    set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+  else()
+    set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "-mavx2")
+  endif()
+elseif(LIBGGUF_CPU_BACKEND_UPPER STREQUAL "SSE4_1" AND NOT MSVC)
+  set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "-msse4.1")
+elseif(LIBGGUF_CPU_BACKEND_UPPER STREQUAL "SSE2" AND NOT MSVC)
+  set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "-msse2")
 endif()
 
 if(LIBGGUF_BUILD_SHARED)
-  add_library(libgguf SHARED $<TARGET_OBJECTS:libgguf_objects>)
+  add_library(libgguf SHARED)
   target_link_libraries(libgguf PRIVATE libgguf_objects)
-  target_include_directories(
-    libgguf
-    PUBLIC
-      "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE
-      "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
-  )
+  target_include_directories(libgguf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
   set_target_properties(libgguf PROPERTIES OUTPUT_NAME libgguf)
 endif()
 
-if(LIBGGUF_BUILD_PYTHON)
+if(LIBGGUF_BUILD_PYTHON OR LIBGGUF_BUILD_TORCH)
   find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-elseif(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
-  find_package(Python COMPONENTS Interpreter Development.Module QUIET)
+endif()
+
+if(LIBGGUF_BUILD_TORCH AND NOT LIBGGUF_BUILD_GPU)
+  message(FATAL_ERROR "LIBGGUF_BUILD_TORCH requires LIBGGUF_BUILD_GPU")
 endif()
 
 if(LIBGGUF_BUILD_PYTHON)
   Python_add_library(
     _libgguf
     MODULE
-    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/_libgguf_module.cpp"
-    $<TARGET_OBJECTS:libgguf_objects>
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/bindings/python/module.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/bindings/python/payload.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/bindings/python/raw_ops.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/safetensors_payload.cpp"
     WITH_SOABI
   )
   target_include_directories(
@@ -147,241 +146,177 @@ if(LIBGGUF_BUILD_PYTHON)
     PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/include"
       "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
   )
   target_link_libraries(_libgguf PRIVATE libgguf_objects)
   if(MSVC)
-    target_compile_options(
-      _libgguf
-      PRIVATE
-        /O2
-        /EHsc
-        /std:c++17
-        /D_CRT_SECURE_NO_WARNINGS
-    )
+    target_compile_options(_libgguf PRIVATE /O2 /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS)
+  elseif(WIN32)
+    target_compile_options(_libgguf PRIVATE -O3)
+    target_compile_definitions(_libgguf PRIVATE _CRT_SECURE_NO_WARNINGS=1)
   else()
     target_compile_options(_libgguf PRIVATE -O3 -pthread)
   endif()
   install(TARGETS _libgguf DESTINATION libgguf)
 endif()
 
-if(NOT LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "OFF")
-  set(LIBGGUF_CAN_BUILD_CUDA_KERNELS OFF)
-  find_program(LIBGGUF_NVCC_EXECUTABLE nvcc)
-  if(LIBGGUF_NVCC_EXECUTABLE)
-    enable_language(CUDA)
-    find_package(CUDAToolkit QUIET)
-    if(CUDAToolkit_FOUND)
-      set(LIBGGUF_CAN_BUILD_CUDA_KERNELS ON)
+if(LIBGGUF_BUILD_GPU)
+    if(LIBGGUF_ENABLE_ROCM)
+      enable_language(HIP)
+      find_package(hip REQUIRED)
+      set(LIBGGUF_GPU_LANGUAGE HIP)
+      set(LIBGGUF_GPU_RUNTIME_TARGET hip::device)
+    else()
+      enable_language(CUDA)
+      find_package(CUDAToolkit REQUIRED)
+      set(LIBGGUF_GPU_LANGUAGE CUDA)
+      set(LIBGGUF_GPU_RUNTIME_TARGET CUDA::cudart)
     endif()
-  endif()
 
-  set(LIBGGUF_CAN_BUILD_CUDA_TORCH_EXTENSION OFF)
-  if(LIBGGUF_CAN_BUILD_CUDA_KERNELS AND Python_FOUND)
-    execute_process(
-      COMMAND
-        "${Python_EXECUTABLE}" -c
-        "import torch; print(torch.utils.cmake_prefix_path)"
-      OUTPUT_VARIABLE LIBGGUF_TORCH_CMAKE_PREFIX_PATH
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET
-      RESULT_VARIABLE LIBGGUF_TORCH_IMPORT_RESULT
+    file(
+      GLOB LIBGGUF_GPU_QUANTIZE_KERNEL_SOURCES
+      CONFIGURE_DEPENDS
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/gpu/quantize/*.cu"
     )
-  endif()
+    file(
+      GLOB LIBGGUF_GPU_DEQUANTIZE_KERNEL_SOURCES
+      CONFIGURE_DEPENDS
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/gpu/dequantize/*.cu"
+    )
 
-  if(DEFINED LIBGGUF_TORCH_IMPORT_RESULT AND LIBGGUF_TORCH_IMPORT_RESULT EQUAL 0)
-    list(APPEND CMAKE_PREFIX_PATH "${LIBGGUF_TORCH_CMAKE_PREFIX_PATH}")
-    find_package(Torch QUIET)
-    if(Torch_FOUND)
-      set(LIBGGUF_CAN_BUILD_CUDA_TORCH_EXTENSION ON)
-    endif()
-  endif()
-
-  if(LIBGGUF_CAN_BUILD_CUDA_KERNELS)
     set(
-      LIBGGUF_CUDA_QUANT_KERNEL_SOURCES
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_kernels.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q8_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q1_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_mxfp4.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_nvfp4.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q4_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q4_1.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q5_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q5_1.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q2_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q3_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q4_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q5_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq4_nl.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq4_xs.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq2_xxs.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq2_xs.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq2_s.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq3_xxs.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq3_s.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq1_s.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_iq1_m.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_tq1_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_tq2_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize_q6_k.cu"
+      LIBGGUF_GPU_SOURCES
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/quantize/gpu.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/dequantize/gpu.cu"
+      ${LIBGGUF_GPU_QUANTIZE_KERNEL_SOURCES}
+      ${LIBGGUF_GPU_DEQUANTIZE_KERNEL_SOURCES}
     )
-    set(
-      LIBGGUF_CUDA_DEQUANT_KERNEL_SOURCES
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_kernels.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_1.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_1.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q8_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_bf16.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q1_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_tq1_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_tq2_0.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_mxfp4.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_nvfp4.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q2_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q3_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q6_k.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_xxs.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_xs.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_s.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq3_xxs.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq3_s.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq1_s.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq1_m.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq4_nl.cu"
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq4_xs.cu"
-    )
-    add_library(libgguf_cuda_quant_objects OBJECT ${LIBGGUF_CUDA_QUANT_KERNEL_SOURCES})
-    set_target_properties(
-      libgguf_cuda_quant_objects
-      PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        CUDA_STANDARD 17
-        CUDA_STANDARD_REQUIRED ON
-    )
-    target_include_directories(
-      libgguf_cuda_quant_objects
-      PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
-    )
-    target_compile_definitions(libgguf_cuda_quant_objects PRIVATE LIBGGUF_CUDA_NO_C10=1)
-    target_compile_options(libgguf_cuda_quant_objects PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
-
-    add_library(libgguf_cuda_dequant_objects OBJECT ${LIBGGUF_CUDA_DEQUANT_KERNEL_SOURCES})
-    set_target_properties(
-      libgguf_cuda_dequant_objects
-      PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        CUDA_STANDARD 17
-        CUDA_STANDARD_REQUIRED ON
-    )
-    target_include_directories(
-      libgguf_cuda_dequant_objects
-      PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
-    )
-    target_compile_definitions(libgguf_cuda_dequant_objects PRIVATE LIBGGUF_CUDA_NO_C10=1)
-    target_compile_options(libgguf_cuda_dequant_objects PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
+    set_source_files_properties(${LIBGGUF_GPU_SOURCES} PROPERTIES LANGUAGE ${LIBGGUF_GPU_LANGUAGE})
 
     add_library(
-      libgguf_cuda_native
-      STATIC
-      "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/libgguf_cuda_native.cu"
-      $<TARGET_OBJECTS:libgguf_cuda_quant_objects>
-      $<TARGET_OBJECTS:libgguf_cuda_dequant_objects>
+      libgguf_gpu_objects
+      OBJECT
+      ${LIBGGUF_GPU_SOURCES}
     )
-    set_target_properties(
-      libgguf_cuda_native
-      PROPERTIES
-        CUDA_STANDARD 17
-        CUDA_STANDARD_REQUIRED ON
-        OUTPUT_NAME "gguf_cuda_native"
-    )
+    set_target_properties(libgguf_gpu_objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(LIBGGUF_ENABLE_ROCM)
+      set_target_properties(
+        libgguf_gpu_objects
+        PROPERTIES HIP_STANDARD 17 HIP_STANDARD_REQUIRED ON
+      )
+    else()
+      set_target_properties(
+        libgguf_gpu_objects
+        PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
+      )
+    endif()
     target_include_directories(
-      libgguf_cuda_native
+      libgguf_gpu_objects
       PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
-      PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
+      PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
     )
-    target_compile_definitions(libgguf_cuda_native PRIVATE LIBGGUF_CUDA_NO_C10=1)
-    target_compile_options(libgguf_cuda_native PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
-    target_link_libraries(libgguf_cuda_native PUBLIC CUDA::cudart)
+    if(LIBGGUF_ENABLE_ROCM)
+      target_compile_options(libgguf_gpu_objects PRIVATE $<$<COMPILE_LANGUAGE:HIP>:-ffp-contract=off>)
+    else()
+      target_compile_options(libgguf_gpu_objects PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
+    endif()
+    target_link_libraries(libgguf_gpu_objects PUBLIC ${LIBGGUF_GPU_RUNTIME_TARGET})
 
-    if(LIBGGUF_CAN_BUILD_CUDA_TORCH_EXTENSION)
+    if(LIBGGUF_BUILD_TORCH)
+      if(LIBGGUF_ENABLE_ROCM)
+        set(ENV{PYTORCH_ROCM_ARCH} "${CMAKE_HIP_ARCHITECTURES}")
+      endif()
+      execute_process(
+        COMMAND
+          "${Python_EXECUTABLE}" -c
+          "import torch; print(torch.utils.cmake_prefix_path)"
+        OUTPUT_VARIABLE LIBGGUF_TORCH_CMAKE_PREFIX_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE LIBGGUF_TORCH_IMPORT_RESULT
+      )
+      if(NOT LIBGGUF_TORCH_IMPORT_RESULT EQUAL 0)
+        message(FATAL_ERROR "LIBGGUF_BUILD_TORCH requires an importable Torch installation")
+      endif()
+      list(APPEND CMAKE_PREFIX_PATH "${LIBGGUF_TORCH_CMAKE_PREFIX_PATH}")
+      find_package(Torch REQUIRED)
+
+      if(WIN32 AND LIBGGUF_ENABLE_ROCM)
+        foreach(LIBGGUF_TORCH_TARGET c10 c10_hip torch_cpu torch_hip)
+          if(TARGET ${LIBGGUF_TORCH_TARGET})
+            get_target_property(
+              LIBGGUF_TORCH_COMPILE_OPTIONS
+              ${LIBGGUF_TORCH_TARGET}
+              INTERFACE_COMPILE_OPTIONS
+            )
+            if(LIBGGUF_TORCH_COMPILE_OPTIONS)
+              list(
+                FILTER LIBGGUF_TORCH_COMPILE_OPTIONS
+                EXCLUDE REGEX
+                  "^\\$<\\$<COMPILE_LANGUAGE:CXX>:$|/(permissive-|EHsc|bigobj|Z7)"
+              )
+              set_target_properties(
+                ${LIBGGUF_TORCH_TARGET}
+                PROPERTIES INTERFACE_COMPILE_OPTIONS "${LIBGGUF_TORCH_COMPILE_OPTIONS}"
+              )
+            endif()
+          endif()
+        endforeach()
+      endif()
+
+      set(
+        LIBGGUF_GPU_TORCH_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/bindings/torch/gpu/quantize.cu"
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/bindings/torch/gpu/dequantize.cu"
+      )
+      set_source_files_properties(
+        ${LIBGGUF_GPU_TORCH_SOURCES}
+        PROPERTIES LANGUAGE ${LIBGGUF_GPU_LANGUAGE}
+      )
       Python_add_library(
-        libgguf_cuda_C_gguf
+        libgguf_gpu_C_gguf
         MODULE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/torch_bindings.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/libgguf_cuda_native.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_kernels.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_0.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_1.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_0.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_1.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q8_0.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_bf16.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q1_0.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_tq1_0.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_tq2_0.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_mxfp4.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_nvfp4.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q2_k.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q3_k.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q4_k.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q5_k.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_q6_k.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_xxs.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_xs.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq2_s.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq3_xxs.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq3_s.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq1_s.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq1_m.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq4_nl.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_dequantize_iq4_xs.cu"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc/cuda_quantize.cu"
-        $<TARGET_OBJECTS:libgguf_cuda_quant_objects>
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/bindings/torch/module.cpp"
+        ${LIBGGUF_GPU_TORCH_SOURCES}
         WITH_SOABI
       )
-      set_target_properties(
-        libgguf_cuda_C_gguf
-        PROPERTIES
-          OUTPUT_NAME "_C_gguf"
-          CUDA_STANDARD 17
-          CUDA_STANDARD_REQUIRED ON
-      )
+      set_target_properties(libgguf_gpu_C_gguf PROPERTIES OUTPUT_NAME "_C_gguf")
+      if(LIBGGUF_ENABLE_ROCM)
+        set_target_properties(
+          libgguf_gpu_C_gguf
+          PROPERTIES HIP_STANDARD 17 HIP_STANDARD_REQUIRED ON
+        )
+      else()
+        set_target_properties(
+          libgguf_gpu_C_gguf
+          PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
+        )
+      endif()
       target_include_directories(
-        libgguf_cuda_C_gguf
+        libgguf_gpu_C_gguf
         PRIVATE
-          "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
           "${CMAKE_CURRENT_SOURCE_DIR}/include"
-          "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
+          "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
           ${TORCH_INCLUDE_DIRS}
       )
-      target_compile_definitions(libgguf_cuda_C_gguf PRIVATE TORCH_EXTENSION_NAME=_C_gguf)
-      target_compile_options(libgguf_cuda_C_gguf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
-      target_compile_features(libgguf_cuda_C_gguf PRIVATE cxx_std_17)
-      target_link_libraries(libgguf_cuda_C_gguf PRIVATE ${TORCH_LIBRARIES})
-      install(TARGETS libgguf_cuda_C_gguf DESTINATION libgguf/libgguf_cuda)
-    else()
-      message(STATUS "Skipping libgguf_cuda Torch CUDA extension; torch or Python development headers were not found")
+      target_compile_definitions(libgguf_gpu_C_gguf PRIVATE TORCH_EXTENSION_NAME=_C_gguf)
+      if(LIBGGUF_ENABLE_ROCM)
+        target_compile_options(libgguf_gpu_C_gguf PRIVATE $<$<COMPILE_LANGUAGE:HIP>:-ffp-contract=off>)
+      else()
+        target_compile_options(libgguf_gpu_C_gguf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
+      endif()
+      target_compile_features(libgguf_gpu_C_gguf PRIVATE cxx_std_17)
+      target_link_libraries(
+        libgguf_gpu_C_gguf
+        PRIVATE
+          libgguf_objects
+          libgguf_gpu_objects
+          ${LIBGGUF_GPU_RUNTIME_TARGET}
+          ${TORCH_LIBRARIES}
+      )
+      install(TARGETS libgguf_gpu_C_gguf DESTINATION libgguf/libgguf_gpu)
     endif()
-  elseif(LIBGGUF_BUILD_CUDA_KERNELS STREQUAL "ON")
-    message(FATAL_ERROR "LIBGGUF_BUILD_CUDA_KERNELS=ON requires nvcc and the CUDA toolkit")
-  else()
-    message(STATUS "Skipping libgguf CUDA kernels; nvcc or the CUDA toolkit was not found")
-  endif()
 endif()
 
 if(LIBGGUF_BUILD_TOOLS)
@@ -392,35 +327,70 @@ if(LIBGGUF_BUILD_TOOLS)
 
   add_executable(
     libgguf_quantize_gguf
-    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/quantize_gguf.cpp"
-    $<TARGET_OBJECTS:libgguf_objects>
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/cli/quantize_gguf.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/cli/quantize/options.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/cli/quantize/policy.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/common.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/converter.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/cpu_quantizer.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/safetensors.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/writer.cpp"
   )
   target_include_directories(
     libgguf_quantize_gguf
     PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/include"
       "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
   )
   target_link_libraries(libgguf_quantize_gguf PRIVATE libgguf_objects)
-  if(TARGET libgguf_cuda_native)
-    target_compile_definitions(libgguf_quantize_gguf PRIVATE LIBGGUF_HAS_CUDA_NATIVE=1)
-    target_include_directories(
+
+  if(TARGET libgguf_gpu_objects)
+    set_source_files_properties(
+      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/gpu_quantizer.cu"
+      PROPERTIES LANGUAGE ${LIBGGUF_GPU_LANGUAGE}
+    )
+    target_sources(
       libgguf_quantize_gguf
       PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/libgguf/libgguf_cuda/csrc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/gpu_quantizer.cu"
     )
-    target_link_libraries(libgguf_quantize_gguf PRIVATE libgguf_cuda_native)
+    target_compile_definitions(libgguf_quantize_gguf PRIVATE LIBGGUF_HAS_GPU=1)
+    target_link_libraries(
+      libgguf_quantize_gguf
+      PRIVATE libgguf_gpu_objects ${LIBGGUF_GPU_RUNTIME_TARGET}
+    )
+    if(LIBGGUF_ENABLE_ROCM)
+      set_target_properties(
+        libgguf_quantize_gguf
+        PROPERTIES HIP_STANDARD 17 HIP_STANDARD_REQUIRED ON
+      )
+    else()
+      set_target_properties(
+        libgguf_quantize_gguf
+        PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON
+      )
+    endif()
   endif()
+
+  if(LIBGGUF_CPU_BACKEND_UPPER STREQUAL "AVX2")
+    if(MSVC)
+      set_source_files_properties(
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/cpu_quantizer.cpp"
+        PROPERTIES COMPILE_OPTIONS "/arch:AVX2"
+      )
+    else()
+      set_source_files_properties(
+        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/cpu_quantizer.cpp"
+        PROPERTIES COMPILE_OPTIONS "-mavx2"
+      )
+    endif()
+  endif()
+
   if(MSVC)
-    target_compile_options(
-      libgguf_quantize_gguf
-      PRIVATE
-        /O2
-        /EHsc
-        /std:c++17
-        /D_CRT_SECURE_NO_WARNINGS
-    )
+    target_compile_options(libgguf_quantize_gguf PRIVATE /O2 /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS)
+  elseif(WIN32)
+    target_compile_options(libgguf_quantize_gguf PRIVATE -O3)
+    target_compile_definitions(libgguf_quantize_gguf PRIVATE _CRT_SECURE_NO_WARNINGS=1)
   else()
     target_compile_options(libgguf_quantize_gguf PRIVATE -O3 -pthread)
     target_link_libraries(libgguf_quantize_gguf PRIVATE m pthread)
@@ -430,29 +400,23 @@ endif()
 
 if(LIBGGUF_BUILD_BENCHMARKS)
   add_executable(
-    libgguf_backend_bench
-    "${CMAKE_CURRENT_SOURCE_DIR}/bench/backend_bench.cpp"
-    $<TARGET_OBJECTS:libgguf_objects>
+    libgguf_cpu_bench
+    "${CMAKE_CURRENT_SOURCE_DIR}/bench/cpu_bench.cpp"
   )
   target_include_directories(
-    libgguf_backend_bench
+    libgguf_cpu_bench
     PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/include"
       "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
-      "${CMAKE_CURRENT_SOURCE_DIR}/csrc/common"
   )
-  target_link_libraries(libgguf_backend_bench PRIVATE libgguf_objects)
+  target_link_libraries(libgguf_cpu_bench PRIVATE libgguf_objects)
   if(MSVC)
-    target_compile_options(
-      libgguf_backend_bench
-      PRIVATE
-        /O2
-        /EHsc
-        /std:c++17
-        /D_CRT_SECURE_NO_WARNINGS
-    )
+    target_compile_options(libgguf_cpu_bench PRIVATE /O2 /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS)
+  elseif(WIN32)
+    target_compile_options(libgguf_cpu_bench PRIVATE -O3)
+    target_compile_definitions(libgguf_cpu_bench PRIVATE _CRT_SECURE_NO_WARNINGS=1)
   else()
-    target_compile_options(libgguf_backend_bench PRIVATE -O3 -pthread)
-    target_link_libraries(libgguf_backend_bench PRIVATE m pthread)
+    target_compile_options(libgguf_cpu_bench PRIVATE -O3 -pthread)
+    target_link_libraries(libgguf_cpu_bench PRIVATE m pthread)
   endif()
 endif()
