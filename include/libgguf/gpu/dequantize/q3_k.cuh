@@ -8,15 +8,13 @@ namespace gpu
 {
 
 template<typename dst_t>
-static __global__ void dequantize_block_q3_k(const void * __restrict__ vx, dst_t * __restrict__ yy) {
-
-    const auto i = blockIdx.x;
+static __device__ __forceinline__ void dequantize_q3_k(
+    const void * vx, dst_t * yy, const int i, const int thread_index) {
     const block_q3_K * x = (const block_q3_K *) vx;
-
-    const auto r = threadIdx.x/4;
+    const auto r = thread_index/4;
     const int tid = r/2;
     const int is0 = r%2;
-    const int l0 = 16*is0 + 4*(threadIdx.x%4);
+    const int l0 = 16*is0 + 4*(thread_index%4);
     const int n = tid / 4;
     const int j = tid - 4*n;
 
@@ -31,13 +29,18 @@ static __global__ void dequantize_block_q3_k(const void * __restrict__ vx, dst_t
     const float d_all = __half2float(load_half(x[i].d));
     const float dl = d_all * (us - 32);
 
-    dst_t * y = yy + i*QK_K + 128*n + 32*j;
+    dst_t * y = yy + 128*n + 32*j;
     const uint8_t * q = x[i].qs + 32*n;
     const uint8_t * hm = x[i].hmask;
 
     for (int l = l0; l < l0+4; ++l) {
         y[l] = convert_from_float<dst_t>(dl * ((int8_t)((q[l] >> shift) & 3) - ((hm[l] & m) ? 0 : 4)));
     }
+}
+
+template<typename dst_t>
+static __global__ void dequantize_block_q3_k(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+    dequantize_q3_k(vx, yy + blockIdx.x*QK_K, blockIdx.x, threadIdx.x);
 }
 
 }

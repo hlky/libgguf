@@ -21,7 +21,7 @@ if(LIBGGUF_ENABLE_ROCM)
   libgguf_configure_rocm_sdk()
 endif()
 
-project(libgguf VERSION 0.2.1 LANGUAGES CXX)
+project(libgguf VERSION 0.2.2 LANGUAGES CXX)
 
 option(LIBGGUF_BUILD_SHARED "Build the standalone libgguf shared library" ON)
 option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
@@ -108,7 +108,7 @@ if(LIBGGUF_CPU_BACKEND_UPPER STREQUAL "AVX2")
   if(MSVC)
     set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
   else()
-    set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "-mavx2")
+    set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "-mavx2;-mf16c")
   endif()
 elseif(LIBGGUF_CPU_BACKEND_UPPER STREQUAL "SSE4_1" AND NOT MSVC)
   set_source_files_properties(${LIBGGUF_CPU_BACKEND_SOURCES} PROPERTIES COMPILE_OPTIONS "-msse4.1")
@@ -380,12 +380,12 @@ if(LIBGGUF_BUILD_TOOLS)
         "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/cpu_quantizer.cpp"
         PROPERTIES COMPILE_OPTIONS "/arch:AVX2"
       )
-    else()
-      set_source_files_properties(
-        "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/cpu_quantizer.cpp"
-        PROPERTIES COMPILE_OPTIONS "-mavx2"
-      )
-    endif()
+      else()
+        set_source_files_properties(
+          "${CMAKE_CURRENT_SOURCE_DIR}/csrc/conversion/cpu_quantizer.cpp"
+          PROPERTIES COMPILE_OPTIONS "-mavx2;-mf16c"
+        )
+      endif()
   endif()
 
   if(MSVC)

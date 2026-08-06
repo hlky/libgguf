@@ -8,18 +8,14 @@ namespace gpu
 {
 
 template<typename dst_t>
-static __global__ void dequantize_block_q5_k(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+static __device__ __forceinline__ void dequantize_q5_k(
+    const void * vx, dst_t * yy, const int i, const int tid) {
     const block_q5_K * x = (const block_q5_K *) vx;
-
-    const auto i = blockIdx.x;
-
-    // assume 64 threads - this is very slightly better than the one below
-    const auto tid = threadIdx.x;
     const int il  = tid/16;   // il is in 0...3
     const int ir  = tid%16;   // ir is in 0...15
     const int is  = 2*il;     // is is in 0...6
 
-    dst_t * y = yy + i*QK_K + 64*il + 2*ir;
+    dst_t * y = yy + 64*il + 2*ir;
 
     const float dall = __half2float(low_half(x[i].dm));
     const float dmin = __half2float(high_half(x[i].dm));
@@ -39,6 +35,11 @@ static __global__ void dequantize_block_q5_k(const void * __restrict__ vx, dst_t
     hm <<= 1;
     y[32] = convert_from_float<dst_t>(d2 * ((ql[0] >>  4) + (qh[0] & hm ? 16 : 0)) - m2);
     y[33] = convert_from_float<dst_t>(d2 * ((ql[1] >>  4) + (qh[1] & hm ? 16 : 0)) - m2);
+}
+
+template<typename dst_t>
+static __global__ void dequantize_block_q5_k(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+    dequantize_q5_k(vx, yy + blockIdx.x*QK_K, blockIdx.x, threadIdx.x);
 }
 
 }
