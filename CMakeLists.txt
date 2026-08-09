@@ -428,46 +428,46 @@ endif()
 
 if(LIBGGUF_BUILD_TESTS)
   enable_testing()
-  add_executable(libgguf_simple_q_test tests/native/simple_q_test.cpp)
-  target_include_directories(libgguf_simple_q_test PRIVATE
+  add_executable(libgguf_fragment_test tests/native/fragment_test.cpp)
+  target_include_directories(libgguf_fragment_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include")
-  target_link_libraries(libgguf_simple_q_test PRIVATE libgguf_objects)
-  add_test(NAME libgguf_simple_q_test COMMAND libgguf_simple_q_test)
+  target_link_libraries(libgguf_fragment_test PRIVATE libgguf_objects)
+  add_test(NAME libgguf_fragment_test COMMAND libgguf_fragment_test)
   if(LIBGGUF_BUILD_GPU)
-    set_source_files_properties(tests/native/simple_q_device.cu
+    set_source_files_properties(tests/native/fragment_device.cu
       PROPERTIES LANGUAGE ${LIBGGUF_GPU_LANGUAGE})
-    add_executable(libgguf_simple_q_device_test
-      tests/native/simple_q_device.cu)
-    target_include_directories(libgguf_simple_q_device_test PRIVATE
+    add_executable(libgguf_fragment_device_test
+      tests/native/fragment_device.cu)
+    target_include_directories(libgguf_fragment_device_test PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/include")
-    target_link_libraries(libgguf_simple_q_device_test PRIVATE
+    target_link_libraries(libgguf_fragment_device_test PRIVATE
       ${LIBGGUF_GPU_HOST_RUNTIME_TARGET})
     if(LIBGGUF_ENABLE_ROCM)
-      set_target_properties(libgguf_simple_q_device_test PROPERTIES
+      set_target_properties(libgguf_fragment_device_test PROPERTIES
         HIP_STANDARD 17 HIP_STANDARD_REQUIRED ON)
     else()
-      set_target_properties(libgguf_simple_q_device_test PROPERTIES
+      set_target_properties(libgguf_fragment_device_test PROPERTIES
         CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
     endif()
     if(LIBGGUF_RUN_GPU_TESTS)
-      add_test(NAME libgguf_simple_q_device_test
-               COMMAND libgguf_simple_q_device_test)
+      add_test(NAME libgguf_fragment_device_test
+               COMMAND libgguf_fragment_device_test)
     endif()
     if(LIBGGUF_ENABLE_ROCM)
-      list(GET CMAKE_HIP_ARCHITECTURES 0 LIBGGUF_SIMPLE_Q_TEST_ARCH)
-      add_custom_target(libgguf_simple_q_noruntime_test
+      list(GET CMAKE_HIP_ARCHITECTURES 0 LIBGGUF_FRAGMENT_TEST_ARCH)
+      add_custom_target(libgguf_fragment_noruntime_test
         COMMAND "${CMAKE_HIP_COMPILER}"
           -std=c++17 -x hip --cuda-device-only -nogpuinc -nogpulib
-          "--offload-arch=${LIBGGUF_SIMPLE_Q_TEST_ARCH}"
+          "--offload-arch=${LIBGGUF_FRAGMENT_TEST_ARCH}"
           "-I${CMAKE_CURRENT_SOURCE_DIR}/include" -fsyntax-only
-          "${CMAKE_CURRENT_SOURCE_DIR}/tests/native/simple_q_noruntime.hip"
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/native/fragment_noruntime.hip"
         VERBATIM)
-      add_test(NAME libgguf_simple_q_noruntime_test
+      add_test(NAME libgguf_fragment_noruntime_test
         COMMAND "${CMAKE_HIP_COMPILER}"
           -std=c++17 -x hip --cuda-device-only -nogpuinc -nogpulib
-          "--offload-arch=${LIBGGUF_SIMPLE_Q_TEST_ARCH}"
+          "--offload-arch=${LIBGGUF_FRAGMENT_TEST_ARCH}"
           "-I${CMAKE_CURRENT_SOURCE_DIR}/include" -fsyntax-only
-          "${CMAKE_CURRENT_SOURCE_DIR}/tests/native/simple_q_noruntime.hip")
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/native/fragment_noruntime.hip")
     endif()
   endif()
 endif()

@@ -68,13 +68,13 @@ encoded = libgguf.libgguf_gpu.quantize(rows, int(qtype))
 
 ### Runtime-free device fragments
 
-`<libgguf/device/simple_q.h>` is a narrow header-only API for embedding Q4_0
-and Q8_0 decoding inside downstream GPU kernels. It contains no HIP/CUDA
-runtime, Torch, launcher, or lookup-table dependency and is also usable from
-ordinary C++ reference tests. The API exposes exact 32-value/18-byte and
-32-value/34-byte block layouts, scale and integer-quant accessors, scalar
-decoding, and eight-value fragment decoding. Consumers should pin both the
-libgguf commit and `simple_q_api_revision`.
+`<libgguf/gpu/dequantize/fragment.cuh>` is the lean header-only API for
+embedding partial block decoding inside downstream GPU kernels. It contains no
+HIP/CUDA runtime, Torch, launcher, or lookup-table dependency and is also
+usable from ordinary C++ reference tests. `BlockFragmentDecoder<Format>`
+currently exposes scalar and eight-value fragment decoding for Q4_0, Q4_1,
+Q5_0, Q5_1, and Q8_0. Consumers should pin both the libgguf commit and
+`block_fragment_decoder_api_revision`.
 
 ## Converter and commands
 
