@@ -22,7 +22,7 @@
 
 namespace libgguf::device {
 
-inline constexpr std::uint32_t simple_q_api_revision = 1;
+inline constexpr std::uint32_t simple_q_api_revision = 2;
 inline constexpr std::uint32_t simple_q_block_values = 32;
 
 struct q4_0_block {
@@ -108,6 +108,26 @@ LIBGGUF_SIMPLE_Q_INLINE float q4_0_scale(const q4_0_block& block) {
   return detail::fp16_bits_to_float(block.scale_bits);
 }
 
+// Raw-wire accessors avoid materializing a typed block when a device kernel
+// consumes only one fragment. encoded points to at least q4_0_block_bytes.
+LIBGGUF_SIMPLE_Q_INLINE float q4_0_raw_scale(const std::byte* encoded) {
+  const std::uint16_t bits =
+      static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(encoded[0])) |
+      static_cast<std::uint16_t>(
+          static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(encoded[1]))
+          << 8);
+  return detail::fp16_bits_to_float(bits);
+}
+
+LIBGGUF_SIMPLE_Q_INLINE int q4_0_raw_quant(const std::byte* encoded,
+                                          std::uint32_t value_index) {
+  const std::uint8_t packed =
+      std::to_integer<std::uint8_t>(encoded[2 + (value_index & 15u)]);
+  const int quant = value_index < 16u ? static_cast<int>(packed & 0x0fu)
+                                     : static_cast<int>(packed >> 4);
+  return quant - 8;
+}
+
 // Preconditions: value_index < simple_q_block_values.
 LIBGGUF_SIMPLE_Q_INLINE int q4_0_quant(const q4_0_block& block,
                                       std::uint32_t value_index) {
@@ -136,6 +156,22 @@ LIBGGUF_SIMPLE_Q_INLINE void decode_q4_0_8(const q4_0_block& block,
 
 LIBGGUF_SIMPLE_Q_INLINE float q8_0_scale(const q8_0_block& block) {
   return detail::fp16_bits_to_float(block.scale_bits);
+}
+
+// encoded points to at least q8_0_block_bytes.
+LIBGGUF_SIMPLE_Q_INLINE float q8_0_raw_scale(const std::byte* encoded) {
+  const std::uint16_t bits =
+      static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(encoded[0])) |
+      static_cast<std::uint16_t>(
+          static_cast<std::uint16_t>(std::to_integer<std::uint8_t>(encoded[1]))
+          << 8);
+  return detail::fp16_bits_to_float(bits);
+}
+
+LIBGGUF_SIMPLE_Q_INLINE int q8_0_raw_quant(const std::byte* encoded,
+                                          std::uint32_t value_index) {
+  return static_cast<int>(static_cast<std::int8_t>(
+      std::to_integer<std::uint8_t>(encoded[2 + value_index])));
 }
 
 // Preconditions: value_index < simple_q_block_values.

@@ -117,7 +117,7 @@ int main() {
   static_assert(sizeof(q4_0_block) == 18);
   static_assert(sizeof(q8_0_block) == 34);
   static_assert(libgguf::device::simple_q_block_values == 32);
-  static_assert(libgguf::device::simple_q_api_revision == 1);
+  static_assert(libgguf::device::simple_q_api_revision == 2);
 
   const q4_0_block q4 = make_q4();
   const q8_0_block q8 = make_q8();
@@ -138,6 +138,18 @@ int main() {
     for (std::uint32_t index = 0; index < fragment.size(); ++index) {
       ok &= fragment[index] == q8_expected[base + index];
     }
+  }
+  const auto* q4_raw = reinterpret_cast<const std::byte*>(&q4);
+  const auto* q8_raw = reinterpret_cast<const std::byte*>(&q8);
+  for (std::uint32_t index = 0; index < 32; ++index) {
+    ok &= libgguf::device::q4_0_raw_scale(q4_raw) ==
+          libgguf::device::q4_0_scale(q4);
+    ok &= libgguf::device::q4_0_raw_quant(q4_raw, index) ==
+          libgguf::device::q4_0_quant(q4, index);
+    ok &= libgguf::device::q8_0_raw_scale(q8_raw) ==
+          libgguf::device::q8_0_scale(q8);
+    ok &= libgguf::device::q8_0_raw_quant(q8_raw, index) ==
+          libgguf::device::q8_0_quant(q8, index);
   }
 
   std::array<float, 32> source{};
