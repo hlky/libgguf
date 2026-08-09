@@ -63,6 +63,12 @@ LIBGGUF_FRAGMENT_INLINE float fp16_to_float(std::uint16_t value)
     return float_from_bits(sign | (exponent << 23) | (mantissa << 13));
 }
 
+LIBGGUF_FRAGMENT_INLINE std::uint16_t load_u16_le(const std::uint8_t * encoded)
+{
+    return static_cast<std::uint16_t>(encoded[0]) |
+        static_cast<std::uint16_t>(static_cast<std::uint16_t>(encoded[1]) << 8);
+}
+
 }
 
 template <ggml_type Format>
@@ -73,6 +79,27 @@ struct BlockFragmentDecoder<GGML_TYPE_Q8_0>
 {
     using Block = block_q8_0;
     static constexpr int values_per_block = QK8_0;
+    static constexpr int encoded_bytes = sizeof(Block);
+
+    static LIBGGUF_FRAGMENT_INLINE float decode_raw_value(
+        const std::uint8_t * encoded, int value_index)
+    {
+        return fragment_detail::fp16_to_float(
+                   fragment_detail::load_u16_le(encoded)) *
+            static_cast<float>(static_cast<std::int8_t>(encoded[2 + value_index]));
+    }
+
+    template <typename SetValue>
+    static LIBGGUF_FRAGMENT_INLINE void decode_raw_8(
+        const std::uint8_t * encoded, int value_index, const SetValue & set_value)
+    {
+        const float scale = fragment_detail::fp16_to_float(
+            fragment_detail::load_u16_le(encoded));
+#pragma unroll
+        for (int i = 0; i < 8; ++i)
+            set_value(i, scale * static_cast<float>(
+                static_cast<std::int8_t>(encoded[2 + value_index + i])));
+    }
 
     static LIBGGUF_FRAGMENT_INLINE float decode_value(const Block & block, int value_index)
     {
@@ -97,6 +124,37 @@ struct BlockFragmentDecoder<GGML_TYPE_Q4_0>
 {
     using Block = block_q4_0;
     static constexpr int values_per_block = QK4_0;
+    static constexpr int encoded_bytes = sizeof(Block);
+
+    static LIBGGUF_FRAGMENT_INLINE int decode_raw_quant(
+        const std::uint8_t * encoded, int value_index)
+    {
+        const std::uint8_t packed = encoded[2 + (value_index & 15)];
+        const int quant = value_index < 16
+            ? static_cast<int>(packed & 0x0f)
+            : static_cast<int>(packed >> 4);
+        return quant - 8;
+    }
+
+    static LIBGGUF_FRAGMENT_INLINE float decode_raw_value(
+        const std::uint8_t * encoded, int value_index)
+    {
+        return fragment_detail::fp16_to_float(
+                   fragment_detail::load_u16_le(encoded)) *
+            static_cast<float>(decode_raw_quant(encoded, value_index));
+    }
+
+    template <typename SetValue>
+    static LIBGGUF_FRAGMENT_INLINE void decode_raw_8(
+        const std::uint8_t * encoded, int value_index, const SetValue & set_value)
+    {
+        const float scale = fragment_detail::fp16_to_float(
+            fragment_detail::load_u16_le(encoded));
+#pragma unroll
+        for (int i = 0; i < 8; ++i)
+            set_value(i, scale * static_cast<float>(
+                decode_raw_quant(encoded, value_index + i)));
+    }
 
     static LIBGGUF_FRAGMENT_INLINE float decode_value(const Block & block, int value_index)
     {

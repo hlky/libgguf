@@ -38,11 +38,18 @@ bool compare(const typename Decoder::Block& block, ggml_type format) {
     return false;
   bool ok = true;
   for (int index = 0; index < Decoder::values_per_block; ++index)
-    ok &= Decoder::decode_value(block, index) == reference[index];
+    ok &= Decoder::decode_value(block, index) == reference[index] &&
+          Decoder::decode_raw_value(
+              reinterpret_cast<const std::uint8_t*>(&block), index) ==
+              reference[index];
   for (int first = 0; first < Decoder::values_per_block; first += 8) {
     Decoder::decode_8(block, first, [&](int slot, float value) {
       ok &= value == reference[first + slot];
     });
+    Decoder::decode_raw_8(reinterpret_cast<const std::uint8_t*>(&block), first,
+                          [&](int slot, float value) {
+                            ok &= value == reference[first + slot];
+                          });
   }
   return ok;
 }
