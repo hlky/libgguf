@@ -112,12 +112,11 @@ struct BlockFragmentDecoder<GGML_TYPE_Q4_0>
         const Block & block, int value_index, const SetValue & set_value)
     {
         const float scale = fragment_detail::fp16_to_float(block.d);
-        const bool high_nibble = value_index >= 16;
 #pragma unroll
         for (int i = 0; i < 8; ++i)
         {
             const uint8_t packed = block.qs[(value_index + i) & 15];
-            const int quant = high_nibble
+            const int quant = value_index + i >= 16
                 ? static_cast<int>(packed >> 4)
                 : static_cast<int>(packed & 0x0f);
             set_value(i, scale * static_cast<float>(quant - 8));
@@ -147,12 +146,11 @@ struct BlockFragmentDecoder<GGML_TYPE_Q4_1>
     {
         const float scale = fragment_detail::fp16_to_float(block.d);
         const float minimum = fragment_detail::fp16_to_float(block.m);
-        const bool high_nibble = value_index >= 16;
 #pragma unroll
         for (int i = 0; i < 8; ++i)
         {
             const uint8_t packed = block.qs[(value_index + i) & 15];
-            const int quant = high_nibble
+            const int quant = value_index + i >= 16
                 ? static_cast<int>(packed >> 4)
                 : static_cast<int>(packed & 0x0f);
             set_value(i, scale * static_cast<float>(quant) + minimum);
