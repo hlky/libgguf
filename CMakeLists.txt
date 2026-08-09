@@ -28,6 +28,9 @@ option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
 option(LIBGGUF_BUILD_TORCH "Build the libgguf Torch GPU extension" OFF)
 option(LIBGGUF_BUILD_BENCHMARKS "Build native libgguf benchmark binaries" OFF)
 option(LIBGGUF_BUILD_TOOLS "Build native libgguf command line tools" ON)
+option(LIBGGUF_BUILD_TESTS "Build native libgguf contract tests" OFF)
+option(LIBGGUF_RUN_GPU_TESTS
+       "Register libgguf tests that require an available GPU" OFF)
 set(LIBGGUF_CPU_BACKEND "REF" CACHE STRING "CPU row backend to compile (REF, SSE2, SSE4_1, or AVX2)")
 set_property(CACHE LIBGGUF_CPU_BACKEND PROPERTY STRINGS REF SSE2 SSE4_1 AVX2)
 
@@ -420,5 +423,51 @@ if(LIBGGUF_BUILD_BENCHMARKS)
   else()
     target_compile_options(libgguf_cpu_bench PRIVATE -O3 -pthread)
     target_link_libraries(libgguf_cpu_bench PRIVATE m pthread)
+  endif()
+endif()
+
+if(LIBGGUF_BUILD_TESTS)
+  enable_testing()
+  add_executable(libgguf_simple_q_test tests/native/simple_q_test.cpp)
+  target_include_directories(libgguf_simple_q_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(libgguf_simple_q_test PRIVATE libgguf_objects)
+  add_test(NAME libgguf_simple_q_test COMMAND libgguf_simple_q_test)
+  if(LIBGGUF_BUILD_GPU)
+    set_source_files_properties(tests/native/simple_q_device.cu
+      PROPERTIES LANGUAGE ${LIBGGUF_GPU_LANGUAGE})
+    add_executable(libgguf_simple_q_device_test
+      tests/native/simple_q_device.cu)
+    target_include_directories(libgguf_simple_q_device_test PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_link_libraries(libgguf_simple_q_device_test PRIVATE
+      ${LIBGGUF_GPU_HOST_RUNTIME_TARGET})
+    if(LIBGGUF_ENABLE_ROCM)
+      set_target_properties(libgguf_simple_q_device_test PROPERTIES
+        HIP_STANDARD 17 HIP_STANDARD_REQUIRED ON)
+    else()
+      set_target_properties(libgguf_simple_q_device_test PROPERTIES
+        CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    endif()
+    if(LIBGGUF_RUN_GPU_TESTS)
+      add_test(NAME libgguf_simple_q_device_test
+               COMMAND libgguf_simple_q_device_test)
+    endif()
+    if(LIBGGUF_ENABLE_ROCM)
+      list(GET CMAKE_HIP_ARCHITECTURES 0 LIBGGUF_SIMPLE_Q_TEST_ARCH)
+      add_custom_target(libgguf_simple_q_noruntime_test
+        COMMAND "${CMAKE_HIP_COMPILER}"
+          -std=c++17 -x hip --cuda-device-only -nogpuinc -nogpulib
+          "--offload-arch=${LIBGGUF_SIMPLE_Q_TEST_ARCH}"
+          "-I${CMAKE_CURRENT_SOURCE_DIR}/include" -fsyntax-only
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/native/simple_q_noruntime.hip"
+        VERBATIM)
+      add_test(NAME libgguf_simple_q_noruntime_test
+        COMMAND "${CMAKE_HIP_COMPILER}"
+          -std=c++17 -x hip --cuda-device-only -nogpuinc -nogpulib
+          "--offload-arch=${LIBGGUF_SIMPLE_Q_TEST_ARCH}"
+          "-I${CMAKE_CURRENT_SOURCE_DIR}/include" -fsyntax-only
+          "${CMAKE_CURRENT_SOURCE_DIR}/tests/native/simple_q_noruntime.hip")
+    endif()
   endif()
 endif()

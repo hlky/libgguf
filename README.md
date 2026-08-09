@@ -66,6 +66,16 @@ qtype = libgguf.GGMLQuantizationType.Q4_K
 encoded = libgguf.libgguf_gpu.quantize(rows, int(qtype))
 ```
 
+### Runtime-free device fragments
+
+`<libgguf/device/simple_q.h>` is a narrow header-only API for embedding Q4_0
+and Q8_0 decoding inside downstream GPU kernels. It contains no HIP/CUDA
+runtime, Torch, launcher, or lookup-table dependency and is also usable from
+ordinary C++ reference tests. The API exposes exact 32-value/18-byte and
+32-value/34-byte block layouts, scale and integer-quant accessors, scalar
+decoding, and eight-value fragment decoding. Consumers should pin both the
+libgguf commit and `simple_q_api_revision`.
+
 ## Converter and commands
 
 The native `libgguf_quantize_gguf` executable converts safetensors models to

@@ -3,5 +3,7 @@ recursive-include include *.h
 recursive-include csrc *.h *.cpp
 recursive-include src/libgguf/libgguf_gpu *.h *.cpp *.cu *.hip *.py
 recursive-include src *.py
-recursive-include tests *.py
+recursive-include tests *.py *.cpp *.cu *.hip
 recursive-include scripts *.py
+include LICENSE
+include NOTICE

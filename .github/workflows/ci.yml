@@ -32,6 +32,24 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Configure native contract tests
+        run: >-
+          cmake -S . -B build/native-tests
+          -DLIBGGUF_BUILD_SHARED=OFF
+          -DLIBGGUF_BUILD_PYTHON=OFF
+          -DLIBGGUF_BUILD_TORCH=OFF
+          -DLIBGGUF_BUILD_GPU=OFF
+          -DLIBGGUF_BUILD_TOOLS=OFF
+          -DLIBGGUF_BUILD_BENCHMARKS=OFF
+          -DLIBGGUF_BUILD_TESTS=ON
+          -DLIBGGUF_CPU_BACKEND=REF
+
+      - name: Build native contract tests
+        run: cmake --build build/native-tests --target libgguf_simple_q_test --parallel 2
+
+      - name: Run native contract tests
+        run: ctest --test-dir build/native-tests --output-on-failure
+
       - name: Install CPU Torch
         run: python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch
 
