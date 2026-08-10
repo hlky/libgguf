@@ -1,22 +1,47 @@
 #pragma once
 
 #include <libgguf/gpu/quantize/common.cuh>
+#include <libgguf/gpu/quantize/fragment.cuh>
 
 namespace libgguf
 {
 namespace gpu
 {
 
+namespace q8_0_detail
+{
+
+struct NativeOperations
+{
+    static __device__ __forceinline__ float reduce_absmax(float value)
+    {
+        const auto mask = __activemask();
+        return __shfl_sync(mask, warp_reduce_max(fabsf(value)), 0);
+    }
+
+    static __device__ __forceinline__ float divide(float numerator, float denominator)
+    {
+        return __fdiv_rn(numerator, denominator);
+    }
+
+    static __device__ __forceinline__ float multiply(float lhs, float rhs)
+    {
+        return __fmul_rn(lhs, rhs);
+    }
+
+    static __device__ __forceinline__ int8_t round_to_int8(float value)
+    {
+        return static_cast<int8_t>(roundf(value));
+    }
+};
+
+}
+
 template<typename src_t>
 static __device__ __forceinline__ float quantize_q8_0(src_t value, int8_t & q)
 {
-    const float v = static_cast<float>(value);
-    const auto mask = __activemask();
-    const float amax = __shfl_sync(mask, warp_reduce_max(fabsf(v)), 0);
-    const float d = __fdiv_rn(amax, 127.0f);
-    const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
-    q = static_cast<int8_t>(roundf(__fmul_rn(v, id)));
-    return d;
+    return BlockFragmentQuantizer<GGML_TYPE_Q8_0>::quantize_lane(
+        value, q, q8_0_detail::NativeOperations{});
 }
 
 template<typename src_t>
