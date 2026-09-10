@@ -67,7 +67,7 @@ void parse_tensor_type_arg(
 void print_help() {
     std::puts("Usage: libgguf_quantize_gguf --src PATH --qtype QTYPE [options]");
     std::puts("");
-    std::puts("Native safetensors-only Q/K quantization of diffusion models to GGUF.");
+    std::puts("Native safetensors-only Q/K quantization of supported models to GGUF.");
     std::puts("");
     std::puts("Options:");
     std::puts("  --src PATH                 Source .safetensors model");

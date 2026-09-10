@@ -267,6 +267,13 @@ std::vector<tensor_meta> parse_safetensors_header(const input_file &input, uint6
 }
 
 void strip_prefix(std::vector<tensor_meta> &tensors) {
+  // Decoder checkpoints use model.* alongside an unprefixed lm_head. These
+  // are original tensor names, not a diffusion wrapper to remove.
+  for (const tensor_meta &tensor : tensors) {
+    if (tensor.key == "model.layers.0.block_sparse_moe.gate.weight") {
+      return;
+    }
+  }
   const std::vector<std::string> prefixes = {"model.diffusion_model.", "model."};
   for (const std::string &prefix : prefixes) {
     bool any = false;
@@ -302,4 +309,3 @@ void strip_prefix(std::vector<tensor_meta> &tensors) {
     }
   }
 }
-

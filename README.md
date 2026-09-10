@@ -92,6 +92,18 @@ libgguf_quantize_gguf \
 The Python package also installs `gguf-inspect`, `gguf-validate`, and
 `gguf-compare`. See [docs/cli.md](docs/cli.md).
 
+Original Mixtral safetensors names are supported, including the `model.`
+prefix and the independent `lm_head.weight`. For uniform Q4_K_S conversion,
+keep routers in BF16 with `--tensor-type '*.block_sparse_moe.gate.weight=BF16'`.
+The converter accepts one safetensors file; merge sharded checkpoints without
+renaming their tensors before conversion.
+
+A standalone ROCm SDK can be selected with `-DLIBGGUF_ROCM_ROOT=/path/to/sdk`
+when configuring a GPU build. On Windows, deploy the matching SDK runtime DLLs
+beside the converter executable if an older system HIP runtime would otherwise
+be loaded. The tested SDK required `amdhip64_7.dll`, `amd_comgr.dll`, and
+`rocm_kpack.dll`; do not replace system DLLs.
+
 ## Documentation
 
 - [Qtypes](docs/qtypes.md)

@@ -280,6 +280,7 @@ bool contains_any(const std::string &name, const std::vector<std::string> &marke
 
 std::vector<model_template> model_templates() {
   return {
+      {"mixtral", false, {{"model.layers.0.block_sparse_moe.gate.weight", "model.layers.0.block_sparse_moe.experts.0.w1.weight", "model.embed_tokens.weight", "lm_head.weight"}}, {}, {".block_sparse_moe.gate.weight"}, {}},
       {"flux", false, {{"transformer_blocks.0.attn.norm_added_k.weight"}, {"double_blocks.0.img_attn.proj.weight"}}, {"transformer_blocks.0.attn.norm_added_k.weight"}, {}, {}},
       {"sd3", false, {{"transformer_blocks.0.attn.add_q_proj.weight"}, {"joint_blocks.0.x_block.attn.qkv.weight"}}, {"transformer_blocks.0.attn.add_q_proj.weight"}, {}, {}},
       {"aura", false, {{"double_layers.3.modX.1.weight"}, {"joint_transformer_blocks.3.ff_context.out_projection.weight"}}, {"joint_transformer_blocks.3.ff_context.out_projection.weight"}, {}, {}},
@@ -572,5 +573,4 @@ std::vector<tensor_plan> prepare_plans(
   }
   return plans;
 }
-
 
