@@ -30,3 +30,4 @@ env/
 # Local benchmark/research outputs
 bench/results/local_*
 reports/exactness/
+/build-gfx942*/
