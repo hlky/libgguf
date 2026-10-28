@@ -5,6 +5,7 @@
 
 #include <libgguf/gpu/compat.h>
 #include <libgguf/gpu/common.cuh>
+#include <libgguf/gpu/subgroup.cuh>
 #ifdef LIBGGUF_GPU_USE_IQ1_GRID_LOOKUP
 #include <libgguf/gpu/iq/iq1_lookup.cuh>
 #ifdef LIBGGUF_GPU_USE_IQ1_NEIGHBOURS
@@ -39,21 +40,21 @@ static __device__ __forceinline__ int tq_round_away(float value) {
 
 static __device__ __forceinline__ float warp_reduce_max(float value) {
     const auto mask = __activemask();
-    value = fmaxf(value, __shfl_down_sync(mask, value, 16));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 8));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 4));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 2));
-    value = fmaxf(value, __shfl_down_sync(mask, value, 1));
+    value = fmaxf(value, __shfl_down_sync(mask, value, 16, libgguf::gpu::subgroup32::width));
+    value = fmaxf(value, __shfl_down_sync(mask, value, 8, libgguf::gpu::subgroup32::width));
+    value = fmaxf(value, __shfl_down_sync(mask, value, 4, libgguf::gpu::subgroup32::width));
+    value = fmaxf(value, __shfl_down_sync(mask, value, 2, libgguf::gpu::subgroup32::width));
+    value = fmaxf(value, __shfl_down_sync(mask, value, 1, libgguf::gpu::subgroup32::width));
     return value;
 }
 
 static __device__ __forceinline__ float warp_reduce_min(float value) {
     const auto mask = __activemask();
-    value = fminf(value, __shfl_down_sync(mask, value, 16));
-    value = fminf(value, __shfl_down_sync(mask, value, 8));
-    value = fminf(value, __shfl_down_sync(mask, value, 4));
-    value = fminf(value, __shfl_down_sync(mask, value, 2));
-    value = fminf(value, __shfl_down_sync(mask, value, 1));
+    value = fminf(value, __shfl_down_sync(mask, value, 16, libgguf::gpu::subgroup32::width));
+    value = fminf(value, __shfl_down_sync(mask, value, 8, libgguf::gpu::subgroup32::width));
+    value = fminf(value, __shfl_down_sync(mask, value, 4, libgguf::gpu::subgroup32::width));
+    value = fminf(value, __shfl_down_sync(mask, value, 2, libgguf::gpu::subgroup32::width));
+    value = fminf(value, __shfl_down_sync(mask, value, 1, libgguf::gpu::subgroup32::width));
     return value;
 }
 
@@ -63,16 +64,16 @@ static __device__ __forceinline__ float warp_reduce_absmax_first(float value, in
     int best_idx = lane;
     float best_value = value;
     for (int offset = 16; offset > 0; offset >>= 1) {
-        const float other_abs = __shfl_down_sync(mask, best_abs, offset);
-        const int other_idx = __shfl_down_sync(mask, best_idx, offset);
-        const float other_value = __shfl_down_sync(mask, best_value, offset);
+        const float other_abs = __shfl_down_sync(mask, best_abs, offset, libgguf::gpu::subgroup32::width);
+        const int other_idx = __shfl_down_sync(mask, best_idx, offset, libgguf::gpu::subgroup32::width);
+        const float other_value = __shfl_down_sync(mask, best_value, offset, libgguf::gpu::subgroup32::width);
         if (other_abs > best_abs || (other_abs == best_abs && other_idx < best_idx)) {
             best_abs = other_abs;
             best_idx = other_idx;
             best_value = other_value;
         }
     }
-    return __shfl_sync(mask, best_value, 0);
+    return __shfl_sync(mask, best_value, 0, libgguf::gpu::subgroup32::width);
 }
 
 

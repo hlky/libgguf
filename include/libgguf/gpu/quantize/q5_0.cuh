@@ -10,7 +10,6 @@ namespace gpu
 template<typename src_t>
 static __device__ __forceinline__ void quantize_q5_0(const src_t * x, block_q5_0 & y)
 {
-    const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     const float max_value = warp_reduce_absmax_first(static_cast<float>(x[lane]), lane);
     const float d = __fdiv_rn(max_value, -16.0f);
@@ -25,8 +24,8 @@ static __device__ __forceinline__ void quantize_q5_0(const src_t * x, block_q5_0
         xi1 = min_u8(31, static_cast<int8_t>(x1 + 16.5f));
         y.qs[lane] = (xi0 & 0x0f) | ((xi1 & 0x0f) << 4);
     }
-    const uint32_t qh0 = __ballot_sync(mask, lane < QK5_0 / 2 && (xi0 & 0x10u)) & 0xffffu;
-    const uint32_t qh1 = (__ballot_sync(mask, lane < QK5_0 / 2 && (xi1 & 0x10u)) & 0xffffu) << 16;
+    const uint32_t qh0 = subgroup32::ballot(lane < QK5_0 / 2 && (xi0 & 0x10u)) & 0xffffu;
+    const uint32_t qh1 = (subgroup32::ballot(lane < QK5_0 / 2 && (xi1 & 0x10u)) & 0xffffu) << 16;
     if (lane == 0)
     {
         y.d = compute_fp32_to_fp16(d);

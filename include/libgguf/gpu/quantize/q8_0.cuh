@@ -16,7 +16,7 @@ struct NativeOperations
     static __device__ __forceinline__ float reduce_absmax(float value)
     {
         const auto mask = __activemask();
-        return __shfl_sync(mask, warp_reduce_max(fabsf(value)), 0);
+        return __shfl_sync(mask, warp_reduce_max(fabsf(value)), 0, libgguf::gpu::subgroup32::width);
     }
 
     static __device__ __forceinline__ float divide(float numerator, float denominator)

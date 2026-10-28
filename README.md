@@ -109,6 +109,7 @@ be loaded. The tested SDK required `amdhip64_7.dll`, `amd_comgr.dll`, and
 - [Qtypes](docs/qtypes.md)
 - [Conversion policy](docs/policy.md)
 - [Correctness](docs/correctness.md)
+- [GPU logical subgroups and compile-only gfx942 bring-up](docs/gpu-subgroups.md)
 - [Documentation index](docs/index.md)
 
 ## License

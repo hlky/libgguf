@@ -29,7 +29,7 @@ static __device__ void quantize_tq1_0(
     {
         amax = fmaxf(amax, fabsf(static_cast<float>(xb[j])));
     }
-    amax = __shfl_sync(mask, warp_reduce_max(amax), 0);
+    amax = __shfl_sync(mask, warp_reduce_max(amax), 0, libgguf::gpu::subgroup32::width);
 
     const float d = amax;
     const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;

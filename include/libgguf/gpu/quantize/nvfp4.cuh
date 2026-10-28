@@ -21,7 +21,7 @@ static __device__ __forceinline__ void quantize_nvfp4(const src_t * x, block_nvf
     amax = fmaxf(amax, __shfl_down_sync(mask, amax, 4, 8));
     amax = fmaxf(amax, __shfl_down_sync(mask, amax, 2, 8));
     amax = fmaxf(amax, __shfl_down_sync(mask, amax, 1, 8));
-    amax = __shfl_sync(mask, amax, s * 8);
+    amax = __shfl_sync(mask, amax, s * 8, libgguf::gpu::subgroup32::width);
 
     const uint8_t ue = fp32_to_ue4m3(amax / 6.0f);
     if (j == 0)

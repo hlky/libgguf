@@ -13,7 +13,7 @@ static __device__ __forceinline__ void quantize_mxfp4(const src_t * x, block_mxf
     const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     float amax = warp_reduce_max(fabsf(static_cast<float>(x[lane])));
-    amax = __shfl_sync(mask, amax, 0);
+    amax = __shfl_sync(mask, amax, 0, libgguf::gpu::subgroup32::width);
 
     const uint8_t e = amax > 0.0f ? static_cast<uint8_t>(floorf(log2f(amax)) - 2.0f + 127.0f) : 0;
     const float d = e8m0_to_fp32_half(e);

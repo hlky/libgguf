@@ -13,8 +13,8 @@ static __device__ __forceinline__ void quantize_q5_1(const src_t * x, block_q5_1
     const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     const float value = static_cast<float>(x[lane]);
-    const float min_value = __shfl_sync(mask, warp_reduce_min(value), 0);
-    const float max_value = __shfl_sync(mask, warp_reduce_max(value), 0);
+    const float min_value = __shfl_sync(mask, warp_reduce_min(value), 0, libgguf::gpu::subgroup32::width);
+    const float max_value = __shfl_sync(mask, warp_reduce_max(value), 0, libgguf::gpu::subgroup32::width);
     const float d = __fdiv_rn(max_value - min_value, 31.0f);
     const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
     uint8_t xi0 = 0;
@@ -27,8 +27,8 @@ static __device__ __forceinline__ void quantize_q5_1(const src_t * x, block_q5_1
         xi1 = static_cast<uint8_t>(x1 + 0.5f);
         y.qs[lane] = (xi0 & 0x0f) | ((xi1 & 0x0f) << 4);
     }
-    const uint32_t qh0 = __ballot_sync(mask, lane < QK5_1 / 2 && (xi0 & 0x10u)) & 0xffffu;
-    const uint32_t qh1 = (__ballot_sync(mask, lane < QK5_1 / 2 && (xi1 & 0x10u)) & 0xffffu) << 16;
+    const uint32_t qh0 = subgroup32::ballot(lane < QK5_1 / 2 && (xi0 & 0x10u)) & 0xffffu;
+    const uint32_t qh1 = (subgroup32::ballot(lane < QK5_1 / 2 && (xi1 & 0x10u)) & 0xffffu) << 16;
     if (lane == 0)
     {
         y.d = compute_fp32_to_fp16(d);
