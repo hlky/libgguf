@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sdk', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--architectures', nargs='+', choices=('gfx942', 'gfx1201'),
+    parser.add_argument('--architectures', nargs='+', choices=('gfx942', 'gfx1201', 'gfx1151'),
                         default=['gfx942', 'gfx1201'])
     parser.add_argument('--jobs', type=int, default=4)
     args = parser.parse_args()

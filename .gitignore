@@ -31,3 +31,6 @@ env/
 bench/results/local_*
 reports/exactness/
 /build-gfx942*/
+
+# Independent gfx1151 compilation and link evidence
+build-gfx1151-*/
