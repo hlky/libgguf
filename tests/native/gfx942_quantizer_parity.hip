@@ -1,4 +1,5 @@
 #include <hip/hip_runtime.h>
+#include <libgguf/gpu/gfx942/decode_pipeline.cuh>
 #include <libgguf/libgguf.h>
 #include "quantize/gpu.h"
 #include "dequantize/gpu.h"
@@ -55,6 +56,18 @@ static void parity(ggml_type type, int blocks) {
     throw std::runtime_error("decoder modified an output guard");
   for(int i=0;i<count;++i) if(!std::isfinite(decoded[16+i]) || std::abs(decoded[16+i]-oracle[i])>1e-5F*std::max(1.0F,std::abs(oracle[i])))
     throw std::runtime_error("GPU decoded value differs from REF");
+  for(int schedule=0;schedule<4;++schedule) {
+    std::fill(decoded.begin(),decoded.end(),-12345);
+    check(hipMemcpy(device_decoded,decoded.data(),decoded.size()*sizeof(float),hipMemcpyHostToDevice));
+    if(schedule==0)check((libgguf::gpu::gfx942::launch_decode<128,1>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    if(schedule==1)check((libgguf::gpu::gfx942::launch_decode<256,1>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    if(schedule==2)check((libgguf::gpu::gfx942::launch_decode<128,2>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    if(schedule==3)check((libgguf::gpu::gfx942::launch_decode<256,2>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    check(hipDeviceSynchronize());
+    check(hipMemcpy(decoded.data(),device_decoded,decoded.size()*sizeof(float),hipMemcpyDeviceToHost));
+    for(int i=0;i<16;++i)if(decoded[i]!=-12345 || decoded[count+16+i]!=-12345)throw std::runtime_error("gfx942 decoder pipeline guard failure");
+    for(int i=0;i<count;++i)if(!std::isfinite(decoded[16+i]) || std::abs(decoded[16+i]-oracle[i])>1e-5F*std::max(1.0F,std::abs(oracle[i])))throw std::runtime_error("gfx942 decoder pipeline REF mismatch");
+  }
   std::vector<float> preserved(count);
   check(hipMemcpy(preserved.data(),device_input,count*sizeof(float),hipMemcpyDeviceToHost));
   if(std::memcmp(preserved.data(),input.data(),count*sizeof(float))) throw std::runtime_error("quantizer modified input storage");
@@ -91,6 +104,23 @@ static void benchmark(ggml_type type,int mib) {
               << ",\"sample\":" << repeat << ",\"mean_ms\":" << milliseconds/10
               << ",\"working_set\":\"explicit-size\",\"status\":\"measured\"}\n";
   }
+  float* decoded=nullptr;check(hipMalloc(&decoded,count*sizeof(float)));
+  for(int schedule=0;schedule<4;++schedule) {
+    auto enqueue=[&]() {
+      if(schedule==0)check((libgguf::gpu::gfx942::launch_decode<128,1,false>(type,y,decoded,count,nullptr)));
+      if(schedule==1)check((libgguf::gpu::gfx942::launch_decode<256,1,false>(type,y,decoded,count,nullptr)));
+      if(schedule==2)check((libgguf::gpu::gfx942::launch_decode<128,2,false>(type,y,decoded,count,nullptr)));
+      if(schedule==3)check((libgguf::gpu::gfx942::launch_decode<256,2,false>(type,y,decoded,count,nullptr)));
+    };
+    for(int i=0;i<3;++i)enqueue();check(hipDeviceSynchronize());
+    for(int repeat=0;repeat<5;++repeat) {
+      check(hipEventRecord(start));for(int i=0;i<10;++i)enqueue();
+      check(hipEventRecord(stop));check(hipEventSynchronize(stop));
+      float milliseconds=0;check(hipEventElapsedTime(&milliseconds,start,stop));
+      std::cout<<"{\"type\":\""<<libgguf_type_name(type)<<"\",\"candidate\":\"gfx942.coalesced_decode."<<schedule<<"\",\"sample\":"<<repeat<<",\"mean_ms\":"<<milliseconds/10<<",\"status\":\"measured\"}\n";
+    }
+  }
+  check(hipFree(decoded));
   check(hipEventDestroy(start));check(hipEventDestroy(stop));check(hipFree(x));check(hipFree(weights));check(hipFree(y));
 }
 
