@@ -10,3 +10,6 @@
 *.pyd binary
 *.so binary
 *.zip binary
+
+# Preserve original evidence bytes, including recorded line endings.
+evidence/archive/** -text

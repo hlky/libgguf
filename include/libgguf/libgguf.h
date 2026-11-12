@@ -9,7 +9,7 @@
 #include <stdint.h>
 #endif
 
-#include <libgguf/types.h>
+#include <libgguf/common/types.h>
 
 #if (defined(__HIP_DEVICE_COMPILE__) && __HIP_DEVICE_COMPILE__) || defined(__CUDA_ARCH__)
 #define LIBGGUF_API

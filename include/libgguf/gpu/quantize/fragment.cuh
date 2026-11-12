@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include <libgguf/formats.h>
+#include <libgguf/common/formats.h>
 
 #if defined(__clang__) && \
     (defined(__HIP__) || defined(__HIPCC__) || defined(__CUDA__))

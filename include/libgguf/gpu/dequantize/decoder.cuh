@@ -27,7 +27,7 @@
 #include <libgguf/gpu/dequantize/q8_0.cuh>
 #include <libgguf/gpu/dequantize/tq1_0.cuh>
 #include <libgguf/gpu/dequantize/tq2_0.cuh>
-#include <libgguf/types.h>
+#include <libgguf/common/types.h>
 
 namespace libgguf
 {

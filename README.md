@@ -1,5 +1,8 @@
 # libgguf
 
+[Source layout and native builds](docs/LAYOUT.md).
+
+
 libgguf is a standalone GGUF library with native row kernels, Python bindings,
 Torch and NumPy implementations, optional HIP/ROCm GPU kernels, and a native
 safetensors-to-GGUF converter.

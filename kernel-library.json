@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "library": "libgguf",
+  "backends": [
+    "cpu",
+    "rocm",
+    "cuda"
+  ],
+  "python_package": "libgguf",
+  "native_source": "src",
+  "cpu_targets": [
+    "ref",
+    "sse2",
+    "sse4_1",
+    "avx2"
+  ],
+  "architecture_packs": "include/libgguf/rocm",
+  "generated_sources": "build-tree"
+}

@@ -46,7 +46,7 @@ def main():
                     command=command, exit_code=result.returncode,
                     object_sha256=hashlib.sha256(obj.read_bytes()).hexdigest() if result.returncode == 0 else None)
 
-    sources = sorted((ROOT / 'csrc/kernels/gpu/quantize').glob('*.cu'))
+    sources = sorted((ROOT / 'src/gpu/common/quantize').glob('*.cu'))
     records = []
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         futures = [pool.submit(compile_one, arch, source)

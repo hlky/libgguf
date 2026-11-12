@@ -1,6 +1,6 @@
 include README.md
 recursive-include include *.h
-recursive-include csrc *.h *.cpp
+recursive-include src *.h *.cpp
 recursive-include src/libgguf/libgguf_gpu *.h *.cpp *.cu *.hip *.py
 recursive-include src *.py
 recursive-include tests *.py *.cpp *.cu *.hip

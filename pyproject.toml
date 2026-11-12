@@ -39,4 +39,4 @@ cmake.args = ["-G", "Ninja"]
 build = "cp310-* cp311-* cp312-* cp313-*"
 skip = "pp* *-musllinux* cp31t-*"
 build-verbosity = 1
-environment = { LIBGGUF_BUILD_GPU = "OFF", LIBGGUF_ENABLE_ROCM = "OFF", LIBGGUF_ENABLE_CUDA = "OFF", LIBGGUF_BUILD_TORCH = "OFF", LIBGGUF_CPU_BACKEND = "REF" }
+environment = { LIBGGUF_BUILD_GPU = "OFF", LIBGGUF_ENABLE_ROCM = "OFF", LIBGGUF_ENABLE_CUDA = "OFF", LIBGGUF_BUILD_TORCH = "OFF", LIBGGUF_CPU_TARGET = "REF" }

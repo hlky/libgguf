@@ -49,7 +49,7 @@ cmake --build build --parallel
 | `LIBGGUF_ENABLE_ROCM` | `OFF` | Compile GPU targets with HIP/ROCm. |
 | `LIBGGUF_ENABLE_CUDA` | `OFF` | Compile GPU targets with CUDA. |
 | `LIBGGUF_BUILD_TORCH` | `OFF` | Build the Torch GPU extension; requires `LIBGGUF_BUILD_GPU=ON`. |
-| `LIBGGUF_CPU_BACKEND` | `REF` | Select `REF`, `SSE2`, `SSE4_1`, or `AVX2` at compile time. |
+| `LIBGGUF_CPU_TARGET` | `REF` | Select `REF`, `SSE2`, `SSE4_1`, or `AVX2` at compile time. |
 
 CPU backend selection is compile-time. There is no runtime CPU feature
 dispatch. GPU builds must select exactly one GPU backend.

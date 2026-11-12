@@ -34,3 +34,8 @@ reports/exactness/
 
 # Independent gfx1151 compilation and link evidence
 build-gfx1151-*/
+
+/build-layout-migration/
+
+# Generated build trees are local to each backend and architecture.
+/build*/

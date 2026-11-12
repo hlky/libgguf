@@ -55,33 +55,6 @@ function(_libgguf_rocm_find_rc out_path)
   set(${out_path} "${_LIBGGUF_ROCM_RC}" PARENT_SCOPE)
 endfunction()
 
-function(_libgguf_rocm_detect_arch out_arch llvm_bin)
-  if(WIN32)
-    set(_arch_tool "${llvm_bin}/amdgpu-arch.exe")
-  else()
-    set(_arch_tool "${llvm_bin}/amdgpu-arch")
-  endif()
-
-  set(_arch "")
-  if(EXISTS "${_arch_tool}")
-    execute_process(
-      COMMAND "${_arch_tool}"
-      RESULT_VARIABLE _result
-      OUTPUT_VARIABLE _output
-      ERROR_QUIET
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    if(_result EQUAL 0 AND _output)
-      string(REPLACE "\n" ";" _architectures "${_output}")
-      list(GET _architectures 0 _arch)
-    endif()
-  endif()
-  if(NOT _arch)
-    set(_arch "gfx1201")
-  endif()
-  set(${out_arch} "${_arch}" PARENT_SCOPE)
-endfunction()
-
 function(libgguf_configure_rocm_sdk)
   if(LIBGGUF_ROCM_ROOT AND IS_DIRECTORY "${LIBGGUF_ROCM_ROOT}")
     # A standalone TheRock SDK is sufficient; the Python development package
@@ -120,9 +93,10 @@ function(libgguf_configure_rocm_sdk)
 
   _libgguf_rocm_find_device_libs(_device_libs "${_root}")
   _libgguf_rocm_find_rc(_rc)
-  if(NOT LIBGGUF_ROCM_ARCH)
-    _libgguf_rocm_detect_arch(_arch "${_llvm_bin}")
-    set(LIBGGUF_ROCM_ARCH "${_arch}" CACHE STRING "AMD GPU target architecture" FORCE)
+  set(LIBGGUF_ARCHITECTURE gfx1201 CACHE STRING "Explicit AMD GPU architecture pack")
+  set_property(CACHE LIBGGUF_ARCHITECTURE PROPERTY STRINGS gfx1151 gfx1201 gfx942)
+  if(NOT LIBGGUF_ARCHITECTURE MATCHES "^(gfx1151|gfx1201|gfx942)$")
+    message(FATAL_ERROR "Select one supported LIBGGUF_ARCHITECTURE")
   endif()
 
   set(LIBGGUF_ROCM_ROOT "${_root}" CACHE PATH "ROCm SDK root" FORCE)
@@ -140,7 +114,7 @@ function(libgguf_configure_rocm_sdk)
   set(CMAKE_PREFIX_PATH "${_prefix_path}" CACHE STRING "CMake package search path" FORCE)
   set(CMAKE_PREFIX_PATH "${_prefix_path}" PARENT_SCOPE)
 
-  set(CMAKE_HIP_ARCHITECTURES "${LIBGGUF_ROCM_ARCH}" CACHE STRING "HIP architectures" FORCE)
+  set(CMAKE_HIP_ARCHITECTURES "${LIBGGUF_ARCHITECTURE}" CACHE STRING "HIP architectures" FORCE)
   set(CMAKE_HIP_COMPILER_ROCM_ROOT "${LIBGGUF_ROCM_ROOT}" CACHE PATH "ROCm root for HIP compiler detection" FORCE)
   set(CMAKE_HIP_COMPILER "${_clangxx}" CACHE FILEPATH "HIP compiler" FORCE)
   if(NOT DEFINED CMAKE_CXX_COMPILER)

@@ -1,5 +1,5 @@
 #include <hip/hip_runtime.h>
-#include <libgguf/gpu/gfx1151/decode_pipeline.cuh>
+#include <libgguf/rocm/gfx1151/kernels/decode_pipeline.cuh>
 #include <libgguf/libgguf.h>
 #include "quantize/gpu.h"
 #include "dequantize/gpu.h"
@@ -59,10 +59,10 @@ static void parity(ggml_type type, int blocks) {
   for(int schedule=0;schedule<4;++schedule) {
     std::fill(decoded.begin(),decoded.end(),-12345);
     check(hipMemcpy(device_decoded,decoded.data(),decoded.size()*sizeof(float),hipMemcpyHostToDevice));
-    if(schedule==0)check((libgguf::gpu::gfx1151::launch_decode<128,1>(type,device_storage+64,device_decoded+16,count,nullptr)));
-    if(schedule==1)check((libgguf::gpu::gfx1151::launch_decode<256,1>(type,device_storage+64,device_decoded+16,count,nullptr)));
-    if(schedule==2)check((libgguf::gpu::gfx1151::launch_decode<128,2>(type,device_storage+64,device_decoded+16,count,nullptr)));
-    if(schedule==3)check((libgguf::gpu::gfx1151::launch_decode<256,2>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    if(schedule==0)check((libgguf::rocm::gfx1151::launch_decode<128,1>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    if(schedule==1)check((libgguf::rocm::gfx1151::launch_decode<256,1>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    if(schedule==2)check((libgguf::rocm::gfx1151::launch_decode<128,2>(type,device_storage+64,device_decoded+16,count,nullptr)));
+    if(schedule==3)check((libgguf::rocm::gfx1151::launch_decode<256,2>(type,device_storage+64,device_decoded+16,count,nullptr)));
     check(hipDeviceSynchronize());
     check(hipMemcpy(decoded.data(),device_decoded,decoded.size()*sizeof(float),hipMemcpyDeviceToHost));
     for(int i=0;i<16;++i)if(decoded[i]!=-12345 || decoded[count+16+i]!=-12345)throw std::runtime_error("gfx1151 decoder pipeline guard failure");
@@ -107,10 +107,10 @@ static void benchmark(ggml_type type,int mib) {
   float* decoded=nullptr;check(hipMalloc(&decoded,count*sizeof(float)));
   for(int schedule=0;schedule<4;++schedule) {
     auto enqueue=[&]() {
-      if(schedule==0)check((libgguf::gpu::gfx1151::launch_decode<128,1,false>(type,y,decoded,count,nullptr)));
-      if(schedule==1)check((libgguf::gpu::gfx1151::launch_decode<256,1,false>(type,y,decoded,count,nullptr)));
-      if(schedule==2)check((libgguf::gpu::gfx1151::launch_decode<128,2,false>(type,y,decoded,count,nullptr)));
-      if(schedule==3)check((libgguf::gpu::gfx1151::launch_decode<256,2,false>(type,y,decoded,count,nullptr)));
+      if(schedule==0)check((libgguf::rocm::gfx1151::launch_decode<128,1,false>(type,y,decoded,count,nullptr)));
+      if(schedule==1)check((libgguf::rocm::gfx1151::launch_decode<256,1,false>(type,y,decoded,count,nullptr)));
+      if(schedule==2)check((libgguf::rocm::gfx1151::launch_decode<128,2,false>(type,y,decoded,count,nullptr)));
+      if(schedule==3)check((libgguf::rocm::gfx1151::launch_decode<256,2,false>(type,y,decoded,count,nullptr)));
     };
     for(int i=0;i<3;++i)enqueue();check(hipDeviceSynchronize());
     for(int repeat=0;repeat<5;++repeat) {

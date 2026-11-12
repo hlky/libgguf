@@ -10,7 +10,7 @@ from libgguf.libgguf_torch.libgguf_torch import dequantize_functions, quantize_f
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC_PATH = ROOT / "docs" / "support-matrix.md"
-CUDA_CSRC = ROOT / "src" / "libgguf" / "libgguf_cuda" / "csrc"
+CUDA_CSRC = ROOT / "src" / "libgguf" / "libgguf_cuda" / "src"
 
 STORAGE_QTYPES = (
     GGMLQuantizationType.F32,

@@ -42,7 +42,7 @@ jobs:
           -DLIBGGUF_BUILD_TOOLS=OFF
           -DLIBGGUF_BUILD_BENCHMARKS=OFF
           -DLIBGGUF_BUILD_TESTS=ON
-          -DLIBGGUF_CPU_BACKEND=REF
+          -DLIBGGUF_CPU_TARGET=REF
 
       - name: Build native contract tests
         run: cmake --build build/native-tests --target libgguf_simple_q_test --parallel 2

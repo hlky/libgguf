@@ -4,7 +4,7 @@
 
 #include <libgguf/gpu/compat.h>
 #include <libgguf/gpu/types.h>
-#include <libgguf/formats.h>
+#include <libgguf/common/formats.h>
 
 #define LIBGGUF_GPU_DEQUANTIZE_BLOCK_SIZE 256
 
