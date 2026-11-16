@@ -9,7 +9,7 @@ from pathlib import Path
 import struct
 from typing import Any, BinaryIO, Iterator
 
-from ._metadata import GGMLQuantizationType, GGML_QUANT_SIZES, LlamaFileType
+from .formats import GGMLQuantizationType, GGML_QUANT_SIZES, LlamaFileType
 
 
 GGUF_MAGIC = b"GGUF"

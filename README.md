@@ -36,37 +36,40 @@ CMake options.
 
 ```python
 import numpy as np
-import libgguf
+from libgguf import cpu
+from libgguf.formats import GGMLQuantizationType
 
 rows = np.random.default_rng(0).normal(size=(4, 4096)).astype(np.float32)
-qtype = libgguf.GGMLQuantizationType.Q4_K
+qtype = GGMLQuantizationType.Q4_K
 
-encoded = libgguf.quantize_rows(rows, qtype)
-decoded = libgguf.dequantize_rows(encoded, qtype, n_per_row=rows.shape[-1])
+encoded = cpu.quantize_rows(rows, qtype)
+decoded = cpu.dequantize_rows(encoded, qtype, n_per_row=rows.shape[-1])
 ```
 
-The top-level package also exposes qtype metadata, storage-row operations,
-imatrix loading, lightweight GGUF inspection, raw tensor-byte reads, and
-structural validation. See [docs/python-api.md](docs/python-api.md).
+Import `libgguf.formats` for format definitions, `libgguf.cpu` for native row
+operations, `libgguf.imatrix` for importance weights, and `libgguf.inspect` for
+GGUF reading and structural validation. Format definitions and inspection do
+not load a native extension.
 
 ## Backends
 
-- `libgguf`: native CPU row operations and GGUF metadata APIs.
-- `libgguf.libgguf_numpy`: NumPy implementation.
-- `libgguf.libgguf_torch`: Torch-native implementation.
-- `libgguf.libgguf_gpu`: native Torch GPU operations.
+- `libgguf.formats`: quantized format definitions.
+- `libgguf.cpu`: native CPU row operations.
+- `libgguf.numpy`: NumPy implementation.
+- `libgguf.torch`: Torch-native implementation.
+- `libgguf.gpu`: native Torch GPU operations.
 
 GPU builds explicitly select either HIP/ROCm or CUDA. PyTorch exposes ROCm
 devices through its `cuda` device namespace:
 
 ```python
 import torch
-import libgguf
-import libgguf.libgguf_gpu
+from libgguf.formats import GGMLQuantizationType
+import libgguf.gpu
 
 rows = torch.randn(4, 4096, device="cuda", dtype=torch.float32)
-qtype = libgguf.GGMLQuantizationType.Q4_K
-encoded = libgguf.libgguf_gpu.quantize(rows, int(qtype))
+qtype = GGMLQuantizationType.Q4_K
+encoded = libgguf.gpu.quantize(rows, int(qtype))
 ```
 
 ### Runtime-free device fragments

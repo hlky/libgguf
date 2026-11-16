@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
+# Keep each native kernel in its own translation unit and archive object.
+set(CMAKE_UNITY_BUILD OFF)
+set(CMAKE_HIP_SEPARABLE_COMPILATION OFF)
 
 option(LIBGGUF_BUILD_GPU "Build libgguf GPU targets" OFF)
 option(LIBGGUF_ENABLE_ROCM "Build GPU targets with HIP/ROCm" OFF)
@@ -320,7 +323,7 @@ if(LIBGGUF_BUILD_GPU)
           ${LIBGGUF_GPU_HOST_RUNTIME_TARGET}
           ${TORCH_LIBRARIES}
       )
-      install(TARGETS libgguf_gpu_C_gguf DESTINATION libgguf/libgguf_gpu)
+      install(TARGETS libgguf_gpu_C_gguf DESTINATION libgguf)
     endif()
 endif()
 

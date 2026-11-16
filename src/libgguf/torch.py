@@ -21,8 +21,8 @@
 # - Implemented torch-native quantization.
 # - Added byte-parity fixes and validation.
 
-from libgguf._metadata import GGMLQuantizationType, GGML_QUANT_SIZES, quant_shape_to_byte_shape
-from libgguf.libgguf_numpy.libgguf_numpy import (
+from libgguf.formats import GGMLQuantizationType, GGML_QUANT_SIZES, quant_shape_to_byte_shape
+from libgguf.numpy import (
     GROUP_MAX_EPS,
     IQ2_XXS,
     dequantize as dequantize_np,
@@ -45,12 +45,7 @@ from libgguf.libgguf_numpy.libgguf_numpy import (
 )
 import torch
 
-try:
-    _compile_disable = torch.compiler.disable
-except AttributeError:
-    import torch._dynamo
-
-    _compile_disable = torch._dynamo.disable
+_compile_disable = torch.compiler.disable
 
 TORCH_COMPATIBLE_QTYPES = (None, GGMLQuantizationType.F32, GGMLQuantizationType.F16)
 

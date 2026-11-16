@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from libgguf.libgguf_numpy.libgguf_numpy import _get_iq2_s_lookup, _get_iq2_xs_lookup, _get_iq2_xxs_lookup
+from libgguf.numpy import _get_iq2_s_lookup, _get_iq2_xs_lookup, _get_iq2_xxs_lookup
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from libgguf.libgguf_numpy.libgguf_numpy import _get_iq1_s_lookup
+from libgguf.numpy import _get_iq1_s_lookup
 
 
 ROOT = Path(__file__).resolve().parents[1]

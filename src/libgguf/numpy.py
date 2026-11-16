@@ -19,7 +19,7 @@ from math import log2, ceil
 from numpy.typing import DTypeLike
 
 import numpy as np
-from libgguf._metadata import (
+from libgguf.formats import (
     GGML_QUANT_SIZES,
     QK_K,
     GGMLQuantizationType,
@@ -62,15 +62,8 @@ GROUP_MAX_EPS_IQ1_M = np.float32(1.0e-7)
 
 
 def _quantize_blocks_with_libgguf(blocks: np.ndarray, qtype: GGMLQuantizationType) -> np.ndarray:
-    try:
-        import libgguf
-    except ImportError as exc:
-        raise RuntimeError(
-            f"Quantization for {qtype.name} requires the separate `libgguf` package. "
-            "Install it with `python -m pip install -e libgguf --no-build-isolation`."
-        ) from exc
-
-    return libgguf.quantize_rows(blocks, qtype)
+    from .cpu import quantize_rows
+    return quantize_rows(blocks, qtype)
 
 
 def _nearest_int(values: np.ndarray | np.float32 | float) -> np.ndarray:
