@@ -5,7 +5,9 @@
 #include <libgguf/gpu/dequantize/kernels.h>
 #include <libgguf/gpu/dequantize/bf16.cuh>
 
-#if defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__)
+#if defined(LIBGGUF_GFX942_BF16_CAST)
+#include <libgguf/rocm/gfx942/bf16_cast.h>
+
 extern "C" hipError_t libgguf_gfx942_bf16_cast(const void *x, void *y, int count,
     libgguf_gpu_dtype dtype, int threads, int items, hipStream_t stream) {
     if (count < 0 || (count && (!x || !y)) ||

@@ -46,11 +46,6 @@ void dequantize_q8_0(
     StreamType stream
 );
 
-#if defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__)
-extern "C" hipError_t libgguf_gfx942_bf16_cast(const void *x, void *y, int count,
-    libgguf_gpu_dtype dtype, int threads, int items, hipStream_t stream);
-#endif
-
 void dequantize_bf16(
     const void * x,
     void * y,
