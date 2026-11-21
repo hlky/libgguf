@@ -86,23 +86,40 @@ static void parity(ggml_type type, int blocks, int rows=1, bool weighted=true) {
             << ",\"bytes_checked\":" << bytes << ",\"guards_checked\":true,\"status\":\"passed\"}\n";
 }
 
-static void benchmark(ggml_type type,int mib) {
+static void benchmark(ggml_type type, int mib, int rows, int columns) {
   const auto block=libgguf_block_size(type);
-  const int count=int((int64_t(mib)*1024*1024/sizeof(float))/block*block);
+  const bool matrix = rows > 0;
+  if (matrix && columns % block != 0)
+    throw std::runtime_error("matrix width must be a multiple of the format block size");
+  if (!matrix) {
+    rows = 1;
+    columns = int((int64_t(mib) * 1024 * 1024 / sizeof(float)) / block * block);
+  }
+  const int count = rows * columns;
   if(count<=0) throw std::runtime_error("benchmark allocation must contain at least one block");
-  const auto bytes=libgguf_row_size(type,count);
+  const auto bytes = rows * libgguf_row_size(type, columns);
   std::vector<float> input(count),importance(count,1.0F);
   for(int i=0;i<count;++i) input[i]=float(i%127-63)/32;
   float *x=nullptr,*weights=nullptr; void* y=nullptr;
   check(hipMalloc(&x,count*sizeof(float)));check(hipMalloc(&weights,count*sizeof(float)));check(hipMalloc(&y,bytes));
   check(hipMemcpy(x,input.data(),count*sizeof(float),hipMemcpyHostToDevice));
   check(hipMemcpy(weights,importance.data(),count*sizeof(float),hipMemcpyHostToDevice));
-  for(int i=0;i<3;++i) quantize_row(x,weights,y,type,count,count,nullptr);
+  for(int i=0;i<3;++i) quantize_row(x,weights,y,type,count,columns,nullptr);
   check(hipDeviceSynchronize());
+  std::vector<float> reference;
+  if (matrix) {
+    std::vector<std::uint8_t> packed(bytes), expected(bytes);
+    if (libgguf_quantize_chunk(type, input.data(), expected.data(), 0, rows, columns, importance.data()) != bytes)
+      throw std::runtime_error("unexpected CPU packed matrix size");
+    check(hipMemcpy(packed.data(), y, bytes, hipMemcpyDeviceToHost));
+    if (packed != expected) throw std::runtime_error("packed matrix differs from CPU reference");
+    reference.resize(count);
+    libgguf_dequantize_chunk(type, expected.data(), reference.data(), 0, rows, columns);
+  }
   hipEvent_t start{},stop{};check(hipEventCreate(&start));check(hipEventCreate(&stop));
   for(int repeat=0;repeat<5;++repeat) {
     check(hipEventRecord(start));
-    for(int i=0;i<10;++i) quantize_row(x,weights,y,type,count,count,nullptr);
+    for(int i=0;i<10;++i) quantize_row(x,weights,y,type,count,columns,nullptr);
     check(hipEventRecord(stop));check(hipEventSynchronize(stop));
     float milliseconds=0;check(hipEventElapsedTime(&milliseconds,start,stop));
     std::cout << "{\"type\":\"" << libgguf_type_name(type) << "\",\"input_bytes\":" << count*sizeof(float)
@@ -119,6 +136,18 @@ static void benchmark(ggml_type type,int mib) {
       if(schedule==3)check((libgguf::rocm::gfx942::launch_decode<256,2,false>(type,y,decoded,count,nullptr)));
     };
     for(int i=0;i<3;++i)enqueue();check(hipDeviceSynchronize());
+    if (matrix) {
+      std::vector<float> actual(count);
+      check(hipMemcpy(actual.data(), decoded, count * sizeof(float), hipMemcpyDeviceToHost));
+      for (int i = 0; i < count; ++i) {
+        if (!std::isfinite(actual[i]) || std::abs(actual[i] - reference[i]) > 1e-5F * std::max(1.0F, std::abs(reference[i])))
+          throw std::runtime_error("decoded matrix differs from CPU reference");
+      }
+      std::cout << "{\"type\":\"" << libgguf_type_name(type) << "\",\"schedule\":" << schedule
+                << ",\"rows\":" << rows << ",\"columns\":" << columns
+                << ",\"bytes_checked\":" << bytes << ",\"elements_checked\":" << count
+                << ",\"status\":\"matrix_passed\"}\n";
+    }
     for(int repeat=0;repeat<5;++repeat) {
       check(hipEventRecord(start));for(int i=0;i<10;++i)enqueue();
       check(hipEventRecord(stop));check(hipEventSynchronize(stop));
@@ -132,15 +161,23 @@ static void benchmark(ggml_type type,int mib) {
 
 int main(int argc,char** argv) {
   try {
-    int mib=0;
+    int mib=0, rows=0, columns=0;
+    bool matrix=false;
     std::string format;
     for (int i=1; i<argc; ++i) {
       const std::string option=argv[i];
       if (i+1<argc && option=="--benchmark-mib") mib=std::stoi(argv[++i]);
+      else if (i+2<argc && option=="--matrix") {
+        matrix = true;
+        rows = std::stoi(argv[++i]);
+        columns = std::stoi(argv[++i]);
+      }
       else if (i+1<argc && option=="--format") format=argv[++i];
-      else throw std::runtime_error("usage: gfx942_quantizer_parity [--format qtype] [--benchmark-mib 256]");
+      else throw std::runtime_error("usage: gfx942_quantizer_parity [--format qtype] [--benchmark-mib 256 | --matrix rows columns]");
     }
     if(mib<0 || mib>512) throw std::runtime_error("benchmark MiB must be between 1 and 512");
+    if (matrix && (mib != 0 || rows < 1 || columns < 1 || int64_t(rows) * columns > (int64_t(512) << 18)))
+      throw std::runtime_error("matrix dimensions must describe a positive input of at most 512 MiB");
     int ordinal=0;hipDeviceProp_t p{};check(hipGetDevice(&ordinal));check(hipGetDeviceProperties(&p,ordinal));
     if(std::string(p.gcnArchName).substr(0,6)!="gfx942" || p.warpSize!=64) throw std::runtime_error("requires gfx942 wave64");
     const ggml_type types[]={GGML_TYPE_Q1_0,GGML_TYPE_Q4_0,GGML_TYPE_Q4_1,GGML_TYPE_Q5_0,GGML_TYPE_Q5_1,
@@ -165,8 +202,8 @@ int main(int argc,char** argv) {
       }
     }
     if(!found) throw std::runtime_error("unknown quantization format: "+format);
-    if(mib) for(auto type:types)
-      if(format.empty() || format==libgguf_type_name(type)) benchmark(type,mib);
+    if(mib || matrix) for(auto type:types)
+      if(format.empty() || format==libgguf_type_name(type)) benchmark(type,mib,rows,columns);
     return 0;
   } catch(const std::exception& error) {std::cerr << error.what() << '\n';return 1;}
 }
