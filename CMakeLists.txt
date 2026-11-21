@@ -199,6 +199,9 @@ if(LIBGGUF_BUILD_GPU)
       ${LIBGGUF_GPU_DEQUANTIZE_KERNEL_SOURCES}
     )
     set_source_files_properties(${LIBGGUF_GPU_SOURCES} PROPERTIES LANGUAGE ${LIBGGUF_GPU_LANGUAGE})
+    if(LIBGGUF_ENABLE_ROCM AND LIBGGUF_ARCHITECTURE STREQUAL "gfx942")
+      set_property(SOURCE src/gpu/common/quantize/q4_k.cu APPEND PROPERTY COMPILE_DEFINITIONS LIBGGUF_GFX942_WEIGHTED_Q4_K=1)
+    endif()
 
     add_library(
       libgguf_gpu_objects

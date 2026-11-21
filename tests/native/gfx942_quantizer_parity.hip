@@ -1,6 +1,7 @@
 #include <hip/hip_runtime.h>
 #include <libgguf/rocm/gfx942/kernels/decode_pipeline.cuh>
 #include <libgguf/libgguf.h>
+#include <libgguf/gpu/quantize/kernels.h>
 #include "quantize/gpu.h"
 #include "dequantize/gpu.h"
 #include <algorithm>
@@ -84,6 +85,42 @@ static void parity(ggml_type type, int blocks, int rows=1, bool weighted=true) {
   std::cout << "{\"type\":\"" << libgguf_type_name(type) << "\",\"blocks\":" << blocks
             << ",\"rows\":" << rows << ",\"weighted\":" << (weighted ? "true":"false")
             << ",\"bytes_checked\":" << bytes << ",\"guards_checked\":true,\"status\":\"passed\"}\n";
+}
+
+template<class Input>
+static void weighted_q4_k_input(int blocks_per_row, int rows, libgguf_gpu_dtype dtype) {
+  const int width = blocks_per_row * int(libgguf_block_size(GGML_TYPE_Q4_K));
+  const int count = rows * width;
+  const size_t bytes = rows * libgguf_row_size(GGML_TYPE_Q4_K, width);
+  std::vector<Input> input(count);
+  std::vector<float> rounded(count), importance(width);
+  for (int i=0; i<count; ++i) {
+    input[i] = Input(float((i*17)%487 - 243) / 19.0F);
+    rounded[i] = static_cast<float>(input[i]);
+  }
+  for (int j=0; j<width; ++j) importance[j] = 1.F + float(j%23)/41.F;
+  std::vector<uint8_t> expected(bytes), storage(bytes+128,0xa5);
+  if (libgguf_quantize_chunk(GGML_TYPE_Q4_K,rounded.data(),expected.data(),0,rows,width,importance.data()) != bytes)
+    throw std::runtime_error("Unexpected weighted Q4_K reference size");
+  Input* x=nullptr;
+  float* weights=nullptr;
+  uint8_t* dst=nullptr;
+  check(hipMalloc(&x,count*sizeof(Input)));
+  check(hipMalloc(&weights,width*sizeof(float)));
+  check(hipMalloc(&dst,storage.size()));
+  check(hipMemcpy(x,input.data(),count*sizeof(Input),hipMemcpyHostToDevice));
+  check(hipMemcpy(weights,importance.data(),width*sizeof(float),hipMemcpyHostToDevice));
+  check(hipMemcpy(dst,storage.data(),storage.size(),hipMemcpyHostToDevice));
+  quantize_q4_k(x,weights,dst+64,count,width,dtype,nullptr);
+  check(hipGetLastError());
+  std::copy(expected.begin(),expected.end(),storage.begin()+64); // Compare guards and bytes together.
+  std::vector<uint8_t> actual(storage.size());
+  check(hipMemcpy(actual.data(),dst,actual.size(),hipMemcpyDeviceToHost));
+  if (actual != storage) throw std::runtime_error("Low-precision weighted Q4_K bytes or guards differ");
+  check(hipFree(x)); check(hipFree(weights)); check(hipFree(dst));
+  std::cout << "{\"type\":\"q4_K\",\"input\":\"" << (dtype==libgguf_gpu_dtype::f16 ? "f16":"bf16")
+            << "\",\"blocks\":" << blocks_per_row << ",\"rows\":" << rows << ",\"bytes_checked\":"
+            << bytes << ",\"status\":\"passed\"}\n";
 }
 
 static void benchmark(ggml_type type, int mib, int rows, int columns) {
@@ -191,6 +228,16 @@ int main(int argc,char** argv) {
       found=true;
       if(!quantize_type_supported(type) || !dequantize_type_supported(type)) throw std::runtime_error("listed qtype lacks a production GPU implementation");
       for(int blocks:{1,2,3,5}) parity(type,blocks);
+      if (type == GGML_TYPE_Q4_K) {
+        for (int blocks : {7, 8, 9}) parity(type, blocks);
+        parity(type, 3, 8);  // A wave spans row boundaries and reuses per-column importance.
+        parity(type, 8, 3, false);
+        for (int blocks : {7, 8, 3}) {
+          const int rows = blocks == 3 ? 8 : 1;
+          weighted_q4_k_input<half>(blocks, rows, libgguf_gpu_dtype::f16);
+          weighted_q4_k_input<libgguf_gpu_bfloat16>(blocks, rows, libgguf_gpu_dtype::bf16);
+        }
+      }
       if (type==GGML_TYPE_Q4_0 || type==GGML_TYPE_Q4_1 || type==GGML_TYPE_Q5_0 || type==GGML_TYPE_Q5_1)
         parity(type,129,3,true);
       if(type==GGML_TYPE_Q4_0 || type==GGML_TYPE_Q4_1 || type==GGML_TYPE_Q5_0 ||

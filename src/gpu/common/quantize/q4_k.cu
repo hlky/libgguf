@@ -14,6 +14,16 @@ void quantize_q4_k(
 ) {
     if (quant_weights && k > 0 && n_per_row >= QK_K) {
         DISPATCH_FLOATING_TYPES(dtype, "quantize_weighted_q4_k", [&] {
+#if defined(LIBGGUF_GFX942_WEIGHTED_Q4_K)
+            // Each eight-lane team fits the eight scales of one independent Q4_K block.
+            constexpr int blocks_per_wave = 8;
+            const int64_t blocks = k / QK_K;
+            if (blocks % blocks_per_wave == 0) {
+                libgguf::gpu::quantize_weighted_k<4, blocks_per_wave><<<blocks / blocks_per_wave, 64, 0, stream>>>(
+                    static_cast<const scalar_t *>(x), quant_weights, static_cast<block_q4_K *>(y), n_per_row / QK_K);
+                return;
+            }
+#endif
             libgguf::gpu::quantize_weighted_k<4><<<k / QK_K, 64, 0, stream>>>(
                 static_cast<const scalar_t *>(x), quant_weights, static_cast<block_q4_K *>(y), n_per_row / QK_K);
         });

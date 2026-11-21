@@ -6,7 +6,7 @@ namespace libgguf::gpu {
 
 // The CPU reference fits a scale and minimum per group, then quantizes those
 // fits across the 256-value block. Keep intermediate fits and codes in LDS.
-template<int Bits, class Input, class Block>
+template<int Bits, int BlocksPerWorkgroup = 1, class Input, class Block>
 static __global__ void quantize_weighted_k(const Input* src, const float* importance,
                                           Block* dst, int64_t blocks_per_row) {
     static_assert(Bits == 2 || Bits == 4 || Bits == 5);
@@ -14,14 +14,22 @@ static __global__ void quantize_weighted_k(const Input* src, const float* import
     constexpr int groups = QK_K / width;
     constexpr int max_code = (1 << Bits) - 1;
     constexpr int max_scale = Bits == 2 ? 15 : 63;
-    const int lane = threadIdx.x;
-    const int64_t block = blockIdx.x;
+    static_assert(BlocksPerWorkgroup == 1 || (BlocksPerWorkgroup == 8 && Bits == 4));
+    constexpr int team_width = 64 / BlocksPerWorkgroup;
+    const int workers = BlocksPerWorkgroup == 1 ? int(blockDim.x) : team_width;
+    const int team = BlocksPerWorkgroup == 1 ? 0 : int(threadIdx.x) / team_width;
+    const int lane = BlocksPerWorkgroup == 1 ? int(threadIdx.x) : int(threadIdx.x) % team_width;
+    const int64_t block = int64_t(blockIdx.x) * BlocksPerWorkgroup + team;
     const Input* x = src + block * QK_K;
     const float* qw = importance + (block % blocks_per_row) * QK_K;
     auto& y = dst[block];
-    __shared__ float sigma2, rounded_scale, rounded_min;
-    __shared__ float scales[groups], mins[groups], sums[groups];
-    __shared__ uint8_t scale_codes[groups], min_codes[groups], codes[QK_K];
+    struct BlockState {
+        float sigma2, rounded_scale, rounded_min;
+        float scales[groups], mins[groups], sums[groups];
+        uint8_t scale_codes[groups], min_codes[groups], codes[QK_K];
+    };
+    __shared__ BlockState states[BlocksPerWorkgroup];
+    auto& state = states[team];
 
     if (lane == 0) {
         float sum = 0;
@@ -29,7 +37,7 @@ static __global__ void quantize_weighted_k(const Input* src, const float* import
             const float v = static_cast<float>(x[j]);
             sum = __fadd_rn(sum, __fmul_rn(v,v));
         }
-        sigma2 = sum * ((Bits == 2 ? 1.0f : 2.0f) / QK_K);
+        state.sigma2 = sum * ((Bits == 2 ? 1.0f : 2.0f) / QK_K);
     }
     __syncthreads();
     if (lane < groups) {
@@ -38,54 +46,54 @@ static __global__ void quantize_weighted_k(const Input* src, const float* import
         const int start = lane * width;
         for (int i = 0; i < width; ++i) {
             const float v = static_cast<float>(x[start+i]);
-            weights[i] = qw[start+i] * sqrtf(sigma2 + v*v);
+            weights[i] = qw[start+i] * sqrtf(state.sigma2 + v*v);
             total += weights[i];
         }
-        sums[lane] = total;
-        scales[lane] = make_qkx2_quants(width, max_code, x+start, weights, codes+start,
-                                        mins+lane, scratch, -0.9f, 0.05f, 36, false);
+        state.sums[lane] = total;
+        state.scales[lane] = make_qkx2_quants(width, max_code, x+start, weights, state.codes+start,
+                                        state.mins+lane, scratch, -0.9f, 0.05f, 36, false);
     }
     __syncthreads();
     if (lane == 0) {
-        const auto d = compute_fp32_to_fp16(make_qp_quants(groups,max_scale,scales,scale_codes,sums));
-        const auto m = compute_fp32_to_fp16(make_qp_quants(groups,max_scale,mins,min_codes,sums));
+        const auto d = compute_fp32_to_fp16(make_qp_quants(groups,max_scale,state.scales,state.scale_codes,state.sums));
+        const auto m = compute_fp32_to_fp16(make_qp_quants(groups,max_scale,state.mins,state.min_codes,state.sums));
         y.d = d;
         y.dmin = m;
-        rounded_scale = __half2float(load_half(d));
-        rounded_min = __half2float(load_half(m));
+        state.rounded_scale = __half2float(load_half(d));
+        state.rounded_min = __half2float(load_half(m));
     }
     __syncthreads();
     if constexpr (Bits == 2) {
-        if (lane < groups) y.scales[lane] = scale_codes[lane] | (min_codes[lane] << 4);
+        if (lane < groups) y.scales[lane] = state.scale_codes[lane] | (state.min_codes[lane] << 4);
     } else if (lane < 4) {
         const int j = lane+4;
-        y.scales[lane] = scale_codes[lane] | ((scale_codes[j] >> 4) << 6);
-        y.scales[j] = min_codes[lane] | ((min_codes[j] >> 4) << 6);
-        y.scales[j+4] = (scale_codes[j] & 15) | ((min_codes[j] & 15) << 4);
+        y.scales[lane] = state.scale_codes[lane] | ((state.scale_codes[j] >> 4) << 6);
+        y.scales[j] = state.min_codes[lane] | ((state.min_codes[j] >> 4) << 6);
+        y.scales[j+4] = (state.scale_codes[j] & 15) | ((state.min_codes[j] & 15) << 4);
     }
-    for (int i=lane; i<QK_K; i+=blockDim.x) {
+    for (int i=lane; i<QK_K; i+=workers) {
         const int group = i / width;
-        const float d = rounded_scale * scale_codes[group];
+        const float d = state.rounded_scale * state.scale_codes[group];
         if (d != 0) {
-            const float m = rounded_min * min_codes[group];
-            codes[i] = clamp_int(nearest_int(__fdiv_rn(static_cast<float>(x[i])+m,d)),0,max_code);
+            const float m = state.rounded_min * state.min_codes[group];
+            state.codes[i] = clamp_int(nearest_int(__fdiv_rn(static_cast<float>(x[i])+m,d)),0,max_code);
         }
     }
     __syncthreads();
-    if (lane < 32) {
+    for (int byte = lane; byte < 32; byte += workers) {
         if constexpr (Bits == 2) {
             for (int i=0; i<QK_K; i+=128)
-                y.qs[i/4+lane] = codes[i+lane] | (codes[i+lane+32]<<2) |
-                                 (codes[i+lane+64]<<4) | (codes[i+lane+96]<<6);
+                y.qs[i/4+byte] = state.codes[i+byte] | (state.codes[i+byte+32]<<2) |
+                                 (state.codes[i+byte+64]<<4) | (state.codes[i+byte+96]<<6);
         } else {
             uint8_t high = 0;
             for (int i=0; i<QK_K; i+=64) {
-                const unsigned lo=codes[i+lane], hi=codes[i+lane+32];
-                y.qs[i/2+lane]=(lo&15) | ((hi&15)<<4);
+                const unsigned lo=state.codes[i+byte], hi=state.codes[i+byte+32];
+                y.qs[i/2+byte]=(lo&15) | ((hi&15)<<4);
                 if constexpr (Bits == 5)
                     high |= ((lo>>4) | ((hi>>4)<<1)) << (i/32);
             }
-            if constexpr (Bits == 5) y.qh[lane]=high;
+            if constexpr (Bits == 5) y.qh[byte]=high;
         }
     }
 }
