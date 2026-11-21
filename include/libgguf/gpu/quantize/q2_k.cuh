@@ -65,50 +65,28 @@ static __device__ void quantize_q2_k(
             }
         }
 
-        if (max_scale > 0.0f)
+        const float inv_scale = max_scale > 0.0f ? __fdiv_rn(15.0f, max_scale) : 0.0f;
+        const float inv_min = max_min > 0.0f ? __fdiv_rn(15.0f, max_min) : 0.0f;
+        const auto d = compute_fp32_to_fp16(__fdiv_rn(max_scale, 15.0f));
+        const auto dm = compute_fp32_to_fp16(__fdiv_rn(max_min, 15.0f));
+        yb->d = d;
+        yb->dmin = dm;
+        for (int j = 0; j < QK_K / 16; ++j)
         {
-            const float iscale = __fdiv_rn(15.0f, max_scale);
-            for (int j = 0; j < QK_K / 16; ++j)
-            {
-                const uint8_t qscale = nearest_int(__fmul_rn(iscale, scales[j]));
-                yb->scales[j] = qscale;
-            }
-            yb->d = compute_fp32_to_fp16(__fdiv_rn(max_scale, 15.0f));
-        }
-        else
-        {
-            for (int j = 0; j < QK_K / 16; ++j)
-            {
-                yb->scales[j] = 0;
-            }
-            yb->d = compute_fp32_to_fp16(0.0f);
-        }
-
-        if (max_min > 0.0f)
-        {
-            const float iscale = __fdiv_rn(15.0f, max_min);
-            for (int j = 0; j < QK_K / 16; ++j)
-            {
-                const uint8_t qmin = nearest_int(__fmul_rn(iscale, mins[j]));
-                yb->scales[j] |= qmin << 4;
-            }
-            yb->dmin = compute_fp32_to_fp16(__fdiv_rn(max_min, 15.0f));
-        }
-        else
-        {
-            yb->dmin = compute_fp32_to_fp16(0.0f);
+            const uint8_t sc = nearest_int(__fmul_rn(inv_scale, scales[j]));
+            const uint8_t m = nearest_int(__fmul_rn(inv_min, mins[j]));
+            yb->scales[j] = sc | (m << 4);
+            scales[j] = __half2float(load_half(d)) * sc;
+            mins[j] = __half2float(load_half(dm)) * m;
         }
     }
 
     __syncthreads();
 
-    const float d_base = __half2float(load_half(yb->d));
-    const float dm_base = __half2float(load_half(yb->dmin));
-    const uint8_t qscale_min = yb->scales[subgroup];
-    const float d = __fmul_rn(d_base, float(qscale_min & 0x0f));
+    const float d = scales[subgroup];
     if (d != 0.0f)
     {
-        const float dm = __fmul_rn(dm_base, float(qscale_min >> 4));
+        const float dm = mins[subgroup];
         for (int ii = 0; ii < 16; ++ii)
         {
             int q = nearest_int(__fdiv_rn(static_cast<float>(xb[base + ii]) + dm, d));

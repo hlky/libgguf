@@ -12,7 +12,8 @@ static __device__ __forceinline__ void quantize_q5_0(const src_t * x, block_q5_0
 {
     const int lane = threadIdx.x & 31;
     const float max_value = warp_reduce_absmax_first(static_cast<float>(x[lane]), lane);
-    const float d = __fdiv_rn(max_value, -16.0f);
+    // The reference starts its absolute-maximum search with positive zero.
+    const float d = max_value == 0.0f ? -0.0f : __fdiv_rn(max_value, -16.0f);
     const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
     uint8_t xi0 = 0;
     uint8_t xi1 = 0;

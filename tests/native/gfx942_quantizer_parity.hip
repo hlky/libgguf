@@ -16,9 +16,10 @@ static void check(hipError_t status) {
   if(status!=hipSuccess) throw std::runtime_error(hipGetErrorString(status));
 }
 
-static void parity(ggml_type type, int blocks) {
-  const int count=int(libgguf_block_size(type))*blocks;
-  const auto bytes=libgguf_row_size(type,count);
+static void parity(ggml_type type, int blocks, int rows=1, bool weighted=true) {
+  const int width=int(libgguf_block_size(type))*blocks;
+  const int count=rows*width;
+  const auto bytes=rows*libgguf_row_size(type,width);
   std::vector<float> input(count), importance(count);
   for(int i=0;i<count;++i) {
     const int block=i/int(libgguf_block_size(type));
@@ -27,7 +28,7 @@ static void parity(ggml_type type, int blocks) {
     importance[i]=1.0F+float(i%7)/16;
   }
   std::vector<uint8_t> expected(bytes), guarded(bytes+128,0xa5);
-  if(libgguf_quantize_chunk(type,input.data(),expected.data(),0,1,count,importance.data())!=bytes)
+  if(libgguf_quantize_chunk(type,input.data(),expected.data(),0,rows,width,weighted ? importance.data() : nullptr)!=bytes)
     throw std::runtime_error("REF quantizer returned an unexpected byte count");
   float *device_input=nullptr,*device_importance=nullptr,*device_decoded=nullptr;
   uint8_t* device_storage=nullptr;
@@ -38,16 +39,20 @@ static void parity(ggml_type type, int blocks) {
   check(hipMemcpy(device_input,input.data(),count*sizeof(float),hipMemcpyHostToDevice));
   check(hipMemcpy(device_importance,importance.data(),count*sizeof(float),hipMemcpyHostToDevice));
   check(hipMemcpy(device_storage,guarded.data(),guarded.size(),hipMemcpyHostToDevice));
-  quantize_row(device_input,device_importance,device_storage+64,type,count,count,nullptr);
+  quantize_row(device_input,weighted ? device_importance : nullptr,device_storage+64,type,count,width,nullptr);
   check(hipGetLastError()); check(hipDeviceSynchronize());
   check(hipMemcpy(guarded.data(),device_storage,guarded.size(),hipMemcpyDeviceToHost));
   if(!std::all_of(guarded.begin(),guarded.begin()+64,[](uint8_t b){return b==0xa5;}) ||
      !std::all_of(guarded.end()-64,guarded.end(),[](uint8_t b){return b==0xa5;}))
     throw std::runtime_error("quantizer modified an output guard");
-  if(std::memcmp(expected.data(),guarded.data()+64,bytes))
-    throw std::runtime_error(std::string(libgguf_type_name(type))+" GPU quantization differs byte-for-byte from REF");
+  const auto mismatch=std::mismatch(expected.begin(),expected.end(),guarded.begin()+64);
+  if(mismatch.first!=expected.end())
+    throw std::runtime_error(std::string(libgguf_type_name(type)) + " GPU quantization differs from REF at byte " +
+          std::to_string(mismatch.first-expected.begin()) + ", expected " + std::to_string(*mismatch.first) +
+          ", got " + std::to_string(*mismatch.second) + ", blocks per row " + std::to_string(blocks) +
+          ", rows " + std::to_string(rows) + ", weighted " + std::to_string(weighted));
   std::vector<float> oracle(count),decoded(count+32,-12345);
-  libgguf_dequantize_chunk(type,expected.data(),oracle.data(),0,1,count);
+  libgguf_dequantize_chunk(type,expected.data(),oracle.data(),0,rows,width);
   check(hipMemcpy(device_decoded,decoded.data(),decoded.size()*sizeof(float),hipMemcpyHostToDevice));
   dequantize_row(device_storage+64,device_decoded+16,type,count,libgguf_gpu_dtype::f32,nullptr);
   check(hipGetLastError()); check(hipDeviceSynchronize());
@@ -77,6 +82,7 @@ static void parity(ggml_type type, int blocks) {
   if(std::memcmp(expected.data(),guarded.data()+64,bytes)) throw std::runtime_error("decoder modified packed input storage");
   check(hipFree(device_input));check(hipFree(device_importance));check(hipFree(device_storage));check(hipFree(device_decoded));
   std::cout << "{\"type\":\"" << libgguf_type_name(type) << "\",\"blocks\":" << blocks
+            << ",\"rows\":" << rows << ",\"weighted\":" << (weighted ? "true":"false")
             << ",\"bytes_checked\":" << bytes << ",\"guards_checked\":true,\"status\":\"passed\"}\n";
 }
 
@@ -127,8 +133,13 @@ static void benchmark(ggml_type type,int mib) {
 int main(int argc,char** argv) {
   try {
     int mib=0;
-    if(argc==3 && std::string(argv[1])=="--benchmark-mib") mib=std::stoi(argv[2]);
-    else if(argc!=1) throw std::runtime_error("usage: gfx942_quantizer_parity [--benchmark-mib 256]");
+    std::string format;
+    for (int i=1; i<argc; ++i) {
+      const std::string option=argv[i];
+      if (i+1<argc && option=="--benchmark-mib") mib=std::stoi(argv[++i]);
+      else if (i+1<argc && option=="--format") format=argv[++i];
+      else throw std::runtime_error("usage: gfx942_quantizer_parity [--format qtype] [--benchmark-mib 256]");
+    }
     if(mib<0 || mib>512) throw std::runtime_error("benchmark MiB must be between 1 and 512");
     int ordinal=0;hipDeviceProp_t p{};check(hipGetDevice(&ordinal));check(hipGetDeviceProperties(&p,ordinal));
     if(std::string(p.gcnArchName).substr(0,6)!="gfx942" || p.warpSize!=64) throw std::runtime_error("requires gfx942 wave64");
@@ -137,11 +148,25 @@ int main(int argc,char** argv) {
       GGML_TYPE_IQ1_S,GGML_TYPE_IQ1_M,GGML_TYPE_IQ2_XXS,GGML_TYPE_IQ2_XS,GGML_TYPE_IQ2_S,
       GGML_TYPE_IQ3_XXS,GGML_TYPE_IQ3_S,GGML_TYPE_IQ4_NL,GGML_TYPE_IQ4_XS,GGML_TYPE_TQ1_0,
       GGML_TYPE_TQ2_0,GGML_TYPE_MXFP4,GGML_TYPE_NVFP4};
+    bool found=false;
     for(auto type:types) {
+      if (!format.empty() && format!=libgguf_type_name(type)) continue;
+      found=true;
       if(!quantize_type_supported(type) || !dequantize_type_supported(type)) throw std::runtime_error("listed qtype lacks a production GPU implementation");
       for(int blocks:{1,2,3,5}) parity(type,blocks);
+      if (type==GGML_TYPE_Q4_0 || type==GGML_TYPE_Q4_1 || type==GGML_TYPE_Q5_0 || type==GGML_TYPE_Q5_1)
+        parity(type,129,3,true);
+      if(type==GGML_TYPE_Q4_0 || type==GGML_TYPE_Q4_1 || type==GGML_TYPE_Q5_0 ||
+         type==GGML_TYPE_Q5_1 || type==GGML_TYPE_Q2_K || type==GGML_TYPE_Q3_K || type==GGML_TYPE_Q4_K ||
+         type==GGML_TYPE_Q5_K || type==GGML_TYPE_Q6_K || type==GGML_TYPE_IQ3_S ||
+         type==GGML_TYPE_IQ3_XXS || type==GGML_TYPE_IQ4_NL || type==GGML_TYPE_IQ4_XS) {
+        parity(type,3,4,true);
+        parity(type,3,4,false);
+      }
     }
-    if(mib) for(auto type:types) benchmark(type,mib);
+    if(!found) throw std::runtime_error("unknown quantization format: "+format);
+    if(mib) for(auto type:types)
+      if(format.empty() || format==libgguf_type_name(type)) benchmark(type,mib);
     return 0;
   } catch(const std::exception& error) {std::cerr << error.what() << '\n';return 1;}
 }
