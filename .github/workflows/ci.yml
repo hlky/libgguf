@@ -45,7 +45,7 @@ jobs:
           -DLIBGGUF_CPU_TARGET=REF
 
       - name: Build native contract tests
-        run: cmake --build build/native-tests --target libgguf_simple_q_test --parallel 2
+        run: cmake --build build/native-tests --target libgguf_fragment_test libgguf_quantize_fragment_test --parallel 2
 
       - name: Run native contract tests
         run: ctest --test-dir build/native-tests --output-on-failure
