@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import libgguf
+from libgguf import inspect as libgguf
 
 
 def _gguf_string(value: str) -> bytes:

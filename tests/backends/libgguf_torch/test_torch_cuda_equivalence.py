@@ -3,9 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import libgguf
-import libgguf.libgguf_torch
-from libgguf import GGMLQuantizationType
+from libgguf import cpu as libgguf
+from libgguf import torch as gguf_torch
+from libgguf.formats import GGMLQuantizationType
 import torch
 
 from .test_torch_equivalence import (  # noqa: E402
@@ -30,7 +30,7 @@ def test_cuda_torch_quantize_storage_matches_libgguf(qtype: GGMLQuantizationType
         dtype=np.float32,
     )
 
-    actual = libgguf.libgguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
+    actual = gguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
     expected = libgguf.quantize_rows(rows, qtype)
 
     np.testing.assert_array_equal(tensor_bytes(actual), expected.view(np.uint8))
@@ -40,7 +40,7 @@ def test_cuda_torch_quantize_storage_matches_libgguf(qtype: GGMLQuantizationType
 def test_cuda_torch_quantize_bytes_match_libgguf(qtype: GGMLQuantizationType) -> None:
     rows = build_rows(qtype, rows=1)
 
-    actual = libgguf.libgguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
+    actual = gguf_torch.quantize(torch.from_numpy(rows).to("cuda"), qtype)
     expected = libgguf.quantize_rows(rows, qtype)
 
     assert tuple(actual.shape) == expected.shape
@@ -52,7 +52,7 @@ def test_cuda_torch_dequantize_native_bytes_matches_libgguf(qtype: GGMLQuantizat
     rows = build_rows(qtype, rows=1)
     encoded = libgguf.quantize_rows(rows, qtype)
 
-    actual = libgguf.libgguf_torch.dequantize(
+    actual = gguf_torch.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         qtype,
         rows.shape,
@@ -68,7 +68,7 @@ def test_cuda_dequantize_tensor_returns_torch_compatible_tensor_in_requested_dty
     tensor = torch.arange(6, device="cuda", dtype=torch.float32).reshape(2, 3)
     tensor.tensor_type = GGMLQuantizationType.F32
 
-    actual = libgguf.libgguf_torch.dequantize_tensor(tensor, dtype=torch.float16)
+    actual = gguf_torch.dequantize_tensor(tensor, dtype=torch.float16)
 
     assert actual.device.type == "cuda"
     assert actual.dtype == torch.float16
