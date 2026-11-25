@@ -26,6 +26,7 @@
 #include <libgguf/gpu/dequantize/q6_k.cuh>
 #include <libgguf/gpu/dequantize/q8_0.cuh>
 #include <libgguf/gpu/dequantize/tq1_0.cuh>
+#include <libgguf/gpu/dequantize/prism.cuh>
 #include <libgguf/gpu/dequantize/tq2_0.cuh>
 #include <libgguf/common/types.h>
 
@@ -207,6 +208,34 @@ struct BlockDecoder<GGML_TYPE_TQ1_0>
         const void * table, dst_t * output, int64_t group_index, int thread_index)
     {
         dequantize_tq1_0(table, output, (int)group_index, thread_index);
+    }
+};
+
+template <>
+struct BlockDecoder<GGML_TYPE_PQ2_0>
+{
+    static constexpr int64_t values_per_block = QK_PQ2_0;
+    static constexpr int64_t values_per_decode_group = QK_PQ2_0;
+    static constexpr int64_t threads_per_decode_group = 32;
+    template <typename dst_t>
+    static __device__ __forceinline__ void decode_group(
+        const void *table, dst_t *output, int64_t group_index, int thread_index)
+    {
+        dequantize_pq2_0(table, output, (int)group_index, thread_index);
+    }
+};
+
+template <>
+struct BlockDecoder<GGML_TYPE_PTQ1_0>
+{
+    static constexpr int64_t values_per_block = QK_PTQ1_0;
+    static constexpr int64_t values_per_decode_group = QK_PTQ1_0;
+    static constexpr int64_t threads_per_decode_group = 26;
+    template <typename dst_t>
+    static __device__ __forceinline__ void decode_group(
+        const void *table, dst_t *output, int64_t group_index, int thread_index)
+    {
+        dequantize_ptq1_0(table, output, (int)group_index, thread_index);
     }
 };
 

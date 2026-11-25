@@ -6,6 +6,11 @@
 #include <libgguf/gpu/compat.h>
 #include <libgguf/gpu/types.h>
 
+void dequantize_pq2_0(const void *x, void *y, int k,
+                      libgguf_gpu_dtype dtype, StreamType stream);
+void dequantize_ptq1_0(const void *x, void *y, int k,
+                       libgguf_gpu_dtype dtype, StreamType stream);
+
 void dequantize_q4_0(
     const void * x,
     void * y,

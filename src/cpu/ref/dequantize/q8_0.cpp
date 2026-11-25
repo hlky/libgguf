@@ -1,9 +1,10 @@
 #include "cpu/common/common.h"
 #include "cpu/common/dequantize/kernels.h"
 #include "quantize/iq_tables.h"
+#include <libgguf/cpu/dequantize/decoder.h>
 
 
-// Vendored from third_party/llama.cpp/ggml/src/ggml-quants.c.
+// Share the scalar block implementation with bounded header consumers.
 
 void dequantize_block_q8_0(const block_q8_0 * LIBGGUF_RESTRICT x, float * LIBGGUF_RESTRICT y, int64_t k) {
     static const int qk = QK8_0;
@@ -13,11 +14,8 @@ void dequantize_block_q8_0(const block_q8_0 * LIBGGUF_RESTRICT x, float * LIBGGU
     const int nb = k / qk;
 
     for (int i = 0; i < nb; i++) {
-        const float d = LIBGGUF_FP16_TO_FP32(x[i].d);
-
-        for (int j = 0; j < qk; ++j) {
-            y[i*qk + j] = x[i].qs[j]*d;
-        }
+        libgguf::cpu::BlockDecoder<GGML_TYPE_Q8_0>::decode(
+            x + i, y + i*qk, [](uint16_t h) { return LIBGGUF_FP16_TO_FP32(h); });
     }
 }
 

@@ -59,6 +59,8 @@ def _dequantize_fake(
         GGMLQuantizationType.IQ4_XS,
         GGMLQuantizationType.TQ1_0,
         GGMLQuantizationType.TQ2_0,
+        GGMLQuantizationType.PQ2_0,
+        GGMLQuantizationType.PTQ1_0,
         GGMLQuantizationType.MXFP4,
         GGMLQuantizationType.NVFP4,
         GGMLQuantizationType.BF16,

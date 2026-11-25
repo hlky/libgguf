@@ -35,6 +35,12 @@ size_t libgguf_dequantize_chunk_serial(
 
   switch (type)
   {
+  case GGML_TYPE_PQ2_0:
+    dequantize_pq2_0((const block_pq2_0 *)src_row, dst_row, k);
+    break;
+  case GGML_TYPE_PTQ1_0:
+    dequantize_ptq1_0((const block_ptq1_0 *)src_row, dst_row, k);
+    break;
   case GGML_TYPE_Q1_0:
     dequantize_q1_0((const block_q1_0 *)src_row, dst_row, k);
     break;

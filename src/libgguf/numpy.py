@@ -1558,6 +1558,34 @@ class TQ1_0(__Quant, qtype=GGMLQuantizationType.TQ1_0):
         return (d * qs.astype(np.float32))
 
 
+class PQ2_0(__Quant, qtype=GGMLQuantizationType.PQ2_0):
+    @classmethod
+    def quantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
+        raise NotImplementedError("PQ2_0 support preserves original packed checkpoints; encoding is not implemented")
+
+    @classmethod
+    def dequantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
+        d = blocks[:, :2].copy().view("<f2").astype(np.float32)
+        codes = (blocks[:, 2:, None] >> np.array([0, 2, 4, 6], dtype=np.uint8)) & 3
+        return d * (codes.reshape((-1, 128)).astype(np.float32) - 1)
+
+
+class PTQ1_0(__Quant, qtype=GGMLQuantizationType.PTQ1_0):
+    @classmethod
+    def quantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
+        raise NotImplementedError("PTQ1_0 support preserves original packed checkpoints; encoding is not implemented")
+
+    @classmethod
+    def dequantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
+        d = blocks[:, 26:28].copy().view("<f2").astype(np.float32)
+        parts = []
+        for start, end, planes in ((0, 16, 5), (16, 24, 5), (24, 26, 4)):
+            multipliers = np.array([1, 3, 9, 27, 81][:planes], dtype=np.uint8)
+            codes = blocks[:, None, start:end] * multipliers[None, :, None]
+            parts.append(((codes.astype(np.uint16) * 3) >> 8).reshape((-1, planes * (end - start))).astype(np.float32) - 1)
+        return d * np.concatenate(parts, axis=-1)
+
+
 class TQ2_0(__Quant, qtype=GGMLQuantizationType.TQ2_0):
     @classmethod
     def quantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:

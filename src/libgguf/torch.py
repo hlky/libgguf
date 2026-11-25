@@ -1176,6 +1176,27 @@ def dequantize_blocks_TQ1_0(blocks, block_size, type_size, dtype=None):
     return d * qs.to(d.dtype)
 
 
+def dequantize_blocks_PQ2_0(blocks, block_size, type_size, dtype=None):
+    d, qs = split_block_dims(blocks, 2)
+    d = d.contiguous().view(torch.float16).to(dtype)
+    slots = (qs.unsqueeze(-1) >> torch.tensor(
+        [0, 2, 4, 6], device=blocks.device, dtype=torch.uint8
+    )) & 3
+    return d * (slots.reshape((-1, block_size)).to(d.dtype) - 1)
+
+
+def dequantize_blocks_PTQ1_0(blocks, block_size, type_size, dtype=None):
+    d = blocks[:, 26:28].contiguous().view(torch.float16).to(dtype)
+    parts = []
+    for start, end, planes in ((0, 16, 5), (16, 24, 5), (24, 26, 4)):
+        multipliers = torch.tensor(
+            [1, 3, 9, 27, 81][:planes], device=blocks.device, dtype=torch.uint8
+        )
+        codes = blocks[:, None, start:end] * multipliers[None, :, None]
+        parts.append(((codes.to(torch.int32) * 3) >> 8).reshape((-1, planes * (end - start))) - 1)
+    return d * torch.cat(parts, dim=-1).to(d.dtype)
+
+
 def quantize_blocks_TQ2_0(blocks, block_size, type_size):
     n_blocks = blocks.shape[0]
 
@@ -3082,6 +3103,8 @@ dequantize_functions = {
     GGMLQuantizationType.IQ4_NL: dequantize_blocks_IQ4_NL,
     GGMLQuantizationType.IQ4_XS: dequantize_blocks_IQ4_XS,
     GGMLQuantizationType.TQ1_0: dequantize_blocks_TQ1_0,
+    GGMLQuantizationType.PQ2_0: dequantize_blocks_PQ2_0,
+    GGMLQuantizationType.PTQ1_0: dequantize_blocks_PTQ1_0,
     GGMLQuantizationType.TQ2_0: dequantize_blocks_TQ2_0,
     GGMLQuantizationType.MXFP4: dequantize_blocks_MXFP4,
     GGMLQuantizationType.NVFP4: dequantize_blocks_NVFP4,

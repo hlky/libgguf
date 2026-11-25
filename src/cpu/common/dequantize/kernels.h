@@ -6,6 +6,8 @@
 
 extern "C"
 {
+  void dequantize_pq2_0(const block_pq2_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k);
+  void dequantize_ptq1_0(const block_ptq1_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k);
   void dequantize_q1_0(const block_q1_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k);
   void dequantize_q4_0(const block_q4_0 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k);
   void dequantize_q4_1(const block_q4_1 *LIBGGUF_RESTRICT x, float *LIBGGUF_RESTRICT y, int64_t k);

@@ -69,6 +69,10 @@ extern "C" LIBGGUF_API size_t libgguf_row_size(enum ggml_type type, int64_t n_pe
     return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_iq4_xs));
   case GGML_TYPE_TQ1_0:
     return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_tq1_0));
+  case GGML_TYPE_PQ2_0:
+    return libgguf_block_row_size(n_per_row, QK_PQ2_0, sizeof(block_pq2_0));
+  case GGML_TYPE_PTQ1_0:
+    return libgguf_block_row_size(n_per_row, QK_PTQ1_0, sizeof(block_ptq1_0));
   case GGML_TYPE_TQ2_0:
     return libgguf_block_row_size(n_per_row, QK_K, sizeof(block_tq2_0));
   case GGML_TYPE_MXFP4:
@@ -90,6 +94,10 @@ extern "C" LIBGGUF_API int64_t libgguf_block_size(enum ggml_type type)
     return 1;
   case GGML_TYPE_Q1_0:
     return QK1_0;
+  case GGML_TYPE_PQ2_0:
+    return QK_PQ2_0;
+  case GGML_TYPE_PTQ1_0:
+    return QK_PTQ1_0;
   case GGML_TYPE_Q4_0:
     return QK4_0;
   case GGML_TYPE_Q4_1:
@@ -184,6 +192,10 @@ extern "C" LIBGGUF_API size_t libgguf_type_size(enum ggml_type type)
     return sizeof(block_iq1_m);
   case GGML_TYPE_TQ1_0:
     return sizeof(block_tq1_0);
+  case GGML_TYPE_PQ2_0:
+    return sizeof(block_pq2_0);
+  case GGML_TYPE_PTQ1_0:
+    return sizeof(block_ptq1_0);
   case GGML_TYPE_TQ2_0:
     return sizeof(block_tq2_0);
   case GGML_TYPE_MXFP4:
@@ -217,6 +229,10 @@ extern "C" LIBGGUF_API const char *libgguf_type_name(enum ggml_type type)
   {
   case GGML_TYPE_F32:
     return "f32";
+  case GGML_TYPE_PQ2_0:
+    return "pq2_0";
+  case GGML_TYPE_PTQ1_0:
+    return "ptq1_0";
   case GGML_TYPE_F16:
     return "f16";
   case GGML_TYPE_Q4_0:

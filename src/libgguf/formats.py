@@ -39,6 +39,8 @@ class GGMLQuantizationType(IntEnum):
     MXFP4 = 39
     NVFP4 = 40
     Q1_0 = 41
+    PQ2_0 = 142
+    PTQ1_0 = 143
 
 
 QK_K = 256
@@ -77,6 +79,8 @@ GGML_QUANT_SIZES: dict[GGMLQuantizationType, tuple[int, int]] = {
     GGMLQuantizationType.MXFP4: (32, 1 + 16),
     GGMLQuantizationType.NVFP4: (64, 4 + 32),
     GGMLQuantizationType.Q1_0: (128, 2 + 16),
+    GGMLQuantizationType.PQ2_0: (128, 34),
+    GGMLQuantizationType.PTQ1_0: (128, 28),
 }
 
 
