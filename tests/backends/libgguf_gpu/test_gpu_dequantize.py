@@ -3,9 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import libgguf
-import libgguf.libgguf_gpu
-from libgguf import GGMLQuantizationType, GGML_QUANT_SIZES
+from libgguf import cpu as libgguf
+import importlib.util
+
+if importlib.util.find_spec("libgguf._C_gguf") is None:
+    pytest.skip("GPU extension was not built", allow_module_level=True)
+
+from libgguf import gpu as gguf_gpu
+from libgguf.formats import GGMLQuantizationType, GGML_QUANT_SIZES
 import torch
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
@@ -89,7 +94,7 @@ def test_gpu_dequantize_matches_libgguf(qtype: GGMLQuantizationType) -> None:
     rows = build_rows(qtype)
     encoded = libgguf.quantize_rows(rows, qtype)
 
-    actual = libgguf.libgguf_gpu.dequantize(
+    actual = gguf_gpu.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         int(qtype),
         rows.shape[0],
@@ -111,7 +116,7 @@ def test_gpu_dequantize_uses_current_stream() -> None:
     event = torch.cuda.Event()
 
     with torch.cuda.stream(stream):
-        actual = libgguf.libgguf_gpu.dequantize(
+        actual = gguf_gpu.dequantize(
             torch.from_numpy(encoded).to("cuda"),
             int(qtype),
             rows.shape[0],
@@ -133,7 +138,7 @@ def test_gpu_dequantize_returns_requested_dtype(dtype: torch.dtype) -> None:
     rows = build_rows(GGMLQuantizationType.Q4_0, rows=1)
     encoded = libgguf.quantize_rows(rows, GGMLQuantizationType.Q4_0)
 
-    actual = libgguf.libgguf_gpu.dequantize(
+    actual = gguf_gpu.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         int(GGMLQuantizationType.Q4_0),
         rows.shape[0],
@@ -152,7 +157,7 @@ def test_gpu_dequantize_default_dtype_is_float16() -> None:
     rows = build_rows(GGMLQuantizationType.Q4_0, rows=1)
     encoded = libgguf.quantize_rows(rows, GGMLQuantizationType.Q4_0)
 
-    actual = libgguf.libgguf_gpu.dequantize(
+    actual = gguf_gpu.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         int(GGMLQuantizationType.Q4_0),
         rows.shape[0],
@@ -178,7 +183,7 @@ def test_gpu_dequantize_bf16_storage_returns_requested_dtype(dtype: torch.dtype)
     )
     encoded = bf16_encoded_rows(rows)
 
-    actual = libgguf.libgguf_gpu.dequantize(
+    actual = gguf_gpu.dequantize(
         torch.from_numpy(encoded).to("cuda"),
         int(GGMLQuantizationType.BF16),
         rows.shape[0],

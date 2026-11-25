@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-import libgguf
-import libgguf.libgguf_gpu
-from libgguf import GGMLQuantizationType, GGML_QUANT_SIZES
+from libgguf import cpu as libgguf
+import importlib.util
+
+if importlib.util.find_spec("libgguf._C_gguf") is None:
+    pytest.skip("GPU extension was not built", allow_module_level=True)
+
+from libgguf import gpu as gguf_gpu
+from libgguf.formats import GGMLQuantizationType, GGML_QUANT_SIZES
 import torch
 
 
@@ -50,7 +55,7 @@ def test_gpu_quantize_meta_contract(qtype: GGMLQuantizationType) -> None:
     width = block_size * 2
     rows = torch.empty((2, 3, width), device="meta", dtype=torch.float32)
 
-    result = libgguf.libgguf_gpu.quantize(rows, int(qtype), imatrix_for(qtype, width))
+    result = gguf_gpu.quantize(rows, int(qtype), imatrix_for(qtype, width))
 
     assert result.device.type == "meta"
     assert result.dtype == torch.uint8
@@ -67,7 +72,7 @@ def test_gpu_dequantize_meta_contract(
     width = block_size * 2
     encoded = torch.empty((3, width * type_size // block_size), device="meta", dtype=torch.uint8)
 
-    result = libgguf.libgguf_gpu.dequantize(encoded, int(qtype), 3, width, dtype)
+    result = gguf_gpu.dequantize(encoded, int(qtype), 3, width, dtype)
 
     assert result.device.type == "meta"
     assert result.dtype == (dtype or torch.float16)
@@ -88,7 +93,7 @@ def test_gpu_quantize_rejects_invalid_input(
 ) -> None:
     require_gpu_ops()
     with pytest.raises(RuntimeError):
-        libgguf.libgguf_gpu.quantize(rows, int(qtype))
+        gguf_gpu.quantize(rows, int(qtype))
 
 
 def test_gpu_quantize_enforces_imatrix_contract() -> None:
@@ -98,15 +103,15 @@ def test_gpu_quantize_enforces_imatrix_contract() -> None:
     rows = torch.empty((2, width), device="meta", dtype=torch.float32)
 
     with pytest.raises(RuntimeError):
-        libgguf.libgguf_gpu.quantize(rows, int(qtype))
+        gguf_gpu.quantize(rows, int(qtype))
     with pytest.raises(RuntimeError):
-        libgguf.libgguf_gpu.quantize(
+        gguf_gpu.quantize(
             rows,
             int(qtype),
             torch.empty((1, width), device="meta", dtype=torch.float32),
         )
 
-    result = libgguf.libgguf_gpu.quantize(
+    result = gguf_gpu.quantize(
         rows,
         int(qtype),
         torch.ones(width, device="meta", dtype=torch.float32),
@@ -133,4 +138,4 @@ def test_gpu_dequantize_rejects_invalid_input(
 ) -> None:
     require_gpu_ops()
     with pytest.raises(RuntimeError):
-        libgguf.libgguf_gpu.dequantize(encoded, int(qtype), m, n, dtype)
+        gguf_gpu.dequantize(encoded, int(qtype), m, n, dtype)
