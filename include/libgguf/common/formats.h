@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 
 #include <libgguf/detail/compiler.h>
 #include <libgguf/common/types.h>
@@ -109,6 +110,30 @@ typedef struct
 static_assert(sizeof(block_q1_0) == sizeof(ggml_half) + QK1_0 / 8, "wrong q1_0 block size/padding");
 
 #define QK4_0 32
+// PrismML-Eng/llama.cpp 668256445feafa00dfe5f194bac1ea37ae2c74e5.
+// PQ2_0 stores four consecutive two-bit slots per byte, scale first.
+#define QK_PQ2_0 128
+typedef struct
+{
+  ggml_half d;
+  uint8_t qs[QK_PQ2_0 / 4];
+} block_pq2_0;
+static_assert(sizeof(block_pq2_0) == 34, "wrong pq2_0 block size/padding");
+static_assert(offsetof(block_pq2_0, d) == 0 && offsetof(block_pq2_0, qs) == 2,
+              "wrong pq2_0 field offsets");
+
+// PTQ1_0 stores 120 trits in qs, eight in qh, then the scale.
+#define QK_PTQ1_0 128
+typedef struct
+{
+  uint8_t qs[24];
+  uint8_t qh[2];
+  ggml_half d;
+} block_ptq1_0;
+static_assert(sizeof(block_ptq1_0) == 28, "wrong ptq1_0 block size/padding");
+static_assert(offsetof(block_ptq1_0, qs) == 0 && offsetof(block_ptq1_0, qh) == 24 &&
+              offsetof(block_ptq1_0, d) == 26, "wrong ptq1_0 field offsets");
+
 typedef struct
 {
   ggml_half d;           // delta

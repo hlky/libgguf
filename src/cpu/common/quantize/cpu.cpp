@@ -47,6 +47,9 @@ size_t libgguf_quantize_chunk_serial(
 
   switch (type)
   {
+  case GGML_TYPE_PQ2_0:
+  case GGML_TYPE_PTQ1_0:
+    return 0; // Decoding is supported; no encoder is defined for these layouts.
   case GGML_TYPE_F32:
     return quantize_f32(src + start, (char *)dst + start_row * row_size, nrows, n_per_row, imatrix);
   case GGML_TYPE_F16:

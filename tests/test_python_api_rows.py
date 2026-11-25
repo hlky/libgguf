@@ -40,6 +40,11 @@ SUPPORTED_QUANTIZED_QTYPES = (
     GGMLQuantizationType.NVFP4,
 )
 
+DECODE_ONLY_QTYPES = (
+    GGMLQuantizationType.PQ2_0,
+    GGMLQuantizationType.PTQ1_0,
+)
+
 UNSUPPORTED_ROW_QTYPES = (
     GGMLQuantizationType.Q8_1,
     GGMLQuantizationType.Q8_K,
@@ -50,7 +55,7 @@ UNSUPPORTED_ROW_QTYPES = (
     GGMLQuantizationType.F64,
 )
 
-NON_STORAGE_QTYPES = (*SUPPORTED_QUANTIZED_QTYPES, *UNSUPPORTED_ROW_QTYPES)
+NON_STORAGE_QTYPES = (*SUPPORTED_QUANTIZED_QTYPES, *DECODE_ONLY_QTYPES, *UNSUPPORTED_ROW_QTYPES)
 NON_QUANTIZED_QTYPES = (*STORAGE_QTYPES, *UNSUPPORTED_ROW_QTYPES)
 
 
@@ -90,11 +95,47 @@ def test_qtype_groups_cover_all_public_quantization_types() -> None:
     groups = (
         set(STORAGE_QTYPES),
         set(SUPPORTED_QUANTIZED_QTYPES),
+        set(DECODE_ONLY_QTYPES),
         set(UNSUPPORTED_ROW_QTYPES),
     )
 
     assert all(left.isdisjoint(right) for index, left in enumerate(groups) for right in groups[index + 1 :])
     assert set().union(*groups) == set(GGMLQuantizationType)
+
+
+@pytest.mark.parametrize("qtype", DECODE_ONLY_QTYPES, ids=qtype_id)
+def test_decode_only_formats_accept_rows_without_advertising_an_encoder(qtype: GGMLQuantizationType) -> None:
+    block_size, type_size = GGML_QUANT_SIZES[qtype]
+    # Every scale is zero, so every decoded value is zero for both layouts.
+    packed = np.zeros((2, 2 * type_size), dtype=np.uint8)
+    decoded = libgguf.dequantize_rows(packed, qtype)
+    assert decoded.dtype == np.float32
+    np.testing.assert_array_equal(decoded, np.zeros((2, 2 * block_size), dtype=np.float32))
+
+
+@pytest.mark.parametrize("qtype", DECODE_ONLY_QTYPES, ids=qtype_id)
+def test_decode_only_formats_reject_all_python_encoding_entrypoints(qtype: GGMLQuantizationType) -> None:
+    block_size, type_size = GGML_QUANT_SIZES[qtype]
+    rows = np.zeros((2, block_size), dtype=np.float32)
+    destination = np.full((2, type_size), 0xA5, dtype=np.uint8)
+    with pytest.raises(ValueError, match="decode-only"):
+        libgguf.quantize_rows(rows, qtype)
+    with pytest.raises(ValueError, match="decode-only"):
+        libgguf.quantize_rows_raw(qtype, rows, 2, block_size)
+    with pytest.raises(ValueError, match="decode-only"):
+        libgguf.quantize_rows_into_raw(qtype, rows, destination, 2, block_size)
+    assert np.all(destination == 0xA5)
+
+
+@pytest.mark.parametrize("qtype", DECODE_ONLY_QTYPES, ids=qtype_id)
+def test_decode_only_formats_native_encoder_returns_no_payload(qtype: GGMLQuantizationType) -> None:
+    block_size, _ = GGML_QUANT_SIZES[qtype]
+    rows = np.zeros((2, block_size), dtype=np.float32)
+    # Exercise the native entrypoint beneath the Python rejection guard. A
+    # decode-only type must report no encoded bytes rather than assert/abort.
+    with pytest.raises(RuntimeError):
+        libgguf._libgguf.quantize_rows_raw(qtype.value, rows, 2, block_size, None)
+    assert np.all(rows == 0)
 
 
 @pytest.mark.parametrize("qtype", SUPPORTED_QUANTIZED_QTYPES, ids=qtype_id)

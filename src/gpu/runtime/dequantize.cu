@@ -28,6 +28,8 @@ bool dequantize_type_supported(enum ggml_type type) {
         case GGML_TYPE_BF16:
         case GGML_TYPE_TQ1_0:
         case GGML_TYPE_TQ2_0:
+        case GGML_TYPE_PQ2_0:
+        case GGML_TYPE_PTQ1_0:
         case GGML_TYPE_MXFP4:
         case GGML_TYPE_NVFP4:
         case GGML_TYPE_Q1_0:
@@ -108,6 +110,12 @@ void dequantize_row(
             return;
         case GGML_TYPE_TQ1_0:
             dequantize_tq1_0(x, y, k, dtype, stream);
+            return;
+        case GGML_TYPE_PQ2_0:
+            dequantize_pq2_0(x, y, k, dtype, stream);
+            return;
+        case GGML_TYPE_PTQ1_0:
+            dequantize_ptq1_0(x, y, k, dtype, stream);
             return;
         case GGML_TYPE_TQ2_0:
             dequantize_tq2_0(x, y, k, dtype, stream);

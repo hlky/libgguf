@@ -67,6 +67,10 @@ _SUPPORTED_QUANTIZED_QTYPES = frozenset(
 def _validated_row_size(qtype_value: int, n_per_row: int, operation: str) -> int:
     if n_per_row <= 0:
         raise ValueError("n_per_row must be positive")
+    if operation == "quantize" and qtype_value in (
+        int(GGMLQuantizationType.PQ2_0), int(GGMLQuantizationType.PTQ1_0)
+    ):
+        raise ValueError("quantization encoding is unsupported for this decode-only format")
     if operation == "dequantize" and qtype_value not in _SUPPORTED_QUANTIZED_QTYPES:
         raise ValueError("unsupported quantization type or row width")
 

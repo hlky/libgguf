@@ -67,6 +67,7 @@ set(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/quantize/cpu.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/quantize/iq_tables.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/dequantize/cpu.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/dequantize/prism.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/tables.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/${LIBGGUF_CPU_TARGET_LOWER}/common.cpp"
 )
