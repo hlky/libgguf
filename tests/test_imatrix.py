@@ -6,7 +6,7 @@ import struct
 import numpy as np
 import pytest
 
-import libgguf
+from libgguf import imatrix as libgguf
 
 
 GGUF_MAGIC = b"GGUF"

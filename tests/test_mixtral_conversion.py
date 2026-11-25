@@ -7,7 +7,7 @@ import struct
 import subprocess
 from pathlib import Path
 
-import libgguf
+from libgguf import inspect as libgguf
 import pytest
 
 
@@ -55,7 +55,7 @@ def test_mixtral_conversion_preserves_decoder_names_and_head(tmp_path: Path) -> 
         text=True,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    result = libgguf.open_gguf(destination)
+    result = libgguf.inspect_gguf(destination)
     assert result.metadata["general.architecture"].value == "mixtral"
     tensors = {tensor.name: tensor for tensor in result.tensors}
     assert set(tensors) == set(keys)

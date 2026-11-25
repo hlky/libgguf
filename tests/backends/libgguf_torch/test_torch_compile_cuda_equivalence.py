@@ -3,9 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import libgguf
-import libgguf.libgguf_torch
-from libgguf import GGMLQuantizationType
+from libgguf import cpu as libgguf
+from libgguf import torch as gguf_torch
+from libgguf.formats import GGMLQuantizationType
 import torch
 
 from torch.utils._triton import has_triton  # noqa: E402
@@ -40,7 +40,7 @@ def test_compiled_cuda_torch_quantize_bytes_match_libgguf(
 ) -> None:
     rows = build_rows(qtype, rows=1)
     quantize = torch.compile(
-        lambda data: libgguf.libgguf_torch.quantize(data, qtype), dynamic=False
+        lambda data: gguf_torch.quantize(data, qtype), dynamic=False
     )
 
     actual = quantize(torch.from_numpy(rows).to("cuda"))
@@ -57,7 +57,7 @@ def test_compiled_cuda_torch_dequantize_native_bytes_matches_libgguf(
     rows = build_rows(qtype, rows=1)
     encoded = libgguf.quantize_rows(rows, qtype)
     dequantize = torch.compile(
-        lambda data: libgguf.libgguf_torch.dequantize(
+        lambda data: gguf_torch.dequantize(
             data, qtype, rows.shape, dtype=torch.float32
         ),
         dynamic=False,

@@ -3,9 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import libgguf
-import libgguf.libgguf_gpu
-from libgguf import GGMLQuantizationType, GGML_QUANT_SIZES
+from libgguf import cpu as libgguf
+import importlib.util
+
+if importlib.util.find_spec("libgguf._C_gguf") is None:
+    pytest.skip("GPU extension was not built", allow_module_level=True)
+
+from libgguf import gpu as gguf_gpu
+from libgguf.formats import GGMLQuantizationType, GGML_QUANT_SIZES
 import torch
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
@@ -68,7 +73,7 @@ def make_imatrix(rows: np.ndarray) -> np.ndarray | None:
 def quantize_pair(rows: np.ndarray, qtype: GGMLQuantizationType) -> tuple[torch.Tensor, np.ndarray]:
     imatrix_np = make_imatrix(rows) if libgguf.quantize_requires_imatrix(qtype) else None
     imatrix = torch.from_numpy(imatrix_np).to("cuda") if imatrix_np is not None else None
-    actual = libgguf.libgguf_gpu.quantize(torch.from_numpy(rows).to("cuda"), int(qtype), imatrix)
+    actual = gguf_gpu.quantize(torch.from_numpy(rows).to("cuda"), int(qtype), imatrix)
     expected = libgguf.quantize_rows(rows, qtype, imatrix=imatrix_np)
     return actual, expected
 
@@ -96,7 +101,7 @@ def test_gpu_quantize_uses_current_stream() -> None:
     event = torch.cuda.Event()
 
     with torch.cuda.stream(stream):
-        actual = libgguf.libgguf_gpu.quantize(torch.from_numpy(rows).to("cuda"), int(qtype))
+        actual = gguf_gpu.quantize(torch.from_numpy(rows).to("cuda"), int(qtype))
         event.record()
 
     torch.cuda.current_stream().wait_event(event)
@@ -109,7 +114,7 @@ def test_gpu_quantize_preserves_leading_shape() -> None:
     require_gpu_quantize()
 
     rows = build_rows(GGMLQuantizationType.Q8_0, rows=6).reshape(2, 3, -1)
-    actual = libgguf.libgguf_gpu.quantize(
+    actual = gguf_gpu.quantize(
         torch.from_numpy(rows).to("cuda"), int(GGMLQuantizationType.Q8_0)
     )
     expected = libgguf.quantize_rows(rows, GGMLQuantizationType.Q8_0)

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import libgguf
+from libgguf import inspect as libgguf
 import pytest
 
 
@@ -83,7 +83,7 @@ def test_inspect_gguf_reads_metadata_and_tensor_descriptors_without_payload(tmp_
     gguf_path = tmp_path / "minimal.gguf"
     header_end = _minimal_gguf(gguf_path)
 
-    info = libgguf.open_gguf(gguf_path, max_array_values=2)
+    info = libgguf.inspect_gguf(gguf_path, max_array_values=2)
 
     assert info.version == 3
     assert info.tensor_count == 1
@@ -108,7 +108,8 @@ def test_inspect_gguf_reads_metadata_and_tensor_descriptors_without_payload(tmp_
         "nbytes": 288,
     }
     assert info.tensor_type_counts == {"Q4_0": 1}
-    assert libgguf.read_gguf_header(gguf_path).to_dict() == libgguf.inspect_gguf(gguf_path).to_dict()
+    import libgguf as package
+    assert not hasattr(package, "read_gguf_header")
 
 
 def test_gguf_file_get_tensor_and_read_tensor_bytes(tmp_path: Path) -> None:
@@ -333,7 +334,7 @@ def test_validate_gguf_errors_for_duplicate_tensor_names(tmp_path: Path) -> None
     )
 
     result = libgguf.validate_gguf(gguf_path)
-    info = libgguf.open_gguf(gguf_path)
+    info = libgguf.inspect_gguf(gguf_path)
 
     assert [tensor.name for tensor in info.iter_tensors()] == ["duplicate.weight", "duplicate.weight"]
     assert info.get_tensor("duplicate.weight") == info.tensors[0]

@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import libgguf
-from libgguf import GGMLQuantizationType, GGML_QUANT_SIZES
+from libgguf import cpu as libgguf
+from libgguf.formats import GGMLQuantizationType, GGML_QUANT_SIZES
 
 
 STORAGE_QTYPES = (
