@@ -25,6 +25,8 @@ if(LIBGGUF_ENABLE_ROCM)
 endif()
 
 project(libgguf VERSION 0.2.2 LANGUAGES CXX)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 option(LIBGGUF_BUILD_SHARED "Build the standalone libgguf shared library" ON)
 option(LIBGGUF_BUILD_PYTHON "Build the libgguf Python extension" ON)
@@ -63,6 +65,7 @@ message(STATUS "libgguf CPU backend: ${LIBGGUF_CPU_TARGET_UPPER}")
 set(
   LIBGGUF_CORE_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/src/core/formats.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/core/native_quant.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/threading.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/quantize/cpu.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/quantize/iq_tables.cpp"
@@ -89,6 +92,11 @@ set(
   ${LIBGGUF_CPU_DEQUANTIZE_SOURCES}
 )
 list(APPEND LIBGGUF_CORE_SOURCES ${LIBGGUF_CPU_QUANTIZE_SOURCES} ${LIBGGUF_CPU_DEQUANTIZE_SOURCES})
+if(NOT LIBGGUF_CPU_TARGET_UPPER STREQUAL "REF")
+  set(LIBGGUF_NATIVE_SIMD_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/cpu/common/native_decode.cpp")
+  list(APPEND LIBGGUF_CORE_SOURCES "${LIBGGUF_NATIVE_SIMD_SOURCE}")
+  list(APPEND LIBGGUF_CPU_TARGET_SOURCES "${LIBGGUF_NATIVE_SIMD_SOURCE}")
+endif()
 
 add_library(libgguf_objects OBJECT ${LIBGGUF_CORE_SOURCES})
 target_include_directories(
@@ -99,6 +107,19 @@ target_include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 target_compile_definitions(libgguf_objects PRIVATE NDEBUG=1)
+if(NOT LIBGGUF_CPU_TARGET_UPPER STREQUAL "REF")
+  target_compile_definitions(libgguf_objects PRIVATE LIBGGUF_NATIVE_SIMD_DECODE=1)
+  if(LIBGGUF_CPU_TARGET_UPPER STREQUAL "AVX2")
+    set_source_files_properties("${LIBGGUF_NATIVE_SIMD_SOURCE}" PROPERTIES COMPILE_DEFINITIONS LIBGGUF_NATIVE_DECODE_AVX2=1)
+  endif()
+endif()
+
+# Native encoder identity fixes the FP64 scoring/reduction arithmetic.
+if(MSVC)
+  set_source_files_properties(src/core/native_quant.cpp PROPERTIES COMPILE_OPTIONS "/fp:strict")
+else()
+  set_source_files_properties(src/core/native_quant.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
 
 if(MSVC)
   target_compile_options(libgguf_objects PRIVATE /O2 /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS)
@@ -125,7 +146,9 @@ endif()
 if(LIBGGUF_BUILD_SHARED)
   add_library(libgguf SHARED)
   target_link_libraries(libgguf PRIVATE libgguf_objects)
-  target_include_directories(libgguf PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_include_directories(libgguf PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
   set_target_properties(libgguf PROPERTIES OUTPUT_NAME libgguf)
 endif()
 
@@ -144,6 +167,7 @@ if(LIBGGUF_BUILD_PYTHON)
     "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings/python/module.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings/python/payload.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings/python/raw_ops.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings/python/native_ops.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/conversion/safetensors_payload.cpp"
     WITH_SOABI
   )
@@ -195,6 +219,7 @@ if(LIBGGUF_BUILD_GPU)
       LIBGGUF_GPU_SOURCES
       "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu/runtime/quantize.cu"
       "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu/runtime/dequantize.cu"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu/runtime/native.cu"
       ${LIBGGUF_GPU_QUANTIZE_KERNEL_SOURCES}
       ${LIBGGUF_GPU_DEQUANTIZE_KERNEL_SOURCES}
     )
@@ -230,6 +255,9 @@ if(LIBGGUF_BUILD_GPU)
       target_compile_options(libgguf_gpu_objects PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     endif()
     target_link_libraries(libgguf_gpu_objects PRIVATE ${LIBGGUF_GPU_DEVICE_RUNTIME_TARGET})
+    if(TARGET libgguf)
+      target_link_libraries(libgguf PRIVATE libgguf_gpu_objects ${LIBGGUF_GPU_HOST_RUNTIME_TARGET})
+    endif()
 
     if(LIBGGUF_BUILD_TORCH)
       if(LIBGGUF_ENABLE_ROCM)
@@ -277,6 +305,7 @@ if(LIBGGUF_BUILD_GPU)
         LIBGGUF_GPU_TORCH_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings/torch/gpu/quantize.cu"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings/torch/gpu/dequantize.cu"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/bindings/torch/gpu/native.cu"
       )
       set_source_files_properties(
         ${LIBGGUF_GPU_TORCH_SOURCES}
@@ -328,6 +357,11 @@ if(LIBGGUF_BUILD_GPU)
 endif()
 
 if(LIBGGUF_BUILD_TOOLS)
+  add_executable(libgguf_quantize_native src/cli/quantize_native.cpp
+    src/conversion/native_safetensors_writer.cpp src/conversion/safetensors.cpp src/conversion/common.cpp)
+  target_include_directories(libgguf_quantize_native PRIVATE include src)
+  target_link_libraries(libgguf_quantize_native PRIVATE libgguf_objects)
+  install(TARGETS libgguf_quantize_native RUNTIME DESTINATION bin)
   set(LIBGGUF_TOOLS_RUNTIME_DESTINATION "bin")
   if(DEFINED SKBUILD_SCRIPTS_DIR)
     set(LIBGGUF_TOOLS_RUNTIME_DESTINATION "${SKBUILD_SCRIPTS_DIR}")
@@ -431,6 +465,21 @@ endif()
 
 if(LIBGGUF_BUILD_TESTS)
   enable_testing()
+  find_package(Python QUIET COMPONENTS Interpreter)
+  if(Python_Interpreter_FOUND)
+    add_test(NAME libgguf_native_registry_check
+      COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/native_format_registry.py" --check)
+  endif()
+  if(LIBGGUF_BUILD_GPU AND LIBGGUF_ENABLE_ROCM)
+    add_executable(libgguf_native_quant_device tests/native/native_quant_device.hip)
+    target_include_directories(libgguf_native_quant_device PRIVATE include)
+    target_link_libraries(libgguf_native_quant_device PRIVATE libgguf_objects libgguf_gpu_objects hip::host)
+    target_compile_options(libgguf_native_quant_device PRIVATE $<$<COMPILE_LANGUAGE:HIP>:-ffp-contract=off>)
+    set_target_properties(libgguf_native_quant_device PROPERTIES HIP_STANDARD 17 HIP_STANDARD_REQUIRED ON)
+    if(LIBGGUF_RUN_GPU_TESTS)
+      add_test(NAME libgguf_native_quant_device COMMAND libgguf_native_quant_device)
+    endif()
+  endif()
   if(LIBGGUF_BUILD_GPU AND LIBGGUF_ENABLE_ROCM AND CMAKE_HIP_ARCHITECTURES STREQUAL "gfx942")
     add_executable(libgguf_gfx942_quantizer_parity tests/native/gfx942_quantizer_parity.hip)
     target_include_directories(libgguf_gfx942_quantizer_parity PRIVATE include src)
@@ -452,6 +501,10 @@ if(LIBGGUF_BUILD_TESTS)
     endif()
   endif()
   add_executable(libgguf_fragment_test tests/native/fragment_test.cpp)
+  add_executable(libgguf_native_quant_test tests/native/native_quant_test.cpp)
+  target_include_directories(libgguf_native_quant_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(libgguf_native_quant_test PRIVATE libgguf_objects)
+  add_test(NAME libgguf_native_quant_test COMMAND libgguf_native_quant_test)
   target_include_directories(libgguf_fragment_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include")
   target_link_libraries(libgguf_fragment_test PRIVATE libgguf_objects)
@@ -532,3 +585,30 @@ if(LIBGGUF_BUILD_TESTS)
     endif()
   endif()
 endif()
+
+# Native numerical headers are usable independently of the CPU/GPU runtime.
+add_library(libgguf_headers INTERFACE)
+add_library(LibGGUF::headers ALIAS libgguf_headers)
+set_target_properties(libgguf_headers PROPERTIES EXPORT_NAME headers)
+target_include_directories(libgguf_headers INTERFACE
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+install(TARGETS libgguf_headers EXPORT LibGGUFTargets)
+if(TARGET libgguf)
+  set_target_properties(libgguf PROPERTIES EXPORT_NAME libgguf)
+  install(TARGETS libgguf EXPORT LibGGUFTargets
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+endif()
+install(DIRECTORY include/libgguf DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+install(FILES contracts/native_formats.json DESTINATION "${CMAKE_INSTALL_DATADIR}/libgguf/contracts")
+install(EXPORT LibGGUFTargets NAMESPACE LibGGUF:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibGGUF")
+configure_package_config_file(cmake/LibGGUFConfig.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/LibGGUFConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibGGUF")
+write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/LibGGUFConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/LibGGUFConfig.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/LibGGUFConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/LibGGUF")

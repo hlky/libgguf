@@ -9,6 +9,7 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include <map>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -139,7 +140,8 @@ struct input_file {
   }
 };
 
-std::vector<tensor_meta> parse_safetensors_header(const input_file & input, uint64_t * data_start);
+std::vector<tensor_meta> parse_safetensors_header(const input_file & input, uint64_t * data_start,
+    std::map<std::string,std::string>* metadata = nullptr);
 void strip_prefix(std::vector<tensor_meta> & tensors);
 size_t source_dtype_size(native_source_dtype dtype);
 native_source_dtype parse_source_dtype(const std::string & dtype);

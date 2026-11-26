@@ -1,6 +1,11 @@
 #include "bindings/python/ops.h"
 
+PyObject* py_native_quantize_rows_raw(PyObject*, PyObject*);
+PyObject* py_native_dequantize_rows_raw(PyObject*, PyObject*);
+
 static PyMethodDef module_methods[] = {
+    {"native_quantize_rows_raw", py_native_quantize_rows_raw, METH_VARARGS, "Encode canonical libgguf-native rows."},
+    {"native_dequantize_rows_raw", py_native_dequantize_rows_raw, METH_VARARGS, "Decode validated libgguf-native rows."},
     {"row_size", py_row_size, METH_VARARGS, "Return encoded row byte size for a quantization type and row width."},
     {"type_size", py_type_size, METH_VARARGS, "Return GGUF block type byte size."},
     {"type_name", py_type_name, METH_VARARGS, "Return GGUF type name."},

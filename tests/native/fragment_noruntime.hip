@@ -1,4 +1,5 @@
 #include <libgguf/gpu/dequantize/fragment.cuh>
+#include <libgguf/gpu/native_encode.cuh>
 
 #if defined(HIP_INCLUDE_HIP_HIP_RUNTIME_H) || \
     defined(HIP_INCLUDE_HIP_HIP_RUNTIME_API_H)
@@ -16,3 +17,14 @@ __attribute__((global)) void fragment_noruntime_probe(
     output[8 + slot] = value;
   });
 }
+
+template<libgguf::NativeFormat Format>
+__attribute__((global)) void native_noruntime_probe(const float* input, unsigned char* encoded, float* output) {
+  libgguf::native_detail::encode_block(Format, input, nullptr, encoded);
+  libgguf::NativeBlockCodec<Format>::template decode_group<float>(encoded, output, 0, 0);
+  libgguf::NativeCooperativeBlockDecoder<Format>::template decode_group<float>(encoded, output, 0, 0);
+}
+template __attribute__((global)) void native_noruntime_probe<libgguf::NativeFormat::s4g32>(const float*,unsigned char*,float*);
+template __attribute__((global)) void native_noruntime_probe<libgguf::NativeFormat::s4g64>(const float*,unsigned char*,float*);
+template __attribute__((global)) void native_noruntime_probe<libgguf::NativeFormat::s8g32>(const float*,unsigned char*,float*);
+template __attribute__((global)) void native_noruntime_probe<libgguf::NativeFormat::s4h256>(const float*,unsigned char*,float*);

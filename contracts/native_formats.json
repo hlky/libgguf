@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "format_revision": 1,
+  "encoder": {
+    "name": "clip_grid",
+    "revision": 1,
+    "clipping_numerators": [
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32
+    ],
+    "clipping_denominator": 32,
+    "rounding": "nearest_ties_even",
+    "score": "stored_reconstruction_f64_ordered"
+  },
+  "formats": [
+    {
+      "id": 0,
+      "name": "libgguf.s4g32",
+      "values_per_block": 32,
+      "bytes_per_block": 18,
+      "values_per_group": 32,
+      "scale": "nonnegative_f16_le",
+      "packing": "signed_i4_adjacent_low_first",
+      "hierarchical": false
+    },
+    {
+      "id": 1,
+      "name": "libgguf.s4g64",
+      "values_per_block": 64,
+      "bytes_per_block": 34,
+      "values_per_group": 64,
+      "scale": "nonnegative_f16_le",
+      "packing": "signed_i4_adjacent_low_first",
+      "hierarchical": false
+    },
+    {
+      "id": 2,
+      "name": "libgguf.s8g32",
+      "values_per_block": 32,
+      "bytes_per_block": 34,
+      "values_per_group": 32,
+      "scale": "nonnegative_f16_le",
+      "packing": "signed_i8",
+      "hierarchical": false
+    },
+    {
+      "id": 3,
+      "name": "libgguf.s4h256",
+      "values_per_block": 256,
+      "bytes_per_block": 138,
+      "values_per_group": 32,
+      "scale": "nonnegative_f16_le",
+      "packing": "signed_i4_adjacent_low_first",
+      "hierarchical": true
+    }
+  ]
+}
