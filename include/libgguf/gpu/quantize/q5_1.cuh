@@ -13,9 +13,14 @@ static __device__ __forceinline__ void quantize_q5_1(const src_t * x, block_q5_1
     const auto mask = __activemask();
     const int lane = threadIdx.x & 31;
     const float value = static_cast<float>(x[lane]);
-    const float min_value = __shfl_sync(mask, warp_reduce_min(value), 0, libgguf::gpu::subgroup32::width);
+    float min_value = __shfl_sync(mask, warp_reduce_min(value), 0, libgguf::gpu::subgroup32::width);
     const float max_value = __shfl_sync(mask, warp_reduce_max(value), 0, libgguf::gpu::subgroup32::width);
-    const float d = __fdiv_rn(max_value - min_value, 31.0f);
+    // Strict comparisons in the scalar reference preserve the first zero sign.
+    if (min_value == 0.0f) {
+        const auto equal = subgroup32::ballot(value == 0.0f);
+        min_value = __shfl_sync(mask, value, __ffs(equal) - 1, subgroup32::width);
+    }
+    const float d = min_value == max_value ? 0.0f : __fdiv_rn(max_value - min_value, 31.0f);
     const float id = d != 0.0f ? __fdiv_rn(1.0f, d) : 0.0f;
     uint8_t xi0 = 0;
     uint8_t xi1 = 0;

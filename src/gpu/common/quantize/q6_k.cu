@@ -11,8 +11,6 @@ void quantize_q6_k(
     libgguf_gpu_dtype dtype,
     StreamType stream
 ) {
-    (void)quant_weights;
-    (void)n_per_row;
     constexpr int q6_k_threads = 64;
     constexpr int q6_k_blocks_per_cta = (q6_k_threads / 32) * 2;
     const int64_t n_blocks = k / QK_K;
@@ -21,6 +19,6 @@ void quantize_q6_k(
         (QK_K * sizeof(int8_t) + (QK_K / 16) * sizeof(float));
     DISPATCH_FLOATING_TYPES(dtype, "quantize_q6_k", [&] {
         libgguf::gpu::quantize_block_q6_k<<<blocks, q6_k_threads, smem, stream>>>(
-            static_cast<const scalar_t *>(x), static_cast<block_q6_K *>(y), n_blocks);
+            static_cast<const scalar_t *>(x), static_cast<block_q6_K *>(y), n_blocks, quant_weights, n_per_row / QK_K);
     });
 }

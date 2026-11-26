@@ -7,6 +7,75 @@ namespace libgguf
 namespace gpu
 {
 
+template<class Input>
+static __global__ void quantize_weighted_q3_k(const Input* src, const float* importance,
+                                             block_q3_K* dst, int64_t blocks_per_row) {
+    constexpr int width = 16;
+    constexpr int groups = QK_K / width;
+    const int lane = threadIdx.x;
+    const int64_t block = blockIdx.x;
+    const Input* x = src + block * QK_K;
+    const float* qw = importance + (block % blocks_per_row) * QK_K;
+    auto& y = dst[block];
+    __shared__ float sigma2, rounded_scale;
+    __shared__ float scales[groups], sums[groups];
+    __shared__ int8_t scale_codes[groups], codes[QK_K];
+
+    if (lane == 0) {
+        float sum = 0;
+        for (int i = 0; i < QK_K; ++i) {
+            const float v = static_cast<float>(x[i]);
+            sum = __fadd_rn(sum, __fmul_rn(v, v));
+        }
+        sigma2 = sum * (2.0f / QK_K);
+    }
+    __syncthreads();
+    if (lane < groups) {
+        float weights[width], total = 0;
+        const int start = lane * width;
+        for (int i = 0; i < width; ++i) {
+            const float v = static_cast<float>(x[start + i]);
+            weights[i] = qw[start + i] * sqrtf(sigma2 + v * v);
+            total += weights[i];
+        }
+        sums[lane] = total;
+        scales[lane] = make_qx_quants_rmse1(width, 4, x + start, codes + start, weights);
+    }
+    __syncthreads();
+    if (lane == 0) {
+        const auto d = compute_fp32_to_fp16(make_qx_quants_rmse1(groups, 32, scales, scale_codes, sums));
+        y.d = d;
+        rounded_scale = __half2float(load_half(d));
+    }
+    __syncthreads();
+    if (lane < 8)
+        y.scales[lane] = (scale_codes[lane] & 15) | ((scale_codes[lane + 8] & 15) << 4);
+    if (lane < 4) {
+        unsigned high = 0;
+        for (int j = 0; j < 4; ++j)
+            high |= (scale_codes[lane + 4 * j] >> 4) << (2 * j);
+        y.scales[8 + lane] = high;
+    }
+    for (int i = lane; i < QK_K; i += blockDim.x) {
+        const float d = rounded_scale * (scale_codes[i / width] - 32);
+        if (d != 0)
+            codes[i] = 4 + clamp_int(nearest_int(__fdiv_rn(static_cast<float>(x[i]), d)), -4, 3);
+    }
+    __syncthreads();
+    if (lane < 32) {
+        unsigned high = 0;
+        for (int j = 0; j < 8; ++j)
+            high |= (codes[lane + 32 * j] >> 2) << j;
+        y.hmask[lane] = high;
+        for (int i = 0; i < QK_K; i += 128) {
+            unsigned packed = 0;
+            for (int j = 0; j < 4; ++j)
+                packed |= (codes[lane + i + 32 * j] & 3) << (2 * j);
+            y.qs[i / 4 + lane] = packed;
+        }
+    }
+}
+
 template<typename src_t>
 static __device__ void quantize_q3_k(
     const src_t * x,

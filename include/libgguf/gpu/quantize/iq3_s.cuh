@@ -13,7 +13,7 @@ template<typename src_t>
 static __device__ void quantize_iq3_s(
     const src_t * x,
     block_iq3_s * y,
-    int64_t n_blocks)
+    int64_t n_blocks, const float * importance, int64_t blocks_per_row)
 {
     const int64_t iblock = blockDim.x * blockIdx.x + threadIdx.x;
     if (iblock >= n_blocks)
@@ -36,6 +36,15 @@ static __device__ void quantize_iq3_s(
     memset(yb, 0, sizeof(block_iq3_s));
     yb->d = compute_fp32_to_fp16(0.0f);
 
+    float sigma2 = 0.0f;
+    if (importance) {
+        importance += (iblock % blocks_per_row) * QK_K;
+        for (int i = 0; i < QK_K; ++i) {
+            const float v = static_cast<float>(xb[i]);
+            sigma2 = __fadd_rn(sigma2, __fmul_rn(v, v));
+        }
+        sigma2 *= 2.0f / QK_K;
+    }
     float max_scale = 0.0f;
     for (int ib = 0; ib < QK_K / 32; ++ib)
     {
@@ -43,7 +52,7 @@ static __device__ void quantize_iq3_s(
         for (int i = 0; i < 32; ++i)
         {
             const float xi = static_cast<float>(x32[i]);
-            weight[i] = xi * xi;
+            weight[i] = importance ? importance[ib * 32 + i] * sqrtf(sigma2 + xi * xi) : xi * xi;
             waux[i] = sqrtf(weight[i]);
             l[i] = 0;
         }
@@ -206,9 +215,9 @@ template<typename src_t>
 static __global__ void quantize_block_iq3_s(
     const src_t * __restrict__ x,
     block_iq3_s * __restrict__ y,
-    int64_t n_blocks)
+    int64_t n_blocks, const float * importance, int64_t blocks_per_row)
 {
-    quantize_iq3_s(x, y, n_blocks);
+    quantize_iq3_s(x, y, n_blocks, importance, blocks_per_row);
 }
 
 }

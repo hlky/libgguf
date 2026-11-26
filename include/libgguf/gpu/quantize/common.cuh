@@ -156,7 +156,7 @@ static __device__ __forceinline__ uint8_t pack_trits_5(uint8_t q) {
 
 template<typename src_t>
 static __device__ __forceinline__ float make_qx_quants_rmse1(
-    int n, int nmax, const src_t * x, int8_t * l
+    int n, int nmax, const src_t * x, int8_t * l, const float * weights = nullptr
 ) {
     float max = 0.0f;
     float amax = 0.0f;
@@ -184,7 +184,7 @@ static __device__ __forceinline__ float make_qx_quants_rmse1(
         int q = nearest_int(__fmul_rn(iscale, xi));
         q = clamp_int(q, -nmax, nmax - 1);
         l[i] = q + nmax;
-        const float w = __fmul_rn(xi, xi);
+        const float w = weights ? weights[i] : __fmul_rn(xi, xi);
         sumlx = __fadd_rn(sumlx, __fmul_rn(__fmul_rn(w, xi), float(q)));
         suml2 = __fadd_rn(suml2, __fmul_rn(__fmul_rn(w, float(q)), float(q)));
     }
@@ -202,7 +202,7 @@ static __device__ __forceinline__ float make_qx_quants_rmse1(
             const float xi = static_cast<float>(x[i]);
             int q = nearest_int(__fmul_rn(iscale, xi));
             q = clamp_int(q, -nmax, nmax - 1);
-            const float w = __fmul_rn(xi, xi);
+            const float w = weights ? weights[i] : __fmul_rn(xi, xi);
             sumlx = __fadd_rn(sumlx, __fmul_rn(__fmul_rn(w, xi), float(q)));
             suml2 = __fadd_rn(suml2, __fmul_rn(__fmul_rn(w, float(q)), float(q)));
         }
@@ -435,7 +435,7 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
     float * scales,
     float * weight,
     uint8_t * l,
-    int ntry
+    int ntry, const float * importance = nullptr
 ) {
     float sigma2 = 0.0f;
     for (int j = 0; j < super_block_size; ++j) {
@@ -456,7 +456,7 @@ static __device__ __forceinline__ void quantize_iq4_nl_impl(
         uint8_t * lb = l + ib * block_size;
         for (int j = 0; j < block_size; ++j) {
             const float xj = static_cast<float>(xb[j]);
-            weight[j] = xj * xj;
+            weight[j] = importance ? importance[ib * block_size + j] * sqrtf(sigma2 + xj * xj) : xj * xj;
         }
 
         float amax = 0.0f;

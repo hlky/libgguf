@@ -69,10 +69,16 @@ static __device__ void quantize_q5_k(
 
         const float inv_scale = max_scale > 0.0f ? 63.0f / max_scale : 0.0f;
         const float inv_min = max_min > 0.0f ? 63.0f / max_min : 0.0f;
+        const auto d = compute_fp32_to_fp16(__fdiv_rn(max_scale, 63.0f));
+        const auto dm = compute_fp32_to_fp16(__fdiv_rn(max_min, 63.0f));
+        yb->d = d;
+        yb->dmin = dm;
         for (int j = 0; j < QK_K / 32; ++j)
         {
             uint8_t ls = min(63, nearest_int(inv_scale * scales[j]));
             uint8_t lm = min(63, nearest_int(inv_min * mins[j]));
+            scales[j] = __half2float(load_half(d)) * ls;
+            mins[j] = __half2float(load_half(dm)) * lm;
             if (j < 4)
             {
                 yb->scales[j] = ls;
@@ -85,21 +91,14 @@ static __device__ void quantize_q5_k(
                 yb->scales[j] |= (lm >> 4) << 6;
             }
         }
-        yb->d = compute_fp32_to_fp16(max_scale / 63.0f);
-        yb->dmin = compute_fp32_to_fp16(max_min / 63.0f);
     }
 
     __syncthreads();
 
-    const float d_base = __half2float(load_half(yb->d));
-    const float dm_base = __half2float(load_half(yb->dmin));
-    uint8_t sc;
-    uint8_t m;
-    get_scale_min_k4(subgroup, yb->scales, &sc, &m);
-    const float d = d_base * sc;
+    const float d = scales[subgroup];
     if (d != 0.0f)
     {
-        const float dm = dm_base * m;
+        const float dm = mins[subgroup];
         for (int ii = 0; ii < 32; ++ii)
         {
             int q = nearest_int((static_cast<float>(xb[base + ii]) + dm) / d);

@@ -1,4 +1,5 @@
 #include <libgguf/gpu/dispatch.h>
+#include <libgguf/gpu/quantize/weighted_k.cuh>
 #include <libgguf/gpu/quantize/kernels.h>
 #include <libgguf/gpu/quantize/q5_k.cuh>
 
@@ -11,8 +12,13 @@ void quantize_q5_k(
     libgguf_gpu_dtype dtype,
     StreamType stream
 ) {
-    (void)quant_weights;
-    (void)n_per_row;
+    if (quant_weights && k > 0 && n_per_row >= QK_K) {
+        DISPATCH_FLOATING_TYPES(dtype, "quantize_weighted_q5_k", [&] {
+            libgguf::gpu::quantize_weighted_k<5><<<k / QK_K, 64, 0, stream>>>(
+                static_cast<const scalar_t *>(x), quant_weights, static_cast<block_q5_K *>(y), n_per_row / QK_K);
+        });
+        return;
+    }
     constexpr int q5_k_threads = 64;
     constexpr int q5_k_blocks_per_cta = (q5_k_threads / 32) * 4;
     const int64_t n_blocks = k / QK_K;

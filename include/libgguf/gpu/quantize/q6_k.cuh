@@ -12,7 +12,7 @@ static __device__ void quantize_q6_k(
     const src_t * x,
     block_q6_K * y,
     int64_t n_blocks,
-    int8_t * shared)
+    int8_t * shared, const float * importance, int64_t blocks_per_row)
 {
     constexpr int blocks_per_warp = 2;
     const int warps_per_cta = blockDim.x >> 5;
@@ -35,7 +35,8 @@ static __device__ void quantize_q6_k(
     const src_t * xb = x + iblock * QK_K;
     block_q6_K * yb = y + iblock;
 
-    scales[subgroup] = make_qx_quants_rmse1(16, 32, xb + 16 * subgroup, l + 16 * subgroup);
+    const float * weights = importance ? importance + (iblock % blocks_per_row) * QK_K + 16 * subgroup : nullptr;
+    scales[subgroup] = make_qx_quants_rmse1(16, 32, xb + 16 * subgroup, l + 16 * subgroup, weights);
 
     __syncthreads();
 
@@ -58,23 +59,26 @@ static __device__ void quantize_q6_k(
         {
             memset(yb, 0, sizeof(block_q6_K));
             yb->d = compute_fp32_to_fp16(0.0f);
+            for (int ib = 0; ib < QK_K / 16; ++ib) scales[ib] = 0.0f;
         }
         else
         {
             const float iscale = __fdiv_rn(-128.0f, max_scale);
-            yb->d = compute_fp32_to_fp16(__fdiv_rn(1.0f, iscale));
+            const auto packed_scale = compute_fp32_to_fp16(__fdiv_rn(1.0f, iscale));
+            yb->d = packed_scale;
+            const float rounded_scale = __half2float(load_half(packed_scale));
             for (int ib = 0; ib < QK_K / 16; ++ib)
             {
                 const int8_t qscale = min(127, nearest_int(__fmul_rn(iscale, scales[ib])));
                 yb->scales[ib] = qscale;
+                scales[ib] = rounded_scale * qscale;
             }
         }
     }
 
     __syncthreads();
 
-    const float d_super = __half2float(load_half(yb->d));
-    const float d = d_super * yb->scales[subgroup];
+    const float d = scales[subgroup];
     if (d != 0.0f)
     {
         for (int ii = 0; ii < 16; ++ii)
@@ -108,10 +112,10 @@ template<typename src_t>
 static __global__ void quantize_block_q6_k(
     const src_t * __restrict__ x,
     block_q6_K * __restrict__ y,
-    int64_t n_blocks)
+    int64_t n_blocks, const float * importance, int64_t blocks_per_row)
 {
     extern __shared__ int8_t shared[];
-    quantize_q6_k(x, y, n_blocks, shared);
+    quantize_q6_k(x, y, n_blocks, shared, importance, blocks_per_row);
 }
 
 }

@@ -11,13 +11,11 @@ void quantize_iq3_s(
     libgguf_gpu_dtype dtype,
     StreamType stream
 ) {
-    (void)quant_weights;
-    (void)n_per_row;
     const int threads = 128;
     const int64_t n_blocks = k / QK_K;
     const int blocks = (int)((n_blocks + threads - 1) / threads);
     DISPATCH_FLOATING_TYPES(dtype, "quantize_iq3_s", [&] {
         libgguf::gpu::quantize_block_iq3_s<<<blocks, threads, 0, stream>>>(
-            static_cast<const scalar_t *>(x), static_cast<block_iq3_s *>(y), n_blocks);
+            static_cast<const scalar_t *>(x), static_cast<block_iq3_s *>(y), n_blocks, quant_weights, n_per_row / QK_K);
     });
 }

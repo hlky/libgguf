@@ -24,7 +24,10 @@ static __device__ __forceinline__ void dequantize_iq4_nl(
 }
 
 template<typename dst_t>
-static __global__ void dequantize_block_iq4_nl(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+static __global__ void dequantize_block_iq4_nl(const void * __restrict__ vx, dst_t * __restrict__ yy, int packed_blocks) {
+    constexpr unsigned blocks_per_group = QK_K / QK4_NL;
+    if (blockIdx.x * blocks_per_group + threadIdx.x % blocks_per_group >= static_cast<unsigned>(packed_blocks))
+        return;
     dequantize_iq4_nl(vx, yy + blockIdx.x*QK_K, blockIdx.x, threadIdx.x);
 }
 
